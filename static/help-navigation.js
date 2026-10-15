@@ -10,6 +10,7 @@
     ['content-management', 'Content Packs & Images'],
     ['history-analytics', 'History & Analytics'],
     ['learning-intelligence', 'Learning Intelligence'],
+    ['certifications', 'My Certifications'],
     ['anki', 'Anki & Printable Cards'],
     ['settings', 'Settings & Personalization'],
     ['maintenance', 'System Tools & Data Management'],

@@ -35,10 +35,13 @@ class BlueprintClosureTests(unittest.TestCase):
         "admin_images": 5,
         "anki": 12,
         "content_packs": 8,
-        "core": 8,
+        "core": 9,
+        "certifications": 22,
+        "exam_plans": 7,
+        "review_marks": 6,
         "external_ai": 6,
         "help": 7,
-        "history": 13,
+        "history": 14,
         "it": 3,
         "law": 16,
         "learning": 23,
@@ -46,14 +49,19 @@ class BlueprintClosureTests(unittest.TestCase):
         "medical": 6,
         "pdf_import": 29,
         "quiz": 40,
-        "settings": 15,
+        "settings": 19,
         "study_packs": 9,
+        "study": 7,
+        "study_mistakes": 3,
     }
     EXPECTED_FACTORY_NAMES = {
         "create_admin_images_blueprint",
         "create_anki_blueprint",
         "create_content_packs_blueprint",
         "create_core_blueprint",
+        "create_certification_blueprint",
+        "create_exam_plan_blueprint",
+        "create_review_mark_blueprint",
         "create_external_ai_blueprint",
         "create_help_blueprint",
         "create_history_blueprint",
@@ -66,14 +74,19 @@ class BlueprintClosureTests(unittest.TestCase):
         "create_quiz_blueprint",
         "create_settings_blueprint",
         "create_study_packs_blueprint",
+        "create_study_blueprint",
+        "create_study_mistake_blueprint",
     }
     EXPECTED_DEPENDENCY_TYPES = {
         "dlms.routes.admin_images.AdminImageRouteDependencies": 6,
         "dlms.routes.anki.AnkiRouteDependencies": 22,
         "dlms.routes.content_packs.ContentPackRouteDependencies": 19,
-        "dlms.routes.core.CoreRouteDependencies": 16,
+        "dlms.routes.core.CoreRouteDependencies": 17,
+        "dlms.routes.exam_plans.ExamPlanDependencies": 4,
+        "dlms.routes.certifications.CertificationDependencies": 4,
+        "dlms.routes.review_marks.ReviewMarkDependencies": 6,
         "dlms.routes.external_ai.ExternalAIRouteDependencies": 8,
-        "dlms.routes.history.HistoryRouteDependencies": 9,
+        "dlms.routes.history.HistoryRouteDependencies": 10,
         "dlms.routes.it.ITStudyDependencies": 5,
         "dlms.routes.law.LawRouteDependencies": 31,
         "dlms.routes.learning.LearningRouteDependencies": 24,
@@ -81,16 +94,23 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.medical.MedicalRouteDependencies": 9,
         "dlms.routes.pdf_import.PDFImportRouteDependencies": 56,
         "dlms.routes.quiz.dependencies.QuizAuthoringDependencies": 19,
-        "dlms.routes.quiz.dependencies.QuizBundleDependencies": 15,
+        "dlms.routes.quiz.dependencies.QuizBundleDependencies": 16,
         "dlms.routes.quiz.dependencies.QuizEditorDependencies": 19,
         "dlms.routes.quiz.dependencies.QuizLibraryDependencies": 21,
         "dlms.routes.settings.SettingsRouteDependencies": 12,
         "dlms.routes.study_packs.StudyPackRouteDependencies": 26,
+        "dlms.routes.study.StudyRouteDependencies": 4,
     }
     EXPECTED_ROUTE_SIGNATURE_SHA256 = (
-        "1a37e413d6df5c5c261c6a4b56c8a23c67c30cf1217824757a8820db67df2ea2"
+        "bcba5275a6ffd412075b11e33312e469d8189efd8b4391fa4b8da0ac49b3c2a1"
     )
     EXPECTED_CANONICAL_ALIASES = {
+        "certifications.certification_form": ("/certifications/new", {}),
+        "certifications.cycle_form": ("/certifications/cert/cycles/new", {"cert_id": "cert"}),
+        "certifications.period_task": ("/certifications/cert/cycles/cycle/requirements", {"cert_id": "cert", "cycle_id": "cycle"}),
+        "certifications.training_form": ("/certifications/training/new", {}),
+        "certifications.allocation_form": ("/certifications/cert/cycles/cycle/allocate", {"cert_id": "cert", "cycle_id": "cycle"}),
+        "exam_plans.edit": ("/exam-plans/new", {}),
         "admin_images.admin_hotspot_editor": ("/admin/hotspots", {}),
         "admin_images.admin_hotspot_save": ("/admin/hotspots/save", {}),
         "help.regex_help": ("/regex-help/", {}),
@@ -139,13 +159,13 @@ class BlueprintClosureTests(unittest.TestCase):
         rows.sort(key=lambda row: (row["rule"], row["endpoint"], row["methods"]))
         return json.dumps(rows, sort_keys=True, separators=(",", ":"))
 
-    def test_entire_explicit_url_map_matches_the_221_rule_closure_signature(self):
+    def test_entire_explicit_url_map_matches_the_247_rule_closure_signature(self):
         rules = self._explicit_rules()
-        self.assertEqual(221, len(rules))
+        self.assertEqual(272, len(rules))
 
         blueprint_rules = [rule for rule in rules if "." in rule.endpoint]
         app_rules = [rule for rule in rules if "." not in rule.endpoint]
-        self.assertEqual(220, len(blueprint_rules))
+        self.assertEqual(271, len(blueprint_rules))
         self.assertEqual([("/api/shutdown", "shutdown_app")], [
             (rule.rule, rule.endpoint) for rule in app_rules
         ])
@@ -231,7 +251,7 @@ class BlueprintClosureTests(unittest.TestCase):
 
     def test_route_modules_have_frozen_family_dependencies_and_no_app_import(self):
         route_paths = sorted(ROUTE_ROOT.rglob("*.py"))
-        self.assertEqual(22, len(route_paths))
+        self.assertEqual(27, len(route_paths))
         for path in route_paths:
             with self.subTest(route_module=path.relative_to(ROOT)):
                 tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -332,6 +352,7 @@ class BlueprintClosureTests(unittest.TestCase):
                 "validate_unsafe_request_origin",
                 "reject_declared_oversized_workflow_upload",
                 "csrf_protect",
+                "coordinate_profile_snapshot",
                 "protect_critical_operation_from_automatic_shutdown",
             ],
             [
@@ -347,7 +368,7 @@ class BlueprintClosureTests(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            ["finish_critical_operation_for_automatic_shutdown"],
+            ["release_profile_snapshot", "finish_critical_operation_for_automatic_shutdown"],
             [
                 function.__name__
                 for function in dlms.app.teardown_request_funcs.get(None, [])

@@ -169,7 +169,7 @@ browser-local Resume card; that checkpoint is separate from the completed
 Library status.
 
 The later study-and-review chapter explains when to choose each generator. If
-you simply want DLMS's current recommendation, start with **Today’s Review** on
+you simply want DLMS's current recommendation, start with **Study next** on
 the Dashboard rather than choosing among all of them in the Library.
 
 ## Keep Mixed Quizzes distinct
@@ -202,6 +202,124 @@ represented by multiple source records. Creating the mix leaves every source
 quiz unchanged and records source relationships for the new questions.
 
 ![Mixed Quiz Builder with questions selected from multiple source quizzes](images/UM-04-mixed-quiz-builder.png)
+
+### Make a mix from Study mistakes
+
+Use **Quiz Library → Mix Questions → Study mistakes** to save a Mixed Quiz from
+questions with a qualifying incorrect Study answer. This is historical-mistake
+practice, not a list that automatically removes mastered questions. Creating a
+mix does not award learning credit or finish a source review.
+
+#### Choose and check your sources
+
+1. Select **Include folders**, **Add individual quizzes**, or both. A folder
+   includes its qualifying source quizzes; individual quizzes **add to** that
+   selection. Overlapping sources count once.
+2. For just one quiz, leave **Include folders** empty and select that quiz.
+   **Browse source quizzes by folder** filters the displayed list only. It
+   does not narrow the actual selection. Selections outside the view remain
+   included and visible in the summary. Use its Remove actions or **Clear
+   selections** to change the scope. **Full quiz names in this view** makes
+   long names readable without hovering.
+3. Choose **Check Study mistakes**. Confirm the checked folders and quizzes
+   before using the counts. Changing selections makes the previous result stale
+   and disables creation until you check again.
+
+The lists contain recognized original source quizzes, including ones with no
+recorded mistakes. Generated Mixed Quizzes, review quizzes and other recognized
+generated practice are not independent source choices. A wrong answer in a
+verified generated copy can qualify its original question only when its lineage
+and grading content still match. DLMS does not match sources by wording alone.
+Older quizzes with uncertain origin rely on the application's existing origin
+markers and legacy naming recognition.
+
+**Eligible questions in these sources** is the whole usable pool.
+**Remaining in this pass** is the unused part of the current Without repeats
+snapshot. **Included in saved mixes** counts questions used by successful quiz
+creation, not questions answered or mastered. The **Eligible source pool
+preview** shows examples from the pool, including already-used questions; it
+is not the exact next batch. The preview and unavailable table page by 20.
+
+#### Create a batch and continue the pass
+
+1. Keep **Without repeats**, the default. Choose **Start pass** if needed.
+   A pass is one trip through a fixed pool of eligible source questions.
+2. Enter a name and 1–100 questions, then **Create Mixed Quiz**. One source
+   quiz and a one-question remainder are supported here. The manual builder
+   keeps its existing two-question/two-source minimum.
+3. After confirmation, counts update automatically. Choose **Open saved Mixed
+   Quiz** for normal Study or Exam, or **Prepare next quiz** to set up a new
+   creation request. DLMS does not automatically create the next quiz.
+4. Keep the same folder and individual-quiz selection when returning to continue
+   that pass. A different explicit combination selects a different scope, even
+   if it covers the same questions. Returning to the original combination
+   returns to its current pass; merely filtering the displayed list does not
+   change it.
+
+**Example:** One source has four eligible questions. Create a mix of two;
+there are now two remaining and two included. Create another mix of two;
+there are zero remaining and four included, with no overlap between the mixes.
+The whole eligible pool can still show four. You do not have to complete the
+first mix before creating the second.
+
+At **Pass complete**, creation from that pass is unavailable. **Start new pass**
+explicitly takes a fresh snapshot of currently eligible questions, including new
+mistakes and previously included questions. It permits repeats across passes and
+preserves earlier quizzes and pass history. Deleting a saved mix does not return
+its questions to a pass or delete its original sources.
+
+**Random** keeps questions unique within each mix but allows repeats between
+mixes. It neither consumes nor resets Without repeats progress. When fewer
+questions remain than requested, choose a smaller count explicitly; DLMS does
+not pad with unrelated questions or silently reduce the batch.
+
+![Disposable example showing a four-question source pool and two questions remaining after a saved mix](images/UM-04-study-mistakes.png)
+
+#### Understand eligibility and unavailable questions
+
+Any qualifying **saved, complete, graded incorrect Study response** can count,
+including one in an unfinished session or after assistance. Correcting it or
+answering correctly in a later session does not erase the historical mistake.
+Unanswered questions, incomplete/ungraded selections, assistance alone and
+unsaved browser-only answers do not qualify. The manual **Missed before**
+filter has a separate meaning and is unchanged.
+
+Expand **Unavailable questions** for each quiz, question and reason. Some old
+responses lack verifiable content revisions; this limitation is not proof of
+corruption. Editing a quiz cannot recreate missing historical evidence. A
+quiz-wide edit may make earlier responses unverifiable even if one question
+looks unchanged. Deleted sources, unmatched generated copies, incomplete
+content and unavailable media cannot be silently substituted. Hotspots are
+not supported by this composition source; supported choice and matching
+questions keep their source content and answer key.
+
+Library hiding and Learning Scope exclusion remain separate. This explicit
+manual selection can include hidden or scope-excluded original sources without
+changing either setting or an Exam Plan's automatic recommendations.
+
+#### Saves, recovery and backups
+
+Questions become included only after successful publication. Failed creation
+consumes nothing. If an acknowledgement is uncertain, use **Retry same request**
+for the same intended mix; do not start a duplicate request. If counts fail to
+refresh after a confirmed save, keep the saved quiz confirmation and use
+**Refresh counts** or reload before preparing more work.
+
+Passes survive application restarts. Full profile backups include pass state,
+consumption and saved quiz files; portable quiz bundles do not carry this history.
+Restoring a full backup replaces the profile, not merges it. A pre-restore
+creation request cannot safely continue against restored data: reload and check.
+Deleting Study history removes the corresponding mistake eligibility while
+leaving already-created quiz content intact. It can make unused pass members
+unavailable without making them completed.
+
+Schema 12 cannot be reversed by replacing the application binary. Before an
+upgrade, keep a verified full backup outside the data directory. Rollback needs a
+compatible older application and a pre-upgrade backup, with the upgraded profile
+preserved separately. Restoring the older backup loses later changes, including
+new mixes and pass progress. See [Backup, restore and data management](17-maintenance-backup-and-data-management.md)
+and the [Study mistakes storage contract](../study-mistakes-storage-contract.md)
+for compatibility and recovery details.
 
 ## Review possible duplicates
 

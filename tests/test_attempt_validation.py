@@ -175,6 +175,132 @@ class AttemptValidationTests(unittest.TestCase):
         })
         self._assert_rejected_without_writes(payload)
 
+    def test_correct_reduced_matching_round_saves_and_retry_is_idempotent(self):
+        with dlms.get_db() as conn:
+            conn.execute('UPDATE questions SET matching_round_size=2,matching_direction=? WHERE id=?', ('random', self.matching_id))
+            for index in range(2, 5):
+                conn.execute('INSERT INTO matching_pairs(question_id,pair_order,left_text,right_text) VALUES(?,?,?,?)',
+                             (self.matching_id, index + 1, f'Term {index}', f'Definition {index}'))
+        payload = self._payload('reduced-matching')
+        payload.update(score=2, percent=67)
+        payload['responseDetails'][1].update(wasCorrect=True, selected={'0': 0, '1': 1},
+            matchingVariant={'sourcePairIndexes': [4, 1], 'direction': 'definition_to_term'})
+        response = self._post_attempt(payload)
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual(self._post_attempt(payload).status_code, 200)
+        self.assertEqual(self._attempt_write_counts('reduced-matching')['attempts'], 1)
+        with dlms.get_db() as conn:
+            import json
+            event = conn.execute('SELECT response_json FROM learning_events WHERE question_id=? AND event_type=?',
+                                 (self.matching_id, 'exam_answer')).fetchone()
+            self.assertEqual(json.loads(event[0])['matching_variant'], payload['responseDetails'][1]['matchingVariant'])
+        changed = self._payload('reduced-matching')
+        changed.update(score=2, percent=67)
+        changed['responseDetails'][1].update(wasCorrect=True, selected={'0': 0, '1': 1},
+            matchingVariant={'sourcePairIndexes': [3, 0], 'direction': 'definition_to_term'})
+        self.assertEqual(self._post_attempt(changed).status_code, 400)
+
+    def test_matching_round_rejects_tampered_identity_and_scoring(self):
+        import copy
+        with dlms.get_db() as conn:
+            conn.execute('UPDATE questions SET matching_round_size=2,matching_direction=? WHERE id=?', ('term_to_definition', self.matching_id))
+            conn.execute('INSERT INTO matching_pairs(question_id,pair_order,left_text,right_text) VALUES(?,?,?,?)',
+                         (self.matching_id, 3, 'Third', 'Third definition'))
+        payload = self._payload('invalid-matching')
+        payload.update(score=2, percent=67)
+        payload['responseDetails'][1].update(wasCorrect=True, selected={'0': 0, '1': 1},
+            matchingVariant={'sourcePairIndexes': [2, 0], 'direction': 'term_to_definition'})
+        variants = [None, {}, {'sourcePairIndexes': [2, 0, 1], 'direction': 'term_to_definition'},
+            {'sourcePairIndexes': [2, 2], 'direction': 'term_to_definition'},
+            {'sourcePairIndexes': [2, 3], 'direction': 'term_to_definition'},
+            {'sourcePairIndexes': [True, 0], 'direction': 'term_to_definition'},
+            {'sourcePairIndexes': [2, 0], 'direction': 'definition_to_term'}]
+        for variant in variants:
+            with self.subTest(variant=variant):
+                invalid = copy.deepcopy(payload)
+                invalid['responseDetails'][1]['matchingVariant'] = variant
+                self.assertEqual(self._post_attempt(invalid).status_code, 400)
+                self.assertEqual(self._attempt_write_counts('invalid-matching')['attempts'], 0)
+        incorrect = copy.deepcopy(payload)
+        incorrect['responseDetails'][1]['selected'] = {'0': 1, '1': 0}
+        self.assertEqual(self._post_attempt(incorrect).status_code, 400)
+        incomplete = copy.deepcopy(payload)
+        incomplete['responseDetails'][1]['selected'] = {'0': 0}
+        self.assertEqual(self._post_attempt(incomplete).status_code, 400)
+        self.assertEqual(self._post_attempt(payload).status_code, 200)
+
+    def test_legacy_matching_ack_retry_preserves_unrecorded_round_identity(self):
+        import copy
+        import json
+        payload = self._payload('legacy-matching-ack')
+        self.assertEqual(self._post_attempt(payload).status_code, 200)
+        with dlms.get_db() as conn:
+            before = conn.execute(
+                "SELECT response_json FROM learning_events WHERE question_id=? AND event_type='exam_answer'",
+                (self.matching_id,),
+            ).fetchone()[0]
+        self.assertNotIn('matching_variant', json.loads(before))
+        counts = self._attempt_write_counts(payload['attemptId'])
+        retry = copy.deepcopy(payload)
+        retry['responseDetails'][1]['matchingVariant'] = {
+            'sourcePairIndexes': [0, 1], 'direction': 'term_to_definition'}
+        response = self._post_attempt(retry)
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertTrue(response.json['already_recorded'])
+        with dlms.get_db() as conn:
+            after = conn.execute(
+                "SELECT response_json FROM learning_events WHERE question_id=? AND event_type='exam_answer'",
+                (self.matching_id,),
+            ).fetchone()[0]
+        self.assertEqual(after, before)
+        self.assertEqual(self._attempt_write_counts(payload['attemptId']), counts)
+        retry['responseDetails'][1]['matchingVariant']['sourcePairIndexes'] = [0, 0]
+        self.assertEqual(self._post_attempt(retry).status_code, 400)
+        self.assertEqual(self._attempt_write_counts(payload['attemptId']), counts)
+
+    def test_modern_full_matching_retry_requires_saved_identity_and_valid_json(self):
+        import copy
+        payload = self._payload('modern-full-matching-ack')
+        payload['responseDetails'][1]['matchingVariant'] = {
+            'sourcePairIndexes': [0, 1], 'direction': 'term_to_definition'}
+        self.assertEqual(self._post_attempt(payload).status_code, 200)
+        counts = self._attempt_write_counts(payload['attemptId'])
+        retry = copy.deepcopy(payload)
+        del retry['responseDetails'][1]['matchingVariant']
+        self.assertEqual(self._post_attempt(retry).status_code, 400)
+        retry = copy.deepcopy(payload)
+        retry['responseDetails'][1]['matchingVariant']['sourcePairIndexes'] = [1, 0]
+        self.assertEqual(self._post_attempt(retry).status_code, 400)
+        self.assertEqual(self._post_attempt(payload).status_code, 200)
+        for malformed in ('null', 'false', '1', '[]', '{broken'):
+            with self.subTest(response_json=malformed):
+                with dlms.get_db() as conn:
+                    conn.execute("UPDATE learning_events SET response_json=? WHERE question_id=? AND event_type='exam_answer'",
+                                 (malformed, self.matching_id))
+                self.assertEqual(self._post_attempt(payload).status_code, 400)
+                self.assertEqual(self._attempt_write_counts(payload['attemptId']), counts)
+
+    def test_reduced_matching_missed_review_uses_selected_reversed_pairs(self):
+        with dlms.get_db() as conn:
+            conn.execute('UPDATE questions SET matching_round_size=2,matching_direction=? WHERE id=?', ('definition_to_term', self.matching_id))
+            conn.execute('INSERT INTO matching_pairs(question_id,pair_order,left_text,right_text) VALUES(?,?,?,?)',
+                         (self.matching_id, 3, 'Third', 'Third definition'))
+        payload = self._payload('matching-missed')
+        payload['responseDetails'][1]['matchingVariant'] = {'sourcePairIndexes': [2, 0], 'direction': 'definition_to_term'}
+        payload['missedDetails'] = [{'attemptQuestionNumber': 2, 'questionType': 'matching'}]
+        response = self._post_attempt(payload)
+        self.assertEqual(response.status_code, 200, response.json)
+        with dlms.get_db() as conn:
+            import json
+            row = conn.execute('SELECT response_json,choices_text,correct_text,selected_text FROM missed_questions WHERE attempt_question_number=2').fetchone()
+            record = json.loads(row['response_json'])
+            self.assertEqual(record['matching_variant'], payload['responseDetails'][1]['matchingVariant'])
+            self.assertEqual(record['selected'], payload['responseDetails'][1]['selected'])
+            self.assertEqual(row['choices_text'], row['correct_text'])
+            self.assertEqual(len(row['choices_text'].splitlines()), 2)
+            self.assertEqual(row['correct_text'].splitlines()[0], 'Third definition ↔ Third')
+            self.assertTrue(row['selected_text'].startswith('Third definition ↔ '))
+
     def test_attempt_scalar_types_ranges_and_cross_field_values_are_rejected(self):
         mutations = {
             "negative score": lambda p: p.update(score=-1),

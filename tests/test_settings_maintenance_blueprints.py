@@ -28,6 +28,10 @@ MAINTENANCE_PATH = ROOT / "dlms" / "routes" / "maintenance.py"
 
 class SettingsMaintenanceBlueprintTests(unittest.TestCase):
     EXPECTED_RULES = {
+        ("settings.settings_layout_page", "/settings/layout", frozenset({"GET"})),
+        ("settings.save_layout_settings", "/settings/layout/save", frozenset({"POST"})),
+        ("settings.settings_dashboard_page", "/settings/dashboard", frozenset({"GET"})),
+        ("settings.save_dashboard_settings", "/settings/dashboard/save", frozenset({"POST"})),
         ("settings.settings_page", "/settings", frozenset({"GET"})),
         (
             "settings.settings_lifecycle_page",
@@ -268,7 +272,7 @@ class SettingsMaintenanceBlueprintTests(unittest.TestCase):
             for rule in rules
         }
         self.assertEqual(self.EXPECTED_RULES, actual)
-        self.assertEqual(35, len(rules))
+        self.assertEqual(39, len(rules))
         for rule in rules:
             with self.subTest(endpoint=rule.endpoint, rule=rule.rule):
                 self.assertTrue(rule.strict_slashes)
@@ -421,7 +425,7 @@ class SettingsMaintenanceBlueprintTests(unittest.TestCase):
         for literal_url in (
             'href="/settings/backup"',
             'href="/settings/reset-remove"',
-            'action="/settings/navigation/save"',
+            'action="/settings/layout/save"',
             'action="/settings/lifecycle/save"',
             'action="/settings/appearance/save"',
             'action="/settings/ai/save"',
@@ -449,10 +453,12 @@ class SettingsMaintenanceBlueprintTests(unittest.TestCase):
         with mock.patch.object(
             settings_routes, "render_template", return_value="rendered"
         ) as renderer:
-            response = settings_app.test_client().get("/settings/navigation")
+            response = settings_app.test_client().get("/settings/layout")
         self.assertEqual(200, response.status_code)
         renderer.assert_called_once_with(
-            "settings/navigation.html", visibility={"it": True}
+            "settings/dashboard.html", groups=settings_routes.DASHBOARD_CARD_GROUPS,
+            visibility=settings_routes.dashboard_card_defaults(), sidebar_visibility={"it": True}, show_certifications=True,
+            certification_display_count='3', certification_sort='earned'
         )
 
         maintenance_services = {

@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" href="/static/favicon.ico">
     <script src="/static/vendor/sortablejs-1.15.0.min.js"></script>
-</head>
+<script src="/static/local-time.js" defer></script></head>
 <body class="dashboard-home library-page{% if active_smart_view %} library-smart-view-active library-smart-view-{{ smart }}{% endif %}" data-library-smart-view="{{ smart or '' }}">
 <div class="dashboard-shell">
 
@@ -43,6 +43,7 @@
             <a class="dashboard-nav-item" href="/history"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#history"></use></svg><span>History</span></a>
             <a class="dashboard-nav-item" href="/dashboard"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#analytics"></use></svg><span>Analytics</span></a>
             <div class="dashboard-nav-group">
+                <a class="dashboard-nav-item" href="/marked-questions">Marked questions</a>
                 <a class="dashboard-nav-item" href="/anki"><svg class="dlms-icon dashboard-nav-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#anki"></use></svg><span>Anki Tools</span></a>
                 <div class="dashboard-nav-submenu">
                     <a class="dashboard-nav-subitem" href="/anki/custom"><svg class="dlms-icon dashboard-nav-subicon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#branch"></use></svg><span>Custom Deck</span></a>
@@ -250,7 +251,7 @@
                                         <span>•</span>
                                         <span>{{ folder_display_name }}</span>
                                         {% if q.generation %}<span class="library-generation-badge{% if q.generation.category == 'mixed' %} library-generation-badge-mixed{% endif %}" title="{{ 'Saved generated practice' if q.generation.category == 'practice' else 'Reusable quiz composed from multiple source quizzes' }}">{{ q.generation.label }}</span>{% endif %}
-                                        {% if q.completion %}<span class="library-completed-badge">Completed <time datetime="{{ q.completion.completed_at }}">{{ q.completion.completed_at[:10] }}</time></span>{% endif %}
+                                        {% if q.completion %}<span class="library-completed-badge">Completed <time datetime="{{ q.completion.completed_at }}" data-local-instant="{{ q.completion.completed_at }}">{{ q.completion.completed_at[:10] }}</time></span>{% endif %}
                                         {% if q.get('hidden') %}<span class="library-hidden-badge">Hidden</span>{% endif %}
                                         {% if folder_is_hidden %}<span class="library-folder-hidden-badge">Folder hidden</span>{% endif %}
                                         {% if q.smart_match and q.smart_match.badge %}<span class="library-smart-match-badge">{{ q.smart_match.badge }}</span>{% endif %}
@@ -280,7 +281,10 @@
                             </div>
 
                             <div class="library-quiz-actions">
-                                <a class="library-primary-action compact" href="/quizzes/{{ q['html'] }}">▶ Open Quiz</a>
+                                {% if q.readiness and not q.readiness.ready %}
+                                <details><summary>Needs review · {{ q.readiness.issues|length }} issue{% if q.readiness.issues|length != 1 %}s{% endif %}</summary><ul>{% for issue in q.readiness.issues %}<li>Question {{ issue.position }}{% if issue.number != issue.position %} (stored number {{ issue.number }}){% endif %}: {{ issue.reason }}</li>{% endfor %}</ul></details>
+                                <a class="library-primary-action compact" href="/edit_quiz/{{ q['id'] }}">Review and edit</a>
+                                {% else %}<a class="library-primary-action compact" href="/quizzes/{{ q['html'] }}">▶ Open Quiz</a>{% endif %}
                                 <a class="library-secondary-action compact" href="/edit_quiz/{{ q['id'] }}"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#build"></use></svg> Edit</a>
                                 <a class="library-secondary-action compact" href="/export/quiz/{{ q['id'] }}.txt" title="Exports a classic choice-question text representation. Use Quiz Bundles to preserve matching, images, and hotspots." aria-label="Export {{ q['title'] }} as classic choice-question text">⇩ Export</a>
 

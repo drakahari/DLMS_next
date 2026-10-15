@@ -84,7 +84,7 @@
             </div>
             <div class="dashboard-stat-card anki-summary-card anki-missed-summary-card" role="group" aria-labelledby="ankiMissedSummaryTitle" aria-describedby="ankiMissedOverlapNote">
                 <p class="anki-summary-primary anki-missed-summary-total" id="ankiMissedSummaryTitle">
-                    <span>Questions Ever Missed:</span>
+                    <span>Questions ever missed</span>
                     <strong>{{ total_missed_cards }}</strong>
                 </p>
                 <ul class="anki-missed-summary-metrics" aria-label="Missed-question details">
@@ -119,7 +119,7 @@
                 <form method="GET" action="/anki" class="anki-source-form">
                     <input type="hidden" name="source" value="quiz">
                     <label>
-                        <span>Source Quiz</span>
+                        <span>Quiz to preview</span>
                         <select name="quiz_id" required>
                             <option value="">Choose a quiz...</option>
                             {% for quiz in quizzes %}
@@ -144,7 +144,7 @@
                             {% endfor %}
                         </select>
                     </label>
-                    <button type="submit" class="anki-export-button">Export .apkg</button>
+                    <button type="submit" class="anki-export-button">Export Anki deck (.apkg)</button>
                 </form>
                 {% else %}
                 <div class="anki-empty-message">No quizzes are currently available.</div>
@@ -196,7 +196,7 @@
 
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                         <button type="submit" class="anki-preview-button">Preview Cards</button>
-                        <button type="button" class="anki-export-button" id="exportMissedAnki">Export .apkg</button>
+                        <button type="button" class="anki-export-button" id="exportMissedAnki">Export Anki deck (.apkg)</button>
                     </div>
                 </form>
             </article>

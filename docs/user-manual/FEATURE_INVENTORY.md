@@ -8,8 +8,11 @@
 
 **Purpose:** Phase 1 end-user manual architecture; not finished user guidance
 
-This inventory describes what a DLMS user can see or do in the current source
-tree. It is organized by user goal rather than by Python module. Route names,
+This historical inventory describes the September 2026 source at the revision
+above. It is retained as evidence of the original manual audit, not as a current
+3.3.0 feature contract. See [the 3.3.0 coverage checklist](UPDATE-COVERAGE-3.3.0.md)
+and current chapters for durable Study sessions, Exam Plans, certifications,
+26 themes, Layout & navigation and changed dashboard/history controls. It is organized by user goal rather than by Python module. Route names,
 services, templates, tests, and current Help are cited only as evidence.
 
 ## Audit method and scope
@@ -709,7 +712,7 @@ below.
 | --- | --- |
 | Screen / reach | Settings → Appearance / Navigation. |
 | What and why | Personalizes the local UI and controls optional subject-navigation visibility. |
-| Options | Light, Dark, Purple & Gold, and Maroon & Gold themes; portal title; background image. Show/hide IT, Law, Medical, and Other Studies navigation. |
+| Options | 26 manual themes grouped as DLMS, Omarchy · Light and Omarchy · Dark; the five existing choices, including adapted Ethereal, remain. Portal title; background image. Independent dashboard/sidebar visibility in Layout & navigation. |
 | Boundary | Navigation visibility does not delete or disable underlying content. Themes use shared semantic styling, focus, responsive, and contrast behavior. |
 | Evidence | settings routes/templates; `static/style.css`; theme/layout/accessibility tests; Help settings assets. |
 | Manual / screenshot / status | Ch. 3 and 16; a small appearance screenshot may be optional; **Verified**. |

@@ -1,6 +1,11 @@
 """Restore, crash recovery, reset, and runtime-data removal services."""
 
 import json
+from dlms.persistence.study_schema import invalidate_queues, preserve_legacy
+from dlms.persistence.study_mistake_schema import invalidate as invalidate_mistakes
+from dlms.persistence.exam_plan_schema import invalidate as invalidate_plans
+from dlms.persistence.review_mark_schema import invalidate as invalidate_marks
+from dlms.persistence.certification_schema import invalidate as invalidate_certifications
 import os
 import re
 import shutil
@@ -69,6 +74,10 @@ def validate_current_restored_database(
                 f"Migrated results.db schema version {version!r} is not {schema_version}"
             )
         validate_current_database_schema(conn)
+        from .exam_plans import validate_restored_plans
+        validate_restored_plans(conn)
+        from .review_marks import validate_restored_marks
+        validate_restored_marks(conn)
     except (RuntimeError, sqlite_module.DatabaseError) as exc:
         raise ValueError("Migrated results.db failed current-schema validation") from exc
     finally:
@@ -183,6 +192,12 @@ def prepare_staged_restore_database(
     database_path = staged_database_path(staged_data_root)
     try:
         bootstrap_result = bootstrap_database(database_path)
+        with sqlite3.connect(database_path) as restored_conn:
+            invalidate_queues(restored_conn)
+            invalidate_mistakes(restored_conn)
+            invalidate_plans(restored_conn)
+            invalidate_marks(restored_conn)
+            invalidate_certifications(restored_conn)
         validation = validate_current_restored_database(database_path)
         quiz_html = regenerate_staged_quiz_html(staged_data_root, database_path)
     except unsupported_schema_error as exc:
@@ -849,6 +864,13 @@ def reset_quiz_library_core(
     conn.execute("PRAGMA foreign_keys = OFF")
     cur = conn.cursor()
     cur.executescript("""
+        UPDATE exam_plan_actions SET quiz_id=NULL;
+        DELETE FROM study_mistake_members;
+        DELETE FROM study_mistake_actions;
+        DELETE FROM study_mistake_passes;
+        DELETE FROM study_responses;
+        DELETE FROM study_sessions;
+        DELETE FROM study_legacy_responses;
         DELETE FROM learning_events;
         DELETE FROM question_concepts;
         DELETE FROM concepts;
@@ -860,6 +882,10 @@ def reset_quiz_library_core(
         DELETE FROM quizzes;
         DELETE FROM sqlite_sequence;
     """)
+    invalidate_queues(conn)
+    invalidate_mistakes(conn)
+    invalidate_plans(conn)
+    invalidate_marks(conn)
     conn.commit()
     conn.execute("PRAGMA foreign_keys = ON")
     conn.close()
@@ -873,7 +899,23 @@ def reset_learning_intelligence_core(db_path, *, sqlite_module=sqlite3):
     conn = sqlite_module.connect(db_path)
     try:
         with conn:
+            preserve_legacy(conn)
             conn.execute("DELETE FROM learning_events")
+            invalidate_queues(conn, reset=True)
+    finally:
+        conn.close()
+
+
+def delete_study_history_core(db_path):
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        with conn:
+            invalidate_mistakes(conn)
+            conn.execute("DELETE FROM study_sessions")
+            conn.execute("DELETE FROM study_legacy_responses")
+            conn.execute("DELETE FROM learning_events WHERE event_type IN ('study_answer', 'study_action')")
+            invalidate_queues(conn)
     finally:
         conn.close()
 

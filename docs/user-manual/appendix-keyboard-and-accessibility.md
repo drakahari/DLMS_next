@@ -68,8 +68,10 @@ the dropdown presentation when the quiz offers that choice.
 
 ## Hotspot answers
 
-A playable hotspot image is keyboard focusable. Focus the image and press
-**Enter** or **Space** to submit the defined keyboard answer point. DLMS sends
+A playable hotspot image is keyboard focusable. Focus it, move the visible
+cursor with the **arrow keys** (hold **Shift** for a larger step), then press
+**Enter** or **Space** to submit the position you selected. Keyboard use does
+not supply a correct target or itself count as assistance. DLMS sends
 that action through the same hotspot scoring and answer-saving path as a
 pointer answer.
 
@@ -103,12 +105,14 @@ precise authoring easier. Full instructions are in
 
 ## Themes, contrast, and high-contrast modes
 
-DLMS provides four themes:
+DLMS provides **26 manually selectable themes**, grouped as DLMS, Omarchy · Light
+and Omarchy · Dark. The DLMS group includes Light, Dark, Purple & Gold, Maroon & Gold
+and the existing adapted Ethereal. The in-app Appearance Help draws the complete
+reference and light/dark classifications from the theme registry.
 
-- Light;
-- Dark;
-- Purple & Gold;
-- Maroon & Gold.
+Purple & Gold remains the default. Ethereal is optional and does not require
+Omarchy. Its release validation and outstanding accessibility checks are recorded
+in the [3.3.0 review checklist](../releases/3.3.0-RELEASE-CHECKLIST.md).
 
 Shared semantic styles keep text, controls, focus outlines, badges, notices,
 tables, and surfaces readable across these themes. Choose the theme that is
@@ -172,3 +176,12 @@ possible, an accessible description or equivalent textual context. If an
 important workflow does not expose a usable keyboard path in a particular
 environment, preserve the source data and report the exact screen, browser,
 control, and assistive technology involved.
+
+## Disclosures, action controls and images
+
+Dashboard, histories, plans and Learning Profile use labeled action controls.
+Activate native disclosure summaries with Enter or Space. Tooltips also appear
+on keyboard focus and dismiss with Escape; visible labels carry the meaning.
+Help images can be opened larger, navigated with the keyboard and closed with
+Escape. Theme contrast checks are useful evidence, not full accessibility
+conformance; choose a readable theme and browser zoom for your needs.

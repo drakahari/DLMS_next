@@ -6,7 +6,7 @@
 <title>Analytics</title>
 <link rel="stylesheet" href="/static/style.css">
 <link rel="icon" href="/static/favicon.ico">
-</head>
+<script src="/static/local-time.js"></script></head>
 
 <body class="dashboard-home analytics-modern-page">
 <div class="dashboard-shell">
@@ -162,16 +162,7 @@ function trendFor(latest, previous) {
     return { label: "Steady", className: "neutral", symbol: "→" };
 }
 
-function formatDate(value) {
-    if (!value) return "—";
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return escapeHtml(value);
-    return d.toLocaleDateString([], {
-        year: "numeric",
-        month: "short",
-        day: "numeric"
-    });
-}
+function formatDate(value) { return escapeHtml(DLMSLocalTime.format(value)); }
 
 async function fetchAnalytics() {
     const res = await fetch("/api/attempts/analytics", { cache: "no-store" });

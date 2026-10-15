@@ -5,6 +5,7 @@ from functools import wraps
 from flask import Blueprint, Response, flash, redirect, render_template, request, url_for
 
 from .dependencies import QuizBundleDependencies
+from dlms.services.portable_quiz_exports import ExportSelectionError, ExportBusyError, preflight_admission
 
 
 def _bind_dependencies(view_func, dependencies):
@@ -25,7 +26,7 @@ def _catalog(dependencies):
         connection.close()
 
 
-def portable_quiz_bundles(dependencies, *, error=None, status=200):
+def portable_quiz_bundles(dependencies, *, error=None, status=200, selected=None, search="", folder="", preflight=None):
     return render_template(
         "quiz/bundles.html",
         app_version=dependencies.app_version(),
@@ -33,6 +34,10 @@ def portable_quiz_bundles(dependencies, *, error=None, status=200):
         catalog=_catalog(dependencies),
         upload_max_mb=dependencies.upload_max_bytes() // (1024 * 1024),
         error=error,
+        preflight=preflight,
+        selected=set(str(value) for value in (selected or [])),
+        export_search=search[:240],
+        export_folder=folder[:120],
     ), status
 
 
@@ -42,25 +47,54 @@ def export_portable_quiz_bundle(dependencies):
         registry = dependencies.load_registry()
     connection = dependencies.get_db()
     try:
-        archive, filename, _manifest = dependencies.build_export(
+        connection.execute('BEGIN')
+        if dependencies.preflight_export:
+            with preflight_admission():
+                report = dependencies.preflight_export(connection.cursor(), registry, selected)
+            if report['blocked_quizzes'] or request.form.get('export_action') == 'check' or (report['warning_quizzes'] and (request.form.get('export_action') != 'preserve' or request.form.get('warning_snapshot') != report['signature'])):
+                return portable_quiz_bundles(dependencies, preflight=report,
+                    error='Export is blocked. No quizzes were exported; all selections are retained.' if report['blocked_quizzes'] else None,
+                    status=400 if report['blocked_quizzes'] else 200, selected=selected,
+                    search=request.form.get('export_search',''), folder=request.form.get('export_folder',''))
+        download = dependencies.build_export(
             connection.cursor(), registry, selected
         )
     except Exception as exc:
         dependencies.print_message(
             f"[PORTABLE QUIZ EXPORT ERROR] {type(exc).__name__}: {exc}"
+            + (f"; cause: {type(exc.__cause__).__name__}: {exc.__cause__}" if exc.__cause__ else "")
+        )
+        public_error = str(exc) if isinstance(exc, (ExportSelectionError, ExportBusyError)) else (
+            "The export could not be created because of a storage or server error. Your selection is retained. Try again, or use a full backup and report the failure."
         )
         return portable_quiz_bundles(
             dependencies,
-            error="The selected quizzes could not be exported. Review the selection and quiz media, then try again.",
-            status=400,
+            error=public_error,
+            status=503 if isinstance(exc, ExportBusyError) else (400 if isinstance(exc, ExportSelectionError) else 500),
+            selected=selected,
+            preflight=getattr(exc, "report", None),
+            search=request.form.get("export_search", ""),
+            folder=request.form.get("export_folder", ""),
         )
     finally:
         connection.close()
-    return Response(
-        archive,
+    def chunks():
+        try:
+            with download.path.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    yield chunk
+        finally:
+            download.close()
+
+    response = Response(
+        chunks(),
         mimetype="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f'attachment; filename="{download.filename}"',
+                 "Content-Length": str(download.path.stat().st_size),
+                 "Cache-Control": "no-store"},
     )
+    response.call_on_close(download.close)
+    return response
 
 
 def stage_portable_quiz_bundle(dependencies):

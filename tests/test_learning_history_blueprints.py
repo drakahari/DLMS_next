@@ -130,6 +130,7 @@ class LearningHistoryBlueprintTests(unittest.TestCase):
         ("history.review", "/review.html", frozenset({"GET"})),
         ("history.dashboard", "/dashboard", frozenset({"GET"})),
         ("history.dashboard", "/dashboard.html", frozenset({"GET"})),
+        ("history.api_recent_quiz_activity", "/api/dashboard/quiz-activity", frozenset({"GET"})),
         ("history.api_attempts", "/api/attempts", frozenset({"GET"})),
         (
             "history.api_attempts_overview",
@@ -190,6 +191,7 @@ class LearningHistoryBlueprintTests(unittest.TestCase):
         "parse_attempt_pagination",
         "attempt_page",
         "attempt_overview",
+        "recent_quiz_activity",
         "attempt_analytics",
         "attempt_summary",
         "missed_questions",
@@ -233,7 +235,7 @@ class LearningHistoryBlueprintTests(unittest.TestCase):
             for rule in rules
         }
         self.assertEqual(self.EXPECTED_RULES, actual)
-        self.assertEqual(34, len(rules))
+        self.assertEqual(35, len(rules))
         for rule in rules:
             with self.subTest(endpoint=rule.endpoint, rule=rule.rule):
                 self.assertTrue(rule.strict_slashes)

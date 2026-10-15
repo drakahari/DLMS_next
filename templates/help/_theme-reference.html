@@ -1,0 +1,11 @@
+<section class="help-panel help-anchor" id="theme-reference">
+    <h2>Theme reference</h2>
+    <p>There are {{ theme_registry|length }} choices in the same three groups used by both selectors. Expand a group to see its names and light/dark classification.</p>
+    {% for group in theme_groups %}
+    <details class="help-theme-reference">
+        <summary>{{ group.label }} · {{ group.options|length }} choices</summary>
+        <p>{% for theme in group.options %}<span data-help-theme="{{ theme.id }}">{{ theme.name }} ({{ theme_registry[theme.id].scheme|capitalize }})</span>{% if not loop.last %}; {% endif %}{% endfor %}.</p>
+    </details>
+    {% endfor %}
+    <p><strong>Ethereal</strong> is DLMS’s existing adaptation: midnight blue, peach and lavender, with local system fonts and its own presentation. It preserves the DLMS appearance you already know; it does not reproduce every upstream Omarchy detail. Other Omarchy palettes also have web adjustments for readable controls and educational feedback.</p>
+</section>

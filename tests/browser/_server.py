@@ -203,6 +203,18 @@ def seed_browser_data():
 
 
 def main():
+    # Only this disposable test server has a controllable signing clock. Keep
+    # normal token validation/lifetimes intact while testing hours of elapsed time.
+    from itsdangerous import TimestampSigner
+    signing_clock = Path(dlms.APP_DATA_DIR, "browser-signing-clock.txt")
+    real_timestamp = TimestampSigner.get_timestamp
+    def fixture_timestamp(signer):
+        try:
+            offset = int(signing_clock.read_text())
+        except FileNotFoundError:
+            offset = 0
+        return real_timestamp(signer) + offset
+    TimestampSigner.get_timestamp = fixture_timestamp
     fixture_path = Path(dlms.APP_DATA_DIR, "browser_fixture.json")
     if os.environ.get("DLMS_BROWSER_REUSE_DATA") != "1" or not fixture_path.is_file():
         seed_browser_data()

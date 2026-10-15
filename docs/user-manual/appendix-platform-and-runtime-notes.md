@@ -8,7 +8,9 @@ manual.
 
 ## Current native package targets
 
-The published DLMS 3.2.2 release includes native packages for:
+The published DLMS 3.2.2 release includes native packages for the targets below.
+The 3.3.0 development target keeps this matrix; its packages and platform
+behavior require fresh native validation before release:
 
 | Platform | Architecture | Canonical package name |
 | --- | --- | --- |

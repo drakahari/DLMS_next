@@ -138,7 +138,10 @@ def test_settings_failure_does_not_publish_or_hold_lock(tmp_path):
             mock.patch.dict(dlms.app.config, {"WTF_CSRF_ENABLED": False}), \
             mock.patch.object(dlms, "_write_settings_portal_config", side_effect=OSError("disk fault")):
         response = dlms.app.test_client().post("/api/theme", data={"theme": "light"})
-        assert response.status_code == 500
+        # Theme writes now expose a retryable error rather than an unhandled
+        # exception. Publication and lock-release guarantees are unchanged.
+        assert response.status_code == 503
+        assert response.get_json()["ok"] is False
         response.close()
     assert portal.read_text() == original
     acquired = []

@@ -420,7 +420,7 @@ class HistoryApiPaginationTests(unittest.TestCase):
         finally:
             response.close()
         self.assertIn('quizTitle.textContent = String(a.quiz_title || "Unknown Quiz")', page)
-        self.assertIn('modeBadge.textContent = String(a.mode || "Unknown")', page)
+        self.assertIn('modeBadge.textContent = String(a.mode || "").trim().toLowerCase()', page)
         self.assertIn('originBadge.textContent = String(a.origin || "Quiz")', page)
         self.assertIn('reviewLink.href = `/review?attempt=${encodeURIComponent(attemptId)}`', page)
         self.assertNotIn('${a.quiz_title || "Unknown Quiz"}', page)

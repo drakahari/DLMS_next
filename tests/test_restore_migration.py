@@ -226,7 +226,8 @@ class RestoreMigrationTests(unittest.TestCase):
         staged.mkdir()
         database = staged / "results.db"
         self._current_database(database)
-        before = database.stat().st_mtime_ns
+        with sqlite3.connect(database) as conn:
+            before_generation = conn.execute("SELECT generation FROM study_state").fetchone()[0]
         migration = mock.Mock(side_effect=AssertionError("migration must not run"))
 
         with mock.patch.dict(dlms.DLMS_SCHEMA_MIGRATIONS, {2: migration}):
@@ -234,7 +235,8 @@ class RestoreMigrationTests(unittest.TestCase):
 
         self.assertEqual(result["bootstrap"]["status"], "current")
         self.assertEqual(result["validation"]["version"], dlms.DLMS_SCHEMA_VERSION)
-        self.assertEqual(database.stat().st_mtime_ns, before)
+        with sqlite3.connect(database) as conn:
+            self.assertNotEqual(conn.execute("SELECT generation FROM study_state").fetchone()[0], before_generation)
         migration.assert_not_called()
 
     def test_current_backup_restores_normally_without_migration(self):

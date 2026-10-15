@@ -1,9 +1,14 @@
 """Help and documentation routes."""
 
-from flask import Blueprint, current_app, send_from_directory
+from pathlib import Path
+
+from flask import Blueprint, current_app, render_template, send_from_directory
+
+from dlms.themes import THEME_REGISTRY, theme_groups
 
 
 HELP_TOPIC_FILES = {
+    "certifications": "help-certifications.html",
     "getting-started": "help-getting-started.html",
     "quizzes": "help-quizzes.html",
     "build-quiz": "help-build-quiz.html",
@@ -46,6 +51,15 @@ def create_help_blueprint() -> Blueprint:
         filename = HELP_TOPIC_FILES.get(str(topic or "").strip().lower())
         if not filename:
             return "Help topic not found", 404
+        if filename == "help-settings.html":
+            # Keep the task guide in the existing static Help collection, while
+            # deriving its theme reference from the same registry as selectors.
+            page = Path(current_app.static_folder, filename).read_text(encoding="utf-8")
+            reference = render_template(
+                "help/_theme-reference.html", theme_groups=theme_groups(),
+                theme_registry=THEME_REGISTRY,
+            )
+            return page.replace("<!-- DLMS theme reference -->", reference)
         return send_from_directory("static", filename)
 
     @blueprint.get("/regex-help")

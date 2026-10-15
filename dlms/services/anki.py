@@ -125,7 +125,7 @@ def build_anki_rows_for_quiz(quiz_id, *, get_db):
             SELECT label, text, is_correct
             FROM choices
             WHERE question_id = ?
-            ORDER BY label
+            ORDER BY choice_order, label, id
             """,
             (question["id"],)
         ).fetchall()

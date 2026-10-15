@@ -7,7 +7,8 @@ from typing import Any
 
 from flask import Blueprint, jsonify, redirect, render_template, request
 from dlms.services.storage_health import InsufficientStorageError, LOW_SPACE_MESSAGE, storage_snapshot
-from dlms.services.backups import BackupRestoreLimitError, BACKUP_RESTORE_LIMIT_MESSAGE
+from dlms.persistence.profile_snapshot import ProfileBusyError, BUSY_MESSAGE
+from dlms.services.backups import BackupRestoreLimitError, BACKUP_RESTORE_LIMIT_MESSAGE, SnapshotConsistencyError
 
 
 Dependency = Callable[..., Any]
@@ -154,6 +155,8 @@ def settings_create_backup(dependencies):
         return render_template(
             "settings/backup-failed.html",
             error=(
+                BUSY_MESSAGE if isinstance(exc, ProfileBusyError) else
+                str(exc) if isinstance(exc, SnapshotConsistencyError) else
                 BACKUP_RESTORE_LIMIT_MESSAGE if isinstance(exc, BackupRestoreLimitError) else
                 LOW_SPACE_MESSAGE if isinstance(exc, InsufficientStorageError) else
                 "DLMS could not create the backup. Check available disk space and "
@@ -190,6 +193,7 @@ def settings_stage_restore(dependencies):
         return render_template(
             "settings/restore-validation-failed.html",
             error=(
+                str(exc) if isinstance(exc, SnapshotConsistencyError) else
                 LOW_SPACE_MESSAGE if isinstance(exc, InsufficientStorageError) else
                 "The backup failed validation and was not accepted. Select an intact "
                 "DLMS backup ZIP or copy it again from its original location."

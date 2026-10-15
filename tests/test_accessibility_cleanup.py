@@ -191,7 +191,7 @@ def test_post_action_feedback_uses_status_or_alert_without_announcing_static_gui
         "law/imports.html",
         "settings/ai.html",
         "settings/appearance.html",
-        "settings/navigation.html",
+        "settings/dashboard.html",
         "settings/parsing.html",
     ):
         source = _template_source(relative_path)

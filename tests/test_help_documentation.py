@@ -1,13 +1,17 @@
+import ast
 import glob
 import os
 import re
 import unittest
+from html.parser import HTMLParser
 from pathlib import Path
+from PIL import Image
 
 from tests._isolation import ensure_test_data_isolation
 ensure_test_data_isolation()
 import app as dlms
 from dlms.routes import help as help_routes
+from dlms.themes import THEME_REGISTRY, theme_groups
 
 
 class HelpDocumentationTests(unittest.TestCase):
@@ -119,6 +123,7 @@ class HelpDocumentationTests(unittest.TestCase):
             "Reset &amp; Recovery",
             "Maintenance & Recovery",
             "Maintenance &amp; Recovery",
+            "Settings → Navigation",
         )
         help_files = glob.glob(os.path.join(dlms.STATIC_ROOT, "help*.html"))
         help_files.extend(
@@ -156,8 +161,8 @@ class HelpDocumentationTests(unittest.TestCase):
         self.assertIn("Create Case Review From Import", law)
         self.assertIn("opens the exact saved Case Review", law)
 
-        settings = self._static("help-settings.html")
-        for wording in ("Settings → Navigation", "Dark", "Light", "Purple &amp; Gold", "Maroon &amp; Gold", "System Tools"):
+        settings = self.client.get("/help/settings").get_data(as_text=True)
+        for wording in ("Settings → Layout &amp; navigation", "Dark", "Light", "Purple &amp; Gold", "Maroon &amp; Gold", "System Tools"):
             with self.subTest(setting=wording):
                 self.assertIn(wording, settings)
 
@@ -168,6 +173,7 @@ class HelpDocumentationTests(unittest.TestCase):
         self.assertIn("Anki Tools → Custom Deck &amp; Printable Cards", anki)
 
         maintenance = self._static("help-maintenance.html")
+        self.assertIn("Current schema 12 adds durable Study-mistake composition passes", maintenance)
         self.assertIn("System Tools", maintenance)
         self.assertIn("not a routine update step", maintenance)
         self.assertIn("normally do not need to run it after updating DLMS", maintenance)
@@ -234,6 +240,19 @@ class HelpDocumentationTests(unittest.TestCase):
         self.assertIn('/help/maintenance#reset-remove', settings)
         self.assertNotIn("Data &amp; History", settings)
         self.assertNotIn("Reset &amp; Recovery", settings)
+
+    def test_portable_bundle_help_explains_filtered_collection_and_compatibility(self):
+        page=self._static('help-quizzes.html')
+        for text in ('Select all filtered results','Deselect all','Bundle Collection','each numbered bundle',
+                     'Older importers','1,000 quizzes','512 MiB','portable-bundle-selection.webp'):
+            self.assertIn(text,page)
+        self.assertIn('target="_blank" rel="noopener"',page)
+        asset = Path(dlms.STATIC_ROOT,'help_assets','portable-bundle-selection.webp')
+        self.assertTrue(asset.is_file())
+        tag = re.search(r'<img\b[^>]*portable-bundle-selection\.webp[^>]*>', page).group(0)
+        with Image.open(asset) as image:
+            self.assertIn(f'width="{image.width}"', tag)
+            self.assertIn(f'height="{image.height}"', tag)
 
     def test_help_distinguishes_library_reference_quiz_export_and_portable_backup(self):
         maintenance = self._static("help-maintenance.html")
@@ -315,16 +334,34 @@ class HelpDocumentationTests(unittest.TestCase):
             with self.subTest(page="troubleshooting", wording=wording):
                 self.assertIn(wording, troubleshooting)
 
+    def test_dashboard_help_distinguishes_sessions_results_and_browser_recovery(self):
+        guide = self._static("help-getting-started.html")
+        for wording in ("Study next", "Continue studying", "Resolve Study saves", "Finish saving Exam", "Clear browser resume point", "Manage browser resume point", "Why this suggestion?", "Your activity", "Quick tools", "Results overview"):
+            self.assertIn(wording, guide)
+        for wording in ("Last regular quiz", "Open current quiz", "Continue your quiz sequence", "What is counted?", "legacy Study"):
+            self.assertIn(wording, guide)
+        self.assertNotIn("Customize dashboard", guide)
+        self.assertNotIn("Customize dashboard", self._static("help-settings.html"))
+        self.assertIn('href="/settings/layout#study-areas"', guide)
+        learning = self._static("help-learning-intelligence.html")
+        for wording in ("No saved answer", "Answered before", "Mistakes to revisit", "Due for review", "Extra practice", "Time is rounded naturally"):
+            self.assertIn(wording, learning)
+        history = self._static("help-history-analytics.html")
+        self.assertIn('href="/study-history"', history)
+        self.assertIn('href="/history"', history)
+        self.assertIn("Study — legacy saved result", history)
+        self.assertIn("without inferring a durable completed review", history)
+
     def test_help_makes_todays_review_the_default_and_distinguishes_review_options(self):
         getting_started = self._static("help-getting-started.html")
         learning = self._static("help-learning-intelligence.html")
 
         self.assertIn("What should I study right now?", getting_started)
-        self.assertIn("Start with <strong>Today’s Review</strong>", getting_started)
+        self.assertIn("Start with <strong>Study next</strong>", getting_started)
         self.assertIn('id="which-review"', learning)
         for wording in (
             "Recommended starting point:",
-            "Today’s Review",
+            "Study next",
             "Adaptive Study",
             "Smart Review",
             "Concept Review",
@@ -453,8 +490,36 @@ class HelpDocumentationTests(unittest.TestCase):
                         local_path = os.path.join(dlms.STATIC_ROOT, asset.removeprefix("/static/"))
                         self.assertTrue(os.path.isfile(local_path), local_path)
 
+    def test_focused_settings_images_dimensions_and_package_inclusion(self):
+        page = self._static('help-settings.html')
+        images = re.findall(r'<img src="/static/help_assets/([^"]+)"[^>]*width="(\d+)" height="(\d+)"', page)
+        self.assertEqual(len(images), 5)
+        for filename, width, height in images:
+            with self.subTest(image=filename), Image.open(Path(dlms.STATIC_ROOT, 'help_assets', filename)) as image:
+                self.assertEqual(image.format, 'WEBP')
+                self.assertEqual(image.size, (int(width), int(height)))
+                self.assertLessEqual(image.width, 390)
+        # The native specification includes the entire static tree, not a
+        # frozen list of old Help images. Check its input without building.
+        tree = ast.parse(Path(dlms.__file__).with_name('DLMS.spec').read_text())
+        bundle = next(node.value for node in tree.body if isinstance(node, ast.Assign)
+                      and any(isinstance(target, ast.Name) and target.id == 'bundle_data' for target in node.targets))
+        static_entry = ast.parse('(str(project_root / "static"), "static")', mode='eval').body
+        self.assertIn(ast.dump(static_entry), [ast.dump(entry) for entry in bundle.elts])
+        analysis = next(node.value for node in tree.body if isinstance(node, ast.Assign)
+                        and any(isinstance(target, ast.Name) and target.id == 'analysis' for target in node.targets))
+        self.assertTrue(any(keyword.arg == 'datas' and isinstance(keyword.value, ast.Name)
+                            and keyword.value.id == 'bundle_data' for keyword in analysis.keywords))
+
     def test_visual_guides_have_required_screenshots_alt_text_and_captions(self):
         expected_assets = {
+            "help-settings.html": (
+                ("appearance", "settings-appearance-theme.webp"),
+                ("appearance", "settings-appearance-save.webp"),
+                ("appearance", "sidebar-theme-selector.webp"),
+                ("navigation", "settings-layout-study-areas.webp"),
+                ("navigation", "settings-layout-restore.webp"),
+            ),
             "help-learning-intelligence.html": (
                 ("mastery", "learning-topics.webp"),
                 ("reviews", "learning-review-schedule.webp"),
@@ -464,7 +529,6 @@ class HelpDocumentationTests(unittest.TestCase):
             "help-study-packs.html": (("ai-workflow", "ai-builder-zip-return.webp"), ("ai-workflow", "study-pack-validation.webp")),
             "help-anki.html": (("anki", "anki-imported-card.png"), ("printable", "anki-print-controls.webp"), ("printable", "anki-print-front.webp"), ("printable", "anki-print-back.webp")),
             "help-study-modules.html": (("law", "law-create-case.webp"), ("law", "law-import-packet.webp")),
-            "help-settings.html": (("navigation", "settings-navigation.webp"),),
             "help-maintenance.html": (
                 ("tools", "system-tools.webp"),
                 ("backup-restore", "settings-backup_restore.webp"),
@@ -505,10 +569,114 @@ class HelpDocumentationTests(unittest.TestCase):
                     with self.subTest(page=os.path.basename(path), topic=topic):
                         self.assertIn(topic, help_routes.HELP_TOPIC_FILES)
 
+    def test_appearance_help_reference_uses_registry_and_valid_links(self):
+        class PageLinks(HTMLParser):
+            def __init__(self, source):
+                super().__init__()
+                self.ids, self.links, self.themes = set(), [], []
+                self.feed(source)
+
+            def handle_starttag(self, tag, attrs):
+                attrs = dict(attrs)
+                if "id" in attrs:
+                    self.ids.add(attrs["id"])
+                if tag == "a" and "href" in attrs:
+                    self.links.append(attrs["href"])
+                if "data-help-theme" in attrs:
+                    self.themes.append(attrs["data-help-theme"])
+
+        page = self.client.get("/help/settings").get_data(as_text=True)
+        parsed = PageLinks(page)
+        self.assertCountEqual(parsed.themes, THEME_REGISTRY)
+        self.assertIn(f"There are {len(THEME_REGISTRY)} choices", page)
+        self.assertNotIn("<!-- DLMS theme reference -->", page)
+        self.assertNotIn("selected among five themes", page)
+        self.assertNotIn("settings-appearance-3.3.0-ethereal.webp", page)
+        for group in theme_groups():
+            self.assertIn(f"{group['label']} · {len(group['options'])} choices", page)
+        from html import escape
+        for entry in THEME_REGISTRY.values():
+            self.assertIn(f"{escape(entry['name'])} ({entry['scheme'].capitalize()})", page)
+        for link in parsed.links:
+            with self.subTest(link=link):
+                if link.startswith("#"):
+                    self.assertIn(link[1:], parsed.ids)
+                elif link.startswith("/"):
+                    path, _, anchor = link.partition("#")
+                    response = self.client.get(path, follow_redirects=True)
+                    try:
+                        self.assertEqual(response.status_code, 200)
+                        if anchor:
+                            self.assertIn(anchor, PageLinks(response.get_data(as_text=True)).ids)
+                    finally:
+                        response.close()
+
+    def test_appearance_help_instructions_match_controls_and_compatibility(self):
+        page = self.client.get("/help/settings").get_data(as_text=True)
+        appearance = self.client.get("/settings/appearance?saved=1").get_data(as_text=True)
+        sidebar = self._static("nav-normalize.js")
+        for label in ("Color theme", "Save Appearance", "Appearance settings saved."):
+            self.assertIn(label, page)
+            self.assertIn(label, appearance)
+        for label in ("Theme", "Themes unavailable", "Open Appearance settings", "DLMS could not change the theme."):
+            self.assertIn(label, page)
+            self.assertIn(label, sidebar)
+        for phrase in ("saves it immediately", "reloads the current page", "Already-open tabs",
+                       "without installing Omarchy", "Automatic matching", "not currently implemented",
+                       "shared CSS", "self-contained quiz HTML", "does not rewrite the saved preference",
+                       "does not reproduce every upstream Omarchy detail", "visible focus outline",
+                       "color alone does not establish correctness", "do not establish full accessibility conformance"):
+            self.assertIn(phrase, page)
+        self.assertNotRegex(page.lower(), r"clear (?:all )?(?:browser storage|localstorage|cookies)")
+        troubleshooting = self._static("help-troubleshooting.html")
+        self.assertIn('href="/help/settings#theme-troubleshooting"', troubleshooting)
+
     def test_getting_started_includes_short_trusted_lan_guidance(self):
         page = self._static("help-getting-started.html")
         self.assertIn("trusted LAN", page)
         self.assertIn("public internet", page)
+
+    def test_navigation_help_matches_unified_labels_links_and_restore_scope(self):
+        from html import unescape
+
+        layout = self.client.get("/settings/layout?saved=1").get_data(as_text=True)
+        guide = self._static("help-settings.html")
+        labels = ("Layout &amp; navigation", "Study areas", "Show on dashboard", "Show in sidebar",
+                  "Hide from both", "Dashboard panels", "Dashboard quick access",
+                  "Save layout &amp; navigation", "Layout &amp; navigation settings saved.",
+                  "Restore dashboard defaults", "Restore sidebar defaults")
+        for label in labels:
+            with self.subTest(label=label):
+                self.assertIn(label, guide)
+                self.assertIn(label, layout)
+        for phrase in ("neither checkbox changes the other", "updates the form only",
+                       "Other Studies", "no dashboard card", "installed medical content pack",
+                       "preserves the saved sidebar choices", "preserves the saved dashboard choices",
+                       "Neither Restore button changes unrelated settings",
+                       "Restore does not save unsaved checkbox edits in either group",
+                       "Save any edits you want to keep before using Restore",
+                       "does not delete content, progress or history", "change Learning Scope"):
+            self.assertIn(phrase, guide)
+        self.assertNotIn("settings-navigation.webp", guide)
+        for filename in ("help-settings.html", "help-getting-started.html", "help-troubleshooting.html"):
+            source = self._static(filename)
+            self.assertNotIn("Settings → Navigation", source)
+            for link in re.findall(r'href="(/(?:settings/layout|help/settings)[^"]*)"', source):
+                with self.subTest(page=filename, link=link):
+                    path, _, anchor = unescape(link).partition("#")
+                    with self.client.get(path) as response:
+                        self.assertEqual(200, response.status_code)
+                        if anchor:
+                            self.assertIn(f'id="{anchor}"', response.get_data(as_text=True))
+        for route, anchor in (("navigation", "study-areas"), ("dashboard", "dashboard-panels")):
+            with self.client.get(f"/settings/{route}") as response:
+                self.assertEqual(302, response.status_code)
+                self.assertEqual(f"/settings/layout#{anchor}", response.location)
+        self.assertIn("navigationCustomize.href = '/settings/layout#study-areas'", self._static("nav-normalize.js"))
+        self.assertNotIn('class="dashboard-customize"',
+                         Path(dlms.TEMPLATE_ROOT, "dashboard/index.html").read_text())
+        self.assertIn('href="/settings"', self.client.get("/").get_data(as_text=True))
+        self.assertIn('href="/settings/layout"', self.client.get("/settings").get_data(as_text=True))
 
     def test_numbered_procedures_keep_inline_emphasis_inside_normal_text_flow(self):
         affected_pages = (
