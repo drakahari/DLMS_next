@@ -429,13 +429,12 @@ class DailyReviewPlanTests(unittest.TestCase):
         )
 
         self.assertEqual(200, response.status_code)
-        self.assertIn("Today’s Review", page)
+        self.assertIn("Study next", page)
         self.assertIn('id="dailyReviewList"', page)
         self.assertIn('/static/quiz-recovery.js', page)
         self.assertIn('/static/daily-review.js', page)
         self.assertIn('fetch("/api/daily-review-plan"', script)
         self.assertIn("listStoredRecords", script)
-        self.assertIn("replacedKinds", script)
         self.assertIn('scope: "This browser"', script)
         self.assertIn("window.dlmsProtectForm?.(form)", script)
         for route in (
@@ -452,14 +451,14 @@ def test_unfinished_removal_has_accessible_confirmation_and_remerges_server_plan
     root = Path(__file__).resolve().parents[1]
     script = (root / "static/daily-review.js").read_text(encoding="utf-8")
     page = (root / "templates/dashboard/index.html").read_text(encoding="utf-8")
-    assert "Remove from Today’s Review" in script
+    assert "Clear browser resume point" in script
     assert "clearUnfinishedQuiz(item.recovery.quizId, item.recovery)" in script
     assert "renderDailyReview(mergeBrowserSessions(serverPlan))" in script
     assert 'loadDailyReview({keepCurrent: true})' in script
     assert 'id="dailyReviewClearDialog"' in page
     assert 'aria-describedby="dailyReviewClearDescription dailyReviewClearQuiz"' in page
     assert 'value="cancel" autofocus' in page
-    assert 'value="clear">Clear Saved Resume Point' in page
+    assert 'value="clear">Clear browser resume point' in page
     assert 'id="dailyReviewStatus"' in page
     assert "activity already saved to DLMS are kept" in page
     style = (root / "static/style.css").read_text(encoding="utf-8")

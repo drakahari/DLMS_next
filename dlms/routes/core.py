@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from flask import Blueprint, jsonify, render_template, request, send_from_directory
+from flask_wtf.csrf import generate_csrf
+from dlms.persistence.portal import dashboard_card_defaults
+from dlms.themes import get_theme, theme_groups
 
 
 @dataclass(frozen=True)
@@ -29,11 +32,20 @@ class CoreRouteDependencies:
     browser_presence_update: Callable[[str, bool], bool]
     browser_presence_setting_loaded: Callable[[dict[str, Any]], None]
     browser_presence_runtime_eligible: Callable[[], bool]
+    certifications_dashboard: Callable = lambda: None
 
 
 def create_core_blueprint(dependencies: CoreRouteDependencies) -> Blueprint:
     """Create platform shell and safe asset-serving routes."""
     blueprint = Blueprint("core", __name__)
+
+    @blueprint.get("/api/csrf-token")
+    def refresh_csrf_token():
+        # A custom header requires a cross-origin preflight; no CORS access is
+        # granted. The app's same-origin guard also applies to this GET endpoint.
+        if request.headers.get("X-DLMS-CSRF-Refresh") != "1":
+            return jsonify(error="Same-origin security renewal is required."), 403
+        return jsonify(csrf_token=generate_csrf())
 
     @blueprint.get("/content-packs/<pack_id>/assets/<path:asset_path>")
     def content_pack_asset(pack_id, asset_path):
@@ -123,6 +135,7 @@ def create_core_blueprint(dependencies: CoreRouteDependencies) -> Blueprint:
         (title, background image, feature toggles).
         """
         cfg = dict(dependencies.load_portal_config())
+        cfg["theme_groups"] = theme_groups()
         dependencies.browser_presence_setting_loaded(cfg)
 
         # Runtime mode is deliberately not persisted in portal.json.  It is
@@ -172,61 +185,8 @@ def create_core_blueprint(dependencies: CoreRouteDependencies) -> Blueprint:
 
         default_theme = dependencies.default_theme()
         theme = str(cfg.get("theme") or default_theme).strip().lower()
-        palettes = {
-            "dark": {
-                "scheme": "dark", "page": "#eaf2ff", "muted": "#b8c2cc", "heading": "#ffffff",
-                "body_base": "#020814", "body_overlay": "rgba(2,8,20,.72)", "body_overlay_2": "rgba(2,8,20,.84)",
-                "shell": "rgba(3,12,28,.66)", "sidebar1": "rgba(5,18,40,.96)", "sidebar2": "rgba(3,13,30,.94)",
-                "main1": "rgba(3,12,28,.60)", "main2": "rgba(2,10,23,.78)",
-                "panel1": "rgba(6,20,45,.82)", "panel2": "rgba(5,17,38,.74)",
-                "surface": "rgba(5,18,39,.58)", "surface2": "rgba(17,31,56,.78)",
-                "input_bg": "rgba(3,13,30,.78)", "input_text": "#eaf3ff", "border": "rgba(86,158,255,.35)",
-                "border_soft": "rgba(98,155,255,.24)", "nav_text": "#e8f2ff", "nav_muted": "#b9c8dc",
-                "accent": "#1b9ff2", "accent2": "#138ad6", "accent3": "#0f6fb3", "accent_text": "#78bfff",
-                "on_accent": "#06192b",
-                "link": "#62b5ff", "link_hover": "#9bd2ff", "shadow": "rgba(0,0,0,.42)"
-            },
-            "light": {
-                "scheme": "light", "page": "#17253a", "muted": "#53657d", "heading": "#0b1b33",
-                "body_base": "#eaf0f7", "body_overlay": "rgba(239,244,250,.84)", "body_overlay_2": "rgba(229,237,246,.90)",
-                "shell": "rgba(248,251,255,.92)", "sidebar1": "rgba(247,250,254,.98)", "sidebar2": "rgba(237,244,251,.98)",
-                "main1": "rgba(250,252,255,.94)", "main2": "rgba(239,245,251,.96)",
-                "panel1": "rgba(255,255,255,.97)", "panel2": "rgba(244,248,252,.97)",
-                "surface": "rgba(237,244,251,.96)", "surface2": "rgba(230,238,248,.96)",
-                "input_bg": "#ffffff", "input_text": "#10213a", "border": "rgba(55,103,153,.34)",
-                "border_soft": "rgba(71,111,151,.24)", "nav_text": "#26384f", "nav_muted": "#61738a",
-                "accent": "#076fb5", "accent2": "#08659e", "accent3": "#084f7c", "accent_text": "#075f9f",
-                "on_accent": "#ffffff",
-                "link": "#075f9f", "link_hover": "#043f6c", "shadow": "rgba(29,52,76,.16)"
-            },
-            "purple-gold": {
-                "scheme": "dark", "page": "#fff8e8", "muted": "#d7cbe6", "heading": "#ffffff",
-                "body_base": "#160b2b", "body_overlay": "rgba(24,10,47,.74)", "body_overlay_2": "rgba(13,7,29,.86)",
-                "shell": "rgba(28,11,53,.82)", "sidebar1": "rgba(38,13,69,.97)", "sidebar2": "rgba(22,8,43,.97)",
-                "main1": "rgba(28,12,51,.78)", "main2": "rgba(15,8,31,.90)",
-                "panel1": "rgba(43,20,75,.88)", "panel2": "rgba(27,13,50,.86)",
-                "surface": "rgba(56,27,92,.66)", "surface2": "rgba(65,31,103,.72)",
-                "input_bg": "rgba(29,14,52,.92)", "input_text": "#fff8e8", "border": "rgba(255,198,47,.48)",
-                "border_soft": "rgba(220,183,88,.30)", "nav_text": "#fff8e8", "nav_muted": "#d7cbe6",
-                "accent": "#f2c230", "accent2": "#d8a914", "accent3": "#a87c00", "accent_text": "#ffd85a",
-                "on_accent": "#241900",
-                "link": "#ffd85a", "link_hover": "#fff0a6", "shadow": "rgba(0,0,0,.48)"
-            },
-            "maroon-gold": {
-                "scheme": "dark", "page": "#f5f2ed", "muted": "#bfc2c9", "heading": "#ffffff",
-                "body_base": "#0d0e10", "body_overlay": "rgba(18,8,11,.80)", "body_overlay_2": "rgba(8,9,10,.92)",
-                "shell": "rgba(18,19,22,.94)", "sidebar1": "rgba(91,0,19,.98)", "sidebar2": "rgba(60,0,13,.99)",
-                "main1": "rgba(22,23,26,.94)", "main2": "rgba(11,12,14,.97)",
-                "panel1": "rgba(31,32,36,.95)", "panel2": "rgba(23,24,27,.95)",
-                "surface": "rgba(43,44,49,.90)", "surface2": "rgba(35,36,40,.94)",
-                "input_bg": "rgba(16,17,20,.97)", "input_text": "#f5f2ed", "border": "rgba(255,204,51,.24)",
-                "border_soft": "rgba(190,194,202,.20)", "nav_text": "#fff8f1", "nav_muted": "#dbc8cc",
-                "accent": "#ffcc33", "accent2": "#ffb71e", "accent3": "#c69214", "accent_text": "#ffde7a",
-                "on_accent": "#211700",
-                "link": "#ffde7a", "link_hover": "#fff0b8", "shadow": "rgba(0,0,0,.56)"
-            }
-        }
-        p = palettes.get(theme, palettes[default_theme])
+        entry = get_theme(theme)
+        p = entry["colors"]
         vars_css = "\n".join([
             f"  --portal-bg: {css_bg};",
             f"  --theme-color-scheme: {p['scheme']};",
@@ -260,6 +220,10 @@ def create_core_blueprint(dependencies: CoreRouteDependencies) -> Blueprint:
             f"  --theme-link-hover: {p['link_hover']};",
             f"  --theme-shadow: {p['shadow']};"
         ])
+        if entry["extra_tokens"]:
+            vars_css += "\n" + "\n".join(
+                f"  {key}: {value};" for key, value in entry["extra_tokens"].items()
+            )
         return f":root {{\n{vars_css}\n}}\n", 200, {"Content-Type": "text/css", "Cache-Control": "no-store"}
 
     @blueprint.get("/user-bg/<path:filename>")
@@ -279,9 +243,14 @@ def create_core_blueprint(dependencies: CoreRouteDependencies) -> Blueprint:
     @blueprint.get("/")
     def home():
         portal_title = dependencies.get_portal_title()
+        cfg = dependencies.load_portal_config()
+        visible = dict(cfg.get("dashboard_card_visibility", dashboard_card_defaults()))
+        if not cfg.get("show_certifications", True):visible["certifications"] = False
 
         return render_template(
             "dashboard/index.html",
+            visibility=visible,
+            trophies=dependencies.certifications_dashboard() if visible.get("certifications", True) else None,
             portal_title=portal_title,
             app_version=dependencies.app_version(),
             installed_content_packs=dependencies.content_pack_summary(),

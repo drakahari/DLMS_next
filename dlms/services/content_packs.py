@@ -569,6 +569,7 @@ def _content_pack_choice_question_errors(
     *,
     context,
     require_single_select=False,
+    require_unique_text=True,
     matching_comparison_key=_matching_comparison_key,
 ):
     """Return deterministic structural errors for one mixed choice question."""
@@ -601,7 +602,7 @@ def _content_pack_choice_question_errors(
         else:
             normalized = matching_comparison_key(text)
             earlier = seen_text.get(normalized)
-            if earlier:
+            if earlier and require_unique_text:
                 errors.append(
                     f"{context}: duplicate choice text at {location}; "
                     f"earlier choice {earlier} has the same normalized text"

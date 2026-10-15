@@ -15,11 +15,13 @@ class _GeneratedQuizTextParser(HTMLParser):
     def __init__(self):
         super().__init__()
         self.script_start_tags = 0
+        self.script_sources = []
         self.text = []
 
     def handle_starttag(self, tag, attrs):
         if tag.lower() == "script":
             self.script_start_tags += 1
+            self.script_sources.append(dict(attrs).get('src'))
 
     def handle_data(self, data):
         self.text.append(data)
@@ -87,7 +89,10 @@ class GeneratedQuizSecurityTests(unittest.TestCase):
         rendered_text = "".join(parser.text)
         self.assertIn(portal_title, rendered_text)
         self.assertIn(quiz_title, rendered_text)
-        self.assertEqual(parser.script_start_tags, 4)
+        self.assertEqual(parser.script_start_tags, 5)
+        self.assertEqual(parser.script_sources.count('/static/manual-ai.js'), 1)
+        self.assertEqual(parser.script_sources, [None, None, '/static/manual-ai.js',
+                                                '/static/script.js', '/static/nav-normalize.js'])
 
     def test_generated_quiz_file_metadata_uses_json_serialization(self):
         jsonfile = 'quiz "name" \\ line\n</script>.json'

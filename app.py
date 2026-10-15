@@ -31,6 +31,7 @@ from dlms.runtime import (
     _dlms_validate_server_host,
 )
 from dlms.browser_presence import BrowserPresenceManager
+from dlms.persistence import profile_snapshot as _profile_snapshot
 from dlms.persistence import json_files as _json_files
 from dlms.persistence import external_ai_drafts as _external_ai_draft_repository
 from dlms.persistence import portal as _portal_repository
@@ -52,6 +53,8 @@ from dlms.services import content_packs as _content_pack_service
 from dlms.services import content_pack_mutations as _content_pack_mutation_service
 from dlms.services import external_ai_structured as _external_ai_structured_service
 from dlms.services import history as _history_service
+from dlms.services.dashboard_activity import recent_quiz_activity
+from dlms.services.quiz_sequence import quiz_sequence
 from dlms.services import learning as _learning_service
 from dlms.services import learning_scope as _learning_scope_service
 from dlms.services import generated_practice_lifecycle as _generated_practice_lifecycle
@@ -60,6 +63,7 @@ from dlms.services import quiz_composition as _quiz_composition_service
 from dlms.services import quiz_duplicates as _quiz_duplicate_service
 from dlms.services import quiz_smart_views as _quiz_smart_view_service
 from dlms.services import portable_quiz_bundles as _portable_quiz_bundle_service
+from dlms.services import portable_quiz_exports as _portable_quiz_export_service
 from dlms.services import quiz_mutations as _quiz_mutation_service
 from dlms.services import question_identity as _question_identity_service
 from dlms.services import restore as _restore_service
@@ -72,6 +76,8 @@ from dlms.routes.core import CoreRouteDependencies, create_core_blueprint
 from dlms.routes.help import create_help_blueprint
 from dlms.routes.it import ITStudyDependencies, create_it_blueprint
 from dlms.routes.law import LawRouteDependencies, create_law_blueprint
+from dlms.routes.exam_plans import ExamPlanDependencies, create_exam_plan_blueprint
+from dlms.services import exam_plans as _exam_plans
 from dlms.routes.learning import LearningRouteDependencies, create_learning_blueprint
 from dlms.routes.history import HistoryRouteDependencies, create_history_blueprint
 from dlms.routes.anki import AnkiRouteDependencies, create_anki_blueprint
@@ -241,26 +247,27 @@ def _initialize_data_root_ownership(root, *, is_default=False):
         print(f"[DATA ROOT] Unsafe configured directory; destructive operations disabled: {root}")
         return False
     os.makedirs(root, exist_ok=True)
-    marker_path = _data_root_marker_path(root)
-    if os.path.lexists(marker_path):
-        if _read_data_root_marker(root) is None:
-            print(f"[DATA ROOT] Invalid ownership marker; destructive operations disabled: {root}")
-            return False
-        return True
+    with _profile_snapshot.access(root, exclusive=True):
+        marker_path = _data_root_marker_path(root)
+        if os.path.lexists(marker_path):
+            if _read_data_root_marker(root) is None:
+                print(f"[DATA ROOT] Invalid ownership marker; destructive operations disabled: {root}")
+                return False
+            return True
 
-    try:
-        with os.scandir(root) as entries:
-            is_empty = next(entries, None) is None
-    except OSError:
-        return False
-    if not (is_default or is_empty or _looks_like_legacy_dlms_data_root(root)):
-        print(f"[DATA ROOT] Unverified non-empty directory; destructive operations disabled: {root}")
-        return False
-    try:
-        _write_data_root_marker(root)
-        return True
-    except FileExistsError:
-        return _read_data_root_marker(root) is not None
+        try:
+            with os.scandir(root) as entries:
+                is_empty = next(entries, None) is None
+        except OSError:
+            return False
+        if not (is_default or is_empty or _looks_like_legacy_dlms_data_root(root)):
+            print(f"[DATA ROOT] Unverified non-empty directory; destructive operations disabled: {root}")
+            return False
+        try:
+            _write_data_root_marker(root)
+            return True
+        except FileExistsError:
+            return _read_data_root_marker(root) is not None
 
 
 def get_app_data_dir(app_name: str = "DLMS") -> str:
@@ -275,8 +282,12 @@ def get_app_data_dir(app_name: str = "DLMS") -> str:
     return path
 
 APP_NAME = "DLMS"
-APP_VERSION = "3.2.2"
+APP_VERSION = "3.3.0"
 APP_DATA_DIR = get_app_data_dir(APP_NAME)
+# Before secret/config/bootstrap/recovery writes; released once startup settles.
+_startup_snapshot_access = _profile_snapshot.access(APP_DATA_DIR, exclusive=True)
+_startup_snapshot_access.__enter__()
+_profile_guard = _profile_snapshot.guard(lambda: APP_DATA_DIR)
 
 
 def load_secret_key():
@@ -426,7 +437,7 @@ def _sanitize_header_value_for_log(value, limit=160):
 
 @app.before_request
 def validate_unsafe_request_origin():
-    if request.method not in app.config["WTF_CSRF_METHODS"]:
+    if request.method not in app.config["WTF_CSRF_METHODS"] and request.path != "/api/csrf-token":
         return None
     if request.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
         return _csrf_failure("Cross-site requests are not allowed.", 403)
@@ -474,6 +485,8 @@ def reject_declared_oversized_workflow_upload():
         "/settings/data/restore/stage", "/settings/backup/restore/stage",
     }:
         request.max_content_length = BACKUP_UPLOAD_MAX_BYTES + UPLOAD_MULTIPART_OVERHEAD_BYTES
+    if request.method == "POST" and request.path.startswith("/certifications/"):
+        request.max_content_length = 21 * 1024 * 1024
     if request.method != "POST" or not request.content_length:
         return None
     route_limits = {
@@ -503,9 +516,46 @@ def reject_declared_oversized_workflow_upload():
 csrf.init_app(app)
 
 
+@app.before_request
+def coordinate_profile_snapshot():
+    # Backup takes exclusive access only while copying its private snapshot.
+    # All dynamic requests participate, including GET normalization/lazy writes.
+    if request.endpoint in {"static", "maintenance.settings_create_backup"}:
+        return None
+    exclusive = request.endpoint in {
+        "maintenance.settings_confirm_restore", "maintenance.settings_cancel_restore",
+        "maintenance.reset_quiz_library", "maintenance.reset_learning_intelligence",
+        "maintenance.reset_source_content", "maintenance.reset_app_settings",
+        "maintenance.reset_all_data", "maintenance.remove_all_dlms_data",
+        "maintenance.wipe_database", "study.delete_history",
+    }
+    permit = _profile_snapshot.access(APP_DATA_DIR, exclusive=exclusive)
+    permit.__enter__()
+    g._dlms_snapshot_permit = permit
+
+
+@app.teardown_request
+def release_profile_snapshot(_error):
+    permit = g.pop("_dlms_snapshot_permit", None)
+    if permit is not None:
+        permit.__exit__(None, None, None)
+
+
+@app.errorhandler(_profile_snapshot.ProfileBusyError)
+def profile_snapshot_busy(_error):
+    return jsonify(error=_profile_snapshot.BUSY_MESSAGE), 503
+
+
 @app.errorhandler(CSRFError)
 def handle_csrf_error(_error):
-    return _csrf_failure("The security token is missing or invalid. Refresh the page and try again.", 400)
+    message = "The security token is missing or invalid. Refresh the page and try again."
+    if _is_json_request():
+        # This discriminator means CSRFProtect rejected the request before its
+        # handler ran. Clients may renew the token and retry the identical save.
+        if request.path in {"/api/study/session", "/api/study/position", "/api/study/finish", "/api/learning-events/study-response"}:
+            message = "Security verification expired or failed. Retry without leaving this page."
+        return jsonify(error=message, code="csrf_failed"), 400
+    return _csrf_failure(message, 400)
 
 
 @app.after_request
@@ -526,7 +576,9 @@ def deliver_csrf_token(response):
         or request.path.startswith("/settings/reset")
     ):
         response.headers.setdefault("Cache-Control", "no-store")
-    if request.method == "GET" and response.status_code < 400 and response.mimetype == "text/html":
+    if request.method == "GET" and response.status_code < 400 and (
+        response.mimetype == "text/html" or request.endpoint == "core.refresh_csrf_token"
+    ):
         response.set_cookie(
             "dlms_csrf_token", generate_csrf(), secure=request.is_secure,
             httponly=False, samesite="Strict", path="/",
@@ -1274,8 +1326,15 @@ def _reconcile_quiz_publication_journal(journal_path):
     )
 
 
+def _study_mistake_options():
+    return dict(registry=normalize_quiz_folders(load_registry()), data_folder=DATA_FOLDER,
+                quiz_folder=QUIZ_FOLDER, artifact_names=_quiz_artifact_names,
+                media_source=_portable_quiz_media_source)
+
+
+@_profile_snapshot.guard(lambda: APP_DATA_DIR, exclusive=True)
 def reconcile_quiz_publications():
-    return _quiz_publication_service.reconcile_quiz_publications(
+    result = _quiz_publication_service.reconcile_quiz_publications(
         app_data_dir=APP_DATA_DIR,
         read_data_root_marker=_read_data_root_marker,
         staging_root=_quiz_publication_staging_root,
@@ -1290,6 +1349,16 @@ def reconcile_quiz_publications():
         join_path=os.path.join,
         print_message=print,
     )
+    if _read_data_root_marker(APP_DATA_DIR) is None or result['unsafe'] or result['failed']:
+        return result
+    from dlms.services import study_mistakes
+    with registry_lock:
+        conn = get_db()
+        try:
+            study_mistakes.recover(conn, _study_mistake_options(), _quiz_publication_staging_root())
+        finally:
+            conn.close()
+    return result
 
 
 def _normalize_quiz_question_ordinals(runtime_questions, db_questions):
@@ -1298,6 +1367,7 @@ def _normalize_quiz_question_ordinals(runtime_questions, db_questions):
     )
 
 
+@_profile_guard
 def _publish_quiz(
     quiz_title,
     runtime_questions,
@@ -1310,8 +1380,11 @@ def _publish_quiz(
     source_pack_id=None,
     source_dataset_id=None,
     snapshot_existing_assets=False,
+    preserve_asset_sources=False,
     rollback_logo_filename=None,
     generation_kind=None,
+    publication_record=None,
+    publication_rollback=None,
 ):
     generation_kind = _question_identity_service.validate_generation_kind(
         generation_kind
@@ -1320,6 +1393,12 @@ def _publish_quiz(
     # quizzes explicitly so user-chosen titles cannot imitate review prefixes.
     if generation_kind is None:
         generation_kind = _question_identity_service.SOURCE_QUIZ_KIND
+    if generation_kind != _question_identity_service.SOURCE_QUIZ_KIND:
+        from dlms.services.quiz_readiness import question_issues
+        for position, question in enumerate(db_questions if db_questions is not None else runtime_questions, 1):
+            reasons = question_issues(question)
+            if reasons:
+                raise ValueError(f"Question {position} needs review before generated practice: {reasons[0]}")
     return _quiz_publication_service.publish_quiz(
         quiz_title,
         runtime_questions,
@@ -1333,6 +1412,8 @@ def _publish_quiz(
         snapshot_existing_assets=snapshot_existing_assets,
         rollback_logo_filename=rollback_logo_filename,
         generation_kind=generation_kind,
+        publication_record=publication_record,
+        publication_rollback=publication_rollback,
         generated_artifact_names=_generated_quiz_artifact_names,
         staging_root=_quiz_publication_staging_root,
         normalize_ordinals=_normalize_quiz_question_ordinals,
@@ -1341,7 +1422,9 @@ def _publish_quiz(
         fsync_directory=_fsync_quiz_publication_directory,
         checkpoint=_quiz_publication_checkpoint,
         snapshot_runtime_questions=_snapshot_runtime_questions,
-        snapshot_existing_quiz_asset_refs=_snapshot_existing_quiz_asset_refs,
+        snapshot_existing_quiz_asset_refs=(
+            _snapshot_composition_asset_refs if preserve_asset_sources else _snapshot_existing_quiz_asset_refs
+        ),
         write_staged_quiz_json=_write_staged_quiz_json,
         get_db=get_db,
         insert_quiz_rows=_insert_quiz_rows,
@@ -1795,7 +1878,7 @@ def _migrate_schema_to_v3(conn):
     )
 
 
-DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3}
+DLMS_SCHEMA_MIGRATIONS = {2: _migrate_schema_to_v2, 3: _migrate_schema_to_v3, 4: _database.study_schema.migrate, 5: _database.exam_plan_schema.migrate, 6: _database.review_mark_schema.migrate, 7: _database.certification_schema.migrate, 8: _database.certification_schema.migrate_periods, 9: _database.certification_schema.migrate_minutes, 10: _database.certification_schema.migrate_deadlines, 11: _database.choice_schema.migrate, 12: _database.study_mistake_schema.migrate}
 
 
 def _read_database_schema_version(conn, tables):
@@ -1961,6 +2044,8 @@ def _create_dlms_backup(label="manual"):
         now=datetime.now,
         platform=sys.platform,
         sqlite_module=sqlite3,
+        snapshot_guard=lambda: _profile_snapshot.access(APP_DATA_DIR, exclusive=True),
+        validate_snapshot=_backup_service.validate_quiz_relationships,
     )
 
 
@@ -1998,12 +2083,18 @@ def _extract_validated_backup(zip_path, target_root, report):
 
 def _validate_restored_sqlite(path, relative_path="results.db"):
     """Validate a restored DLMS database without running writable migrations."""
-    return _backup_service.validate_restored_sqlite(
+    result = _backup_service.validate_restored_sqlite(
         path,
         relative_path,
         core_db_schema=DLMS_BACKUP_CORE_DB_SCHEMA,
         sqlite_module=sqlite3,
     )
+    if relative_path == "results.db":
+        from dlms.services.certifications import validate_restored
+        from pathlib import Path
+        with sqlite3.connect(Path(os.path.abspath(path)).as_uri() + "?mode=ro", uri=True) as conn:
+            validate_restored(conn)
+    return result
 
 
 def _validate_restored_json(path, relative_path):
@@ -2430,6 +2521,7 @@ def _recover_one_restore_operation(journal_path, journal, paths):
     )
 
 
+@_profile_snapshot.guard(lambda: APP_DATA_DIR, exclusive=True)
 def reconcile_restore_operations():
     return _restore_service.reconcile_restore_operations(
         require_owned_root=_require_owned_app_data_root,
@@ -3102,6 +3194,22 @@ def add_quiz_to_registry(quiz_id, html, title, logo=None, exam_minutes=90, sourc
 # ROOT + STATIC (ORDER MATTERS)
 # =========================
 
+def _certifications_dashboard():
+    from dlms.services import certifications
+    try:
+        with registry_lock:
+            conn = get_db()
+            try:
+                cfg = load_portal_config()
+                rows = certifications.collection(conn.cursor(), cfg.get("certification_sort", "earned"))
+            finally:
+                conn.close()
+        count = cfg.get("certification_display_count", "3")
+        return dict(rows=rows if count == "all" else rows[:int(count)], total=len(rows), count=count)
+    except (sqlite3.Error, ValueError):
+        return dict(rows=[], total=0, count="3", error="Certifications could not be loaded. Open My Certifications to retry.")
+
+
 app.register_blueprint(create_core_blueprint(CoreRouteDependencies(
     app_version=lambda: APP_VERSION,
     get_portal_title=lambda: get_portal_title(),
@@ -3119,6 +3227,7 @@ app.register_blueprint(create_core_blueprint(CoreRouteDependencies(
     browser_presence_update=lambda token, closed: _update_browser_presence(token, closed),
     browser_presence_setting_loaded=lambda config: _browser_presence_setting_loaded(config),
     browser_presence_runtime_eligible=lambda: _browser_presence_runtime_eligible(),
+    certifications_dashboard=lambda: _certifications_dashboard(),
 )))
 app.register_blueprint(create_help_blueprint())
 
@@ -3166,6 +3275,7 @@ def _stage_content_pack_upload(upload, *, workflow=None):
     )
 
 
+@_profile_guard
 def _install_staged_content_pack(token):
     return _content_pack_mutation_service.install_staged_content_pack(
         token,
@@ -3209,6 +3319,7 @@ def _build_content_pack_export(folder):
 
 
 
+@_profile_guard
 def _delete_content_pack_folder(folder):
     return _content_pack_mutation_service.delete_content_pack_folder(
         folder,
@@ -3533,6 +3644,7 @@ def _restore_quiz_mutation_artifacts(promoted):
     )
 
 
+@_profile_guard
 def _rebuild_registered_quiz_artifacts():
     return _quiz_mutation_service.rebuild_registered_quiz_artifacts(
         registry_lock=registry_lock,
@@ -3558,6 +3670,7 @@ def _remove_new_quiz_logo(filename, original_registry):
     )
 
 
+@_profile_guard
 def _finish_quiz_mutation(
     conn, quiz_id, registry_updates=None, new_logo_filename=None
 ):
@@ -3579,6 +3692,7 @@ def _finish_quiz_mutation(
     )
 
 
+@_profile_guard
 def _rename_quiz_folder_metadata(old_folder, new_folder):
     return _quiz_mutation_service.rename_quiz_folder_metadata(
         old_folder,
@@ -3594,6 +3708,7 @@ def _rename_quiz_folder_metadata(old_folder, new_folder):
     )
 
 
+@_profile_guard
 def _delete_quiz_folder_metadata(folder):
     return _quiz_mutation_service.delete_quiz_folder_metadata(
         folder,
@@ -3708,6 +3823,7 @@ def _cleanup_deleted_quiz_artifacts(quiz_entry, remaining_registry):
     )
 
 
+@_profile_guard
 def _delete_quiz_transaction(quiz_id):
     return _quiz_mutation_service.delete_quiz_transaction(
         quiz_id,
@@ -3791,6 +3907,7 @@ def _full_data_reset_core():
     )
 
 
+@_profile_snapshot.guard(lambda: APP_DATA_DIR, exclusive=True)
 def _run_reset_with_backup(reset_label, reset_callable):
     # Always acquire restore before registry, matching restore confirmation.
     # Keep configuration replacement outside concurrent read/modify/write saves.
@@ -3983,17 +4100,18 @@ def _insert_quiz_rows(
                     ),
                 )
         else:
-            for c in q.get("choices", []):
+            for choice_order, c in enumerate(q.get("choices", [])):
                 cur.execute(
                     """
-                    INSERT INTO choices (question_id, label, text, is_correct)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO choices (question_id, label, text, is_correct, choice_order)
+                    VALUES (?, ?, ?, ?, ?)
                     """,
                     (
                         question_id,
                         c.get("label"),
                         c.get("text"),
                         1 if c.get("is_correct") else 0,
+                        choice_order,
                     ),
                 )
 
@@ -4667,6 +4785,7 @@ def _pdf_targeted_ocr_candidates(pages, question_result):
 
 
 
+@_profile_snapshot.guard(lambda: APP_DATA_DIR, exclusive=True)
 def _complete_staged_restore(token):
     # The route already owns the reentrant restore lock; direct callers use the
     # same ordering. Hold registry until promotion or rollback has completed.
@@ -4844,12 +4963,13 @@ def _choice_response(cur, question_id, selected, *, study):
     )
 
 
-def _matching_response(cur, question_id, selected, *, study):
+def _matching_response(cur, question_id, selected, *, study, matching_variant=None):
     return _attempt_service._matching_response(
         cur,
         question_id,
         selected,
         study=study,
+        matching_variant=matching_variant,
         learning_integer=_learning_integer,
     )
 
@@ -5062,7 +5182,7 @@ def _inspect_portable_quiz_bundle(path):
     )
 
 
-def _build_portable_quiz_bundle(cur, registry, selected_quiz_ids):
+def _build_portable_quiz_bundle(cur, registry, selected_quiz_ids, output_path=None):
     return _portable_quiz_bundle_service.build_portable_quiz_bundle(
         cur,
         registry,
@@ -5074,6 +5194,35 @@ def _build_portable_quiz_bundle(cur, registry, selected_quiz_ids):
         allowed_image_extensions=PASSIVE_PACK_IMAGE_EXTENSIONS,
         app_version=APP_VERSION,
         now=datetime.now,
+        output_path=output_path,
+    )
+
+
+def _preflight_portable_quiz_export(cur, registry, selected_ids):
+    from dlms.services.portable_quiz_exports import MAX_SELECTION, ExportSelectionError
+    selected = []
+    for raw in selected_ids:
+        if not re.fullmatch(r'[0-9]{1,18}', str(raw)) or int(raw) <= 0:
+            raise ExportSelectionError('The selection contains an invalid quiz ID.')
+        if int(raw) not in selected:
+            selected.append(int(raw))
+    if not selected or len(selected) > MAX_SELECTION:
+        raise ExportSelectionError('Select between 1 and 1,000 source quizzes.')
+    return _portable_quiz_bundle_service.preflight_portable_quiz_export(cur, registry, selected,
+        question_payload_from_db=_question_payload_from_db, resolve_media_source=_portable_quiz_media_source,
+        logo_folder=LOGO_FOLDER, validate_raster_image=_decode_raster_image,
+        allowed_image_extensions=PASSIVE_PACK_IMAGE_EXTENSIONS)
+
+
+def _build_portable_quiz_download(cur, registry, selected_quiz_ids):
+    return _portable_quiz_export_service.build_export_download(
+        cur, registry, selected_quiz_ids,
+        staging_folder=os.path.join(PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER, "exports"),
+        build_single=lambda cursor, entries, ids, path: _build_portable_quiz_bundle(
+            cursor, entries, ids, output_path=path
+        ),
+        inspect_bundle=_inspect_portable_quiz_bundle,
+        preflight=_preflight_portable_quiz_export,
     )
 
 
@@ -5148,6 +5297,41 @@ def _install_staged_portable_quiz_bundle(token):
         rollback_published_quiz=_rollback_portable_quiz,
         remove_stage=_cancel_staged_portable_quiz_bundle,
     )
+
+
+def _snapshot_composition_asset_refs(value, bucket, *, destination_root=None, strict=False):
+    """Copy actual image references, preserving all text and attribution."""
+    if isinstance(value, dict):
+        result = dict(value)
+        if 'image_url' in result:
+            result['image_url'] = _snapshot_composition_asset_refs(
+                result['image_url'], bucket, destination_root=destination_root, strict=strict)
+        if isinstance(result.get('media'), dict):
+            result['media'] = dict(result['media'])
+            if 'image_url' in result['media']:
+                result['media']['image_url'] = _snapshot_composition_asset_refs(
+                    result['media']['image_url'], bucket, destination_root=destination_root, strict=strict)
+        return result
+    if isinstance(value, list):
+        return [_snapshot_composition_asset_refs(v, bucket, destination_root=destination_root, strict=strict) for v in value]
+    if not isinstance(value, str) or not value.startswith(('/quiz-assets/', '/content-packs/')):
+        return value
+    match = re.fullmatch(r'/quiz-assets/([A-Za-z0-9_.-]{1,140})/(.+)', value)
+    pack = re.fullmatch(r'/content-packs/([A-Za-z0-9_-]+)/assets/(.+)', value)
+    if not match and not pack:
+        raise ValueError('Invalid composition media reference')
+    origin, relative = (match or pack).groups()
+    source = _portable_quiz_media_source(value)
+    if not source or not os.path.isfile(source):
+        raise ValueError('Required composition media is unavailable')
+    # Prefix the source identity so same-named images cannot replace each other.
+    relative = ('quiz_' if match else 'pack_') + origin + '/' + relative
+    root = destination_root or os.path.join(QUIZ_ASSET_FOLDER, bucket)
+    target = _safe_pack_child(root, relative)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    if not os.path.isfile(target):
+        shutil.copy2(source, target)
+    return _quiz_asset_url(bucket, relative)
 
 
 def _snapshot_existing_quiz_asset_refs(value, bucket, *, destination_root=None, strict=False):
@@ -5239,7 +5423,7 @@ def _daily_review_plan(cur, now=None):
     with registry_lock:
         registry = load_registry()
         scope = _current_learning_scope(cur, registry=registry)
-    return _learning_service._daily_review_plan(
+    plan = _learning_service._daily_review_plan(
         cur,
         registry=registry,
         installed_content_packs=content_pack_summary(),
@@ -5249,6 +5433,18 @@ def _daily_review_plan(cur, now=None):
         adaptive_study_candidates=_adaptive_study_candidates,
         scope=scope,
     )
+    active = _exam_plans.state(cur)["active_plan_id"]
+    if active:
+        saved_plan = _exam_plans.get(cur, active)
+        if saved_plan.get("config", {}).get("visible"):
+            try:
+                plan_report = _exam_plans.summary(cur, saved_plan, **_exam_plan_options(cur), now=now)
+                plan["exam_plan"] = {key: plan_report[key] for key in ("plan", "calendar", "stats", "target", "remaining_slots", "shortfall", "estimated_batch", "changes", "missing_folders", "work_state", "estimate_available", "fingerprint", "generation", "breakdown", "shortfall_rounded")}
+                plan["exam_plan"]["selected_count"] = len(plan_report["selected"])
+            except ValueError as exc:
+                plan["exam_plan_error"] = str(exc)
+    plan["regular_study"] = _study_service.regular_continuity(cur, registry, data_folder=DATA_FOLDER, quiz_folder=QUIZ_FOLDER, artifact_names=_quiz_artifact_names)
+    return plan
 
 
 
@@ -5596,7 +5792,7 @@ def _load_anki_study_export_selection(quiz_id, question_numbers):
             SELECT label, text, is_correct
             FROM choices
             WHERE question_id = ?
-            ORDER BY label
+            ORDER BY choice_order, label, id
             """,
             (question["id"],),
         ).fetchall()
@@ -5666,7 +5862,7 @@ def _load_anki_missed_tsv_rows(attempt_id, attempt_qnums):
                     SELECT c2.label || '. ' || c2.text AS x
                     FROM choices c2
                     WHERE c2.question_id = q.id
-                    ORDER BY c2.label
+                    ORDER BY c2.choice_order, c2.label, c2.id
                 )
             ) AS choices_text,
             (
@@ -5674,7 +5870,7 @@ def _load_anki_missed_tsv_rows(attempt_id, attempt_qnums):
                 FROM choices c3
                 WHERE c3.question_id = q.id
                   AND c3.is_correct = 1
-                ORDER BY c3.label
+                ORDER BY c3.choice_order, c3.label, c3.id
             ) AS correct_letters,
             (
                 SELECT GROUP_CONCAT(x, CHAR(10))
@@ -5683,7 +5879,7 @@ def _load_anki_missed_tsv_rows(attempt_id, attempt_qnums):
                     FROM choices c4
                     WHERE c4.question_id = q.id
                       AND c4.is_correct = 1
-                    ORDER BY c4.label
+                    ORDER BY c4.choice_order, c4.label, c4.id
                 )
             ) AS correct_text,
             qu.title AS quiz_title
@@ -6079,6 +6275,98 @@ app.register_blueprint(create_anki_blueprint(AnkiRouteDependencies(
 )))
 
 
+from dlms.services import study_sessions as _study_service
+from dlms.routes.study import create_study_blueprint, StudyRouteDependencies
+
+
+def _study_artifact_options():
+    return dict(registry=load_registry(), data_folder=DATA_FOLDER, artifact_names=_quiz_artifact_names)
+
+
+def _persist_study_response(conn, cur, data):
+    if isinstance(data, dict) and data.get("contract") == 2:
+        return _study_service.save_response(conn, data, record_learning_event=_record_learning_event, **_study_artifact_options())
+    if isinstance(data, dict) and ("contract" in data or (data.get("sessionId") and cur.execute("SELECT 1 FROM study_sessions WHERE id = ?", (data.get("sessionId"),)).fetchone())):
+        raise LearningPayloadError("This session requires the current Study response contract. Reload before continuing.")
+    return _attempt_service.persist_study_learning_event(
+        conn, cur, data, learning_integer=_learning_integer,
+        optional_learning_identifier=_optional_learning_identifier,
+        question_response_context_by_ordinal=_question_response_context_by_ordinal,
+        validate_question_response=_validate_question_response,
+        record_learning_event=_record_learning_event, json_module=json,
+    )
+
+
+app.register_blueprint(create_study_blueprint(StudyRouteDependencies(
+    get_db=lambda: get_db(), artifact_options=_study_artifact_options,
+    run_delete=lambda: _run_reset_with_backup("study-history", lambda: _restore_service.delete_study_history_core(DB_PATH)),
+    operation_error=lambda exc, operation: _destructive_operation_error(exc, operation),
+)))
+
+
+def _exam_plan_media_available(value, packs):
+    """Read-only preflight; publication still performs its existing asset validation."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (ValueError, TypeError):
+            return False
+    def check(node):
+        if isinstance(node, dict):
+            return all(check(v) for v in node.values())
+        if isinstance(node, list):
+            return all(check(v) for v in node)
+        if not isinstance(node, str):
+            return True
+        try:
+            if node.startswith("/quiz-assets/"):
+                return os.path.isfile(_safe_pack_child(QUIZ_ASSET_FOLDER, node[len("/quiz-assets/"):]))
+            if node.startswith("/content-packs/"):
+                parts = node.split("/", 4)
+                if len(parts) != 5 or parts[3] != "assets":
+                    return False
+                pack_id = parts[2]
+                if pack_id not in packs:
+                    packs[pack_id] = get_content_pack(pack_id)
+                pack = packs[pack_id]
+                return bool(pack and os.path.isfile(_safe_pack_child(pack["_root"], parts[4])))
+        except (ValueError, OSError):
+            return False
+        return True
+    return check(value)
+
+
+def _exam_plan_options(cur):
+    with registry_lock:
+        registry = load_registry()
+        folders = get_quiz_folders()
+        excluded = get_excluded_learning_folders()
+        catalog = _learning_scope_service.learning_scope_summary(cur, registry, folders, excluded, get_hidden_quiz_folders(folders))
+    packs = {}
+    return dict(dashboard_panel_visible=load_portal_config().get('dashboard_card_visibility', {}).get('daily_review', True),
+                media_available=lambda value: _exam_plan_media_available(value, packs), registry=registry, folders=catalog["folders"], excluded=[_quiz_mutation_service.quiz_folder_identity_key(f) for f in excluded],
+                data_folder=DATA_FOLDER, quiz_folder=QUIZ_FOLDER, artifact_names=_quiz_artifact_names)
+
+
+from dlms.routes.certifications import CertificationDependencies, create_certification_blueprint
+app.register_blueprint(create_certification_blueprint(CertificationDependencies(
+    get_db=lambda: get_db(), load_config=lambda: load_portal_config(),
+    save_config=lambda cfg: _write_settings_portal_config(cfg), lock=registry_lock,
+)))
+
+from dlms.routes.review_marks import ReviewMarkDependencies, create_review_mark_blueprint
+app.register_blueprint(create_review_mark_blueprint(ReviewMarkDependencies(
+    get_db=lambda: get_db(), options=_exam_plan_options,
+    publish=lambda *args, **kwargs: _publish_quiz(*args, **kwargs), registry_lock=registry_lock,
+    export=lambda *args: export_quiz_to_apkg(*args), send_package=lambda *args: _send_temp_anki_package(*args),
+)))
+
+app.register_blueprint(create_exam_plan_blueprint(ExamPlanDependencies(
+    get_db=lambda: get_db(), options=_exam_plan_options,
+    publish=lambda *args, **kwargs: _publish_quiz(*args, **kwargs), registry_lock=registry_lock,
+)))
+
+
 app.register_blueprint(create_learning_blueprint(LearningRouteDependencies(
     static_folder=lambda: app.static_folder,
     static_root=lambda: STATIC_ROOT,
@@ -6096,17 +6384,7 @@ app.register_blueprint(create_learning_blueprint(LearningRouteDependencies(
         json_module=json,
         print_message=print,
     ),
-    persist_study_learning_event=lambda conn, cur, data: _attempt_service.persist_study_learning_event(
-        conn,
-        cur,
-        data,
-        learning_integer=_learning_integer,
-        optional_learning_identifier=_optional_learning_identifier,
-        question_response_context_by_ordinal=_question_response_context_by_ordinal,
-        validate_question_response=_validate_question_response,
-        record_learning_event=_record_learning_event,
-        json_module=json,
-    ),
+    persist_study_learning_event=_persist_study_response,
     generated_practice_status=lambda cur, quiz_id: _generated_practice_lifecycle.generated_practice_status(
         cur, quiz_id, load_registry(),
     ),
@@ -6146,6 +6424,18 @@ app.register_blueprint(create_learning_blueprint(LearningRouteDependencies(
 
 
 app.register_blueprint(create_history_blueprint(HistoryRouteDependencies(
+    recent_quiz_activity=lambda cur: recent_quiz_activity(
+        cur, history_context=_attempt_history_context,
+        attempt_summary=_attempt_summary_from_row, quiz_folder=QUIZ_FOLDER,
+        quiz_origin=_quiz_history_origin, data_folder=DATA_FOLDER,
+        sequence=lambda cur, registry, context: quiz_sequence(
+            cur, registry, configured_folders=get_quiz_folders(),
+            hidden_folders=get_hidden_quiz_folders(),
+            scope=_current_learning_scope(cur, registry=registry),
+            data_folder=DATA_FOLDER, quiz_folder=QUIZ_FOLDER,
+            artifact_names=_quiz_artifact_names, context=context,
+        ),
+    ),
     static_folder=lambda: app.static_folder,
     get_db=lambda: get_db(),
     parse_attempt_pagination=lambda: _parse_attempt_pagination(),
@@ -6500,6 +6790,14 @@ app.register_blueprint(create_admin_images_blueprint(AdminImageRouteDependencies
 )))
 
 
+from dlms.routes.study_mistakes import create_study_mistake_blueprint
+app.register_blueprint(create_study_mistake_blueprint(
+    get_db=lambda: get_db(), options=_study_mistake_options,
+    publish=lambda *args, **kwargs: _publish_quiz(*args, **kwargs), registry_lock=registry_lock,
+    app_version=lambda: APP_VERSION, portal_title=lambda: get_portal_title(),
+))
+
+
 app.register_blueprint(create_quiz_blueprint(
     QuizLibraryDependencies(
         app_version=lambda: APP_VERSION,
@@ -6602,8 +6900,9 @@ app.register_blueprint(create_quiz_blueprint(
         export_catalog=lambda cur, registry: (
             _portable_quiz_bundle_service.portable_quiz_export_catalog(cur, registry)
         ),
+        preflight_export=_preflight_portable_quiz_export,
         build_export=lambda cur, registry, selected: (
-            _build_portable_quiz_bundle(cur, registry, selected)
+            _build_portable_quiz_download(cur, registry, selected)
         ),
         stage_upload=lambda upload: _stage_portable_quiz_bundle(upload),
         load_staged=lambda token: _load_staged_portable_quiz_bundle(token),
@@ -6714,6 +7013,7 @@ _run_restore_startup_reconciliation()
 _run_restore_staging_startup_cleanup()
 ensure_db_initialized()
 _run_quiz_publication_startup_reconciliation()
+_startup_snapshot_access.__exit__(None, None, None)
 
 
 if __name__ == "__main__":

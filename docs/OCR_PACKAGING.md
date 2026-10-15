@@ -261,7 +261,7 @@ example, a Fedora builder runs:
 ```bash
 python tools/package_release.py \
   --target fedora44-x86_64 \
-  --artifact releases/DLMS-3.2.2-fedora44-x86_64 \
+  --artifact releases/DLMS-3.3.0-fedora44-x86_64 \
   --output-dir release-packages \
   --smoke
 ```
@@ -275,7 +275,7 @@ prints its final SHA-256 for transfer. Transfer that unchanged package—not the
 intermediate `dist` output or native staging input—to the release assembly
 machine.
 
-`pypdfium2>=5.13.0,<6` is declared in `requirements.txt` and version 5.13.0 is
+`pypdfium2>=5.14.0,<6` is declared in `requirements.txt` and version 5.14.0 is
 locked in `requirements-lock.txt`, which was exercised with Python 3.14.7 on
 the current Fedora validation host. The canonical PyInstaller manifest includes
 `pypdfium2`, `pypdfium2_raw`, its native PDFium library, and installed package

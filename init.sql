@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS choices (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
 
     question_id INTEGER NOT NULL,
+    choice_order INTEGER,
     label TEXT NOT NULL,          -- "A", "B", "C", etc.
     text TEXT NOT NULL,
     is_correct INTEGER NOT NULL DEFAULT 0,
@@ -209,7 +210,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 );
 
 INSERT OR IGNORE INTO schema_meta (id, version)
-VALUES (1, 3);
+VALUES (1, 12);
 
 /* =====================================================
    CONCEPTS / TAGS (DLMS-006)
@@ -253,3 +254,107 @@ CREATE INDEX IF NOT EXISTS idx_learning_events_question ON learning_events(quest
 CREATE INDEX IF NOT EXISTS idx_learning_events_attempt ON learning_events(attempt_id);
 CREATE INDEX IF NOT EXISTS idx_learning_events_session ON learning_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_learning_events_occurred ON learning_events(occurred_at);
+
+/* Durable Study history (schema 4). */
+CREATE TABLE IF NOT EXISTS study_legacy_responses (
+        id INTEGER PRIMARY KEY, quiz_id INTEGER, question_id INTEGER,
+        attempt_id TEXT, session_id TEXT, mode TEXT, was_correct INTEGER,
+        response_json TEXT, occurred_at TEXT,
+        FOREIGN KEY(quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE,
+        FOREIGN KEY(question_id) REFERENCES questions(id) ON DELETE CASCADE);
+CREATE INDEX IF NOT EXISTS idx_study_legacy_event ON study_legacy_responses(attempt_id);
+CREATE TABLE IF NOT EXISTS study_state (
+        id INTEGER PRIMARY KEY CHECK(id = 1), generation TEXT NOT NULL,
+        learning_reset_at TEXT);
+INSERT OR IGNORE INTO study_state(id, generation) VALUES (1, lower(hex(randomblob(16))));
+CREATE TABLE IF NOT EXISTS study_sessions (
+        id TEXT PRIMARY KEY, quiz_id INTEGER NOT NULL, purpose TEXT NOT NULL,
+        fingerprint TEXT NOT NULL, assessment_revision TEXT NOT NULL,
+        manifest_json TEXT NOT NULL, owner TEXT NOT NULL, generation TEXT NOT NULL,
+        started_at TEXT NOT NULL, last_activity_at TEXT, completed_at TEXT,
+        position INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY(quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE);
+CREATE TABLE IF NOT EXISTS study_responses (
+        event_id TEXT PRIMARY KEY, session_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL CHECK(sequence > 0), question_id INTEGER NOT NULL,
+        ordinal INTEGER NOT NULL, kind TEXT NOT NULL, was_correct INTEGER,
+        payload_json TEXT NOT NULL, saved_at TEXT NOT NULL,
+        UNIQUE(session_id, sequence),
+        FOREIGN KEY(session_id) REFERENCES study_sessions(id) ON DELETE CASCADE,
+        FOREIGN KEY(question_id) REFERENCES questions(id) ON DELETE CASCADE);
+CREATE INDEX IF NOT EXISTS idx_study_sessions_quiz ON study_sessions(quiz_id, last_activity_at);
+CREATE INDEX IF NOT EXISTS idx_study_responses_question ON study_responses(question_id, session_id, sequence);
+
+CREATE TABLE IF NOT EXISTS exam_plans (
+        id TEXT PRIMARY KEY, config_json TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1,
+        scope_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS exam_plan_state (
+        id INTEGER PRIMARY KEY CHECK(id=1), active_plan_id TEXT,
+        generation TEXT NOT NULL,
+        FOREIGN KEY(active_plan_id) REFERENCES exam_plans(id) ON DELETE SET NULL);
+INSERT OR IGNORE INTO exam_plan_state(id,generation) VALUES(1,lower(hex(randomblob(16))));
+CREATE TABLE IF NOT EXISTS exam_plan_actions (
+        request_id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, generation TEXT NOT NULL,
+        input_hash TEXT NOT NULL, quiz_id INTEGER, html TEXT, state TEXT NOT NULL,
+        FOREIGN KEY(plan_id) REFERENCES exam_plans(id) ON DELETE CASCADE,
+        FOREIGN KEY(quiz_id) REFERENCES quizzes(id) ON DELETE SET NULL);
+
+-- Durable marked-question intent (schema 6).
+CREATE TABLE IF NOT EXISTS review_mark_state (
+        id INTEGER PRIMARY KEY CHECK(id=1), generation TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 0);
+INSERT OR IGNORE INTO review_mark_state(id,generation) VALUES(1,lower(hex(randomblob(16))));
+CREATE TABLE IF NOT EXISTS review_marks (
+        id TEXT PRIMARY KEY, question_uid TEXT NOT NULL, question_revision TEXT NOT NULL,
+        quiz_id INTEGER NOT NULL, question_number INTEGER NOT NULL, title TEXT NOT NULL,
+        question_text TEXT NOT NULL, created_at TEXT NOT NULL, marked INTEGER NOT NULL DEFAULT 1,
+        UNIQUE(question_uid,question_revision));
+CREATE TABLE IF NOT EXISTS review_mark_actions (
+        request_id TEXT PRIMARY KEY, generation TEXT NOT NULL, input_hash TEXT NOT NULL,
+        state TEXT NOT NULL, result_json TEXT, quiz_id INTEGER, html TEXT);
+
+-- Earned certifications and renewal evidence (schema 7).
+CREATE TABLE IF NOT EXISTS certification_state (id INTEGER PRIMARY KEY CHECK(id=1), generation TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 0);
+INSERT OR IGNORE INTO certification_state(id,generation) VALUES(1,lower(hex(randomblob(16))));
+CREATE TABLE IF NOT EXISTS certification_attachments (id TEXT PRIMARY KEY, mime TEXT NOT NULL, sha256 TEXT NOT NULL, content BLOB NOT NULL);
+CREATE TABLE IF NOT EXISTS certifications (id TEXT PRIMARY KEY, data_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS certification_cycles (id TEXT PRIMARY KEY, certification_id TEXT NOT NULL REFERENCES certifications(id) ON DELETE CASCADE, data_json TEXT NOT NULL, period_order INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS certification_training (id TEXT PRIMARY KEY, data_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS certification_allocations (id TEXT PRIMARY KEY, cycle_id TEXT NOT NULL REFERENCES certification_cycles(id) ON DELETE CASCADE, training_id TEXT NOT NULL REFERENCES certification_training(id) ON DELETE CASCADE, data_json TEXT NOT NULL, UNIQUE(cycle_id,training_id));
+CREATE TABLE IF NOT EXISTS certification_actions (request_id TEXT PRIMARY KEY, generation TEXT NOT NULL, input_hash TEXT NOT NULL, result_json TEXT NOT NULL);
+
+CREATE UNIQUE INDEX IF NOT EXISTS certification_period_order ON certification_cycles(certification_id,period_order);
+
+-- Schema 10 prevents stale shared-deadline writers from dropping independent dates.
+CREATE TRIGGER IF NOT EXISTS certification_dates_insert BEFORE INSERT ON certification_cycles
+    WHEN json_type(NEW.data_json,'$.planning_deadline') IS NOT 'text'
+      OR json_type(NEW.data_json,'$.renewal_deadline') IS NOT 'text'
+      OR json_type(NEW.data_json,'$.renewal') IS NOT NULL
+    BEGIN SELECT RAISE(ABORT,'Outdated certification date contract; reopen with the current application.'); END;
+CREATE TRIGGER IF NOT EXISTS certification_dates_update BEFORE UPDATE ON certification_cycles
+    WHEN json_type(NEW.data_json,'$.planning_deadline') IS NOT 'text'
+      OR json_type(NEW.data_json,'$.renewal_deadline') IS NOT 'text'
+      OR json_type(NEW.data_json,'$.renewal') IS NOT NULL
+    BEGIN SELECT RAISE(ABORT,'Outdated certification date contract; reopen with the current application.'); END;
+
+-- Explicit independent choice order (schema 11).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_choices_order ON choices(question_id, choice_order);
+
+-- Durable Study mistakes composition passes (schema 12).
+CREATE TABLE IF NOT EXISTS study_mistake_state (
+        id INTEGER PRIMARY KEY CHECK(id=1), generation TEXT NOT NULL);
+INSERT OR IGNORE INTO study_mistake_state VALUES(1,lower(hex(randomblob(16))));
+CREATE TABLE IF NOT EXISTS study_mistake_passes (
+        id TEXT PRIMARY KEY, scope_json TEXT NOT NULL, scope_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS study_mistake_actions (
+        request_id TEXT PRIMARY KEY, generation TEXT NOT NULL, input_hash TEXT NOT NULL,
+        input_json TEXT NOT NULL, selection_json TEXT NOT NULL, pass_id TEXT,
+        state TEXT NOT NULL, quiz_id INTEGER, html TEXT,
+        FOREIGN KEY(pass_id) REFERENCES study_mistake_passes(id) ON DELETE CASCADE);
+CREATE TABLE IF NOT EXISTS study_mistake_members (
+        pass_id TEXT NOT NULL, question_id INTEGER NOT NULL, revision TEXT NOT NULL,
+        position INTEGER NOT NULL, reserved_by TEXT, used_by TEXT,
+        PRIMARY KEY(pass_id,question_id), UNIQUE(pass_id,position),
+        FOREIGN KEY(pass_id) REFERENCES study_mistake_passes(id) ON DELETE CASCADE,
+        FOREIGN KEY(reserved_by) REFERENCES study_mistake_actions(request_id),
+        FOREIGN KEY(used_by) REFERENCES study_mistake_actions(request_id));

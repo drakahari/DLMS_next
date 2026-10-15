@@ -15,6 +15,7 @@ QUESTION_UID_RE = re.compile(r"^[0-9a-f]{32}$")
 SOURCE_QUIZ_KIND = "source"
 GENERATED_QUIZ_KINDS = frozenset({
     "adaptive_study",
+    "marked_practice",
     "concept_review",
     "mixed_quiz",
     "native_spaced_review",

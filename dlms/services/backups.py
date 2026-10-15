@@ -1,12 +1,15 @@
 """Portable backup creation, inspection, and isolated staging services."""
 
 import json
+from contextlib import ExitStack, nullcontext
+import time
 import os
 import re
 import shutil
 import sqlite3
 import sys
 import tempfile
+import uuid
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -34,6 +37,7 @@ def backup_display_label(filename):
         r"DLMS-backup-\d{8}-\d{6}-(.+)\.zip", name, flags=re.IGNORECASE
     )
     label = match.group(1) if match else re.sub(r"\.zip$", "", name, flags=re.IGNORECASE)
+    label = re.sub(r"-[0-9a-f]{32}$", "", label, flags=re.IGNORECASE)
     label = re.sub(r"[-_]+", " ", label).strip()
     if not label:
         return "DLMS backup"
@@ -210,61 +214,76 @@ def create_dlms_backup(
     now=datetime.now,
     platform=None,
     sqlite_module=sqlite3,
+    snapshot_guard=nullcontext,
+    validate_snapshot=None,
 ):
     """Create a portable ZIP snapshot without mutating the live data set."""
-    ensure_runtime_data_dirs()
     stamp = now().strftime("%Y%m%d-%H%M%S")
     safe_label = re.sub(r"[^A-Za-z0-9_-]+", "-", str(label or "manual")).strip("-")[:40] or "manual"
-    filename = f"DLMS-backup-{stamp}-{safe_label}.zip"
-    final_path = os.path.join(backup_folder, filename)
-    temp_path = final_path + ".tmp"
-
-    inventory = file_inventory()
-    total_bytes = sum(os.path.getsize(path) for path, _ in inventory if os.path.isfile(path))
-    from dlms.services.storage_health import require_capacity
-    db_bytes = os.path.getsize(db_path) if os.path.isfile(db_path) else 0
-    if os.path.isfile(str(db_path) + "-wal"):
-        db_bytes += os.path.getsize(str(db_path) + "-wal")
-    # Include both ZIP and DB snapshot even when temp/data share a filesystem.
-    # Small ZIP overhead allowance; incompressible content cannot be assumed to shrink.
-    require_capacity(backup_folder, int((total_bytes + 2 * db_bytes) * 1.02))
-    require_capacity(tempfile.gettempdir(), db_bytes)
-    included_roots = sorted({rel.split("/", 1)[0] for _, rel in inventory})
-
-    db_temp = None
+    temp_path = None
+    snapshot = None
     try:
-        if os.path.isfile(db_path):
-            fd, db_temp = tempfile.mkstemp(prefix="dlms-db-snapshot-", suffix=".db")
-            os.close(fd)
-            src_conn = sqlite_module.connect(db_path)
-            dst_conn = sqlite_module.connect(db_temp)
-            try:
-                src_conn.backup(dst_conn)
-            finally:
-                dst_conn.close()
-                src_conn.close()
-            total_bytes += os.path.getsize(db_temp)
-            if "results.db" not in included_roots:
-                included_roots.append("results.db")
-                included_roots.sort()
-
-        manifest = {
-            "schema_version": backup_schema_version,
-            "kind": "dlms-portable-backup",
-            "created_at": now().astimezone().isoformat(timespec="seconds"),
-            "dlms_version": app_version,
-            "platform": sys.platform if platform is None else platform,
-            "data_root_name": os.path.basename(os.path.normpath(app_data_dir)) or "DLMS",
-            "file_count": len(inventory) + (1 if db_temp else 0),
-            "total_uncompressed_bytes": total_bytes,
-            "included_roots": included_roots,
-            "excluded_runtime_paths": [".restore_operations/", "backups/", "uploads/", "content_pack_staging/", "static/logos/_temp/", "results.db-wal", "results.db-shm", "results.db-journal"],
-            "summary": summary(),
-        }
-
+        # Live stores are accessed only within this common boundary. Compression
+        # and no-replace publication then use our private immutable copy.
+        with snapshot_guard():
+            ensure_runtime_data_dirs()
+            inventory = file_inventory()
+            total_bytes = sum(os.path.getsize(path) for path, _ in inventory)
+            from dlms.services.storage_health import require_capacity
+            db_bytes = os.path.getsize(db_path) if os.path.isfile(db_path) else 0
+            if os.path.isfile(str(db_path) + "-wal"):
+                db_bytes += os.path.getsize(str(db_path) + "-wal")
+            # Enough for the copied snapshot plus ZIP even on one filesystem.
+            needed = int(2 * (total_bytes + db_bytes) * 1.02)
+            require_capacity(backup_folder, needed)
+            require_capacity(tempfile.gettempdir(), needed)
+            snapshot = tempfile.mkdtemp(prefix="dlms-backup-snapshot-")
+            db_temp = None
+            if os.path.isfile(db_path):
+                db_temp = os.path.join(snapshot, "results.db")
+                with ExitStack() as connections:
+                    src_conn = sqlite_module.connect(db_path)
+                    connections.callback(src_conn.close)
+                    dst_conn = sqlite_module.connect(db_temp)
+                    connections.callback(dst_conn.close)
+                    deadline = time.monotonic() + 30
+                    def progress(_status, _remaining, _total):
+                        if time.monotonic() >= deadline:
+                            raise SnapshotConsistencyError("Database snapshot could not finish; retry after current saves complete.")
+                    src_conn.backup(dst_conn, pages=128, progress=progress, sleep=0.025)
+                total_bytes += os.path.getsize(db_temp)
+            captured = []
+            for full, rel in inventory:
+                destination = os.path.join(snapshot, *rel.split("/"))
+                os.makedirs(os.path.dirname(destination), exist_ok=True)
+                shutil.copyfile(full, destination)
+                captured.append((destination, rel))
+            if validate_snapshot is not None:
+                validate_snapshot(snapshot)
+            # Uncertain publication remains available for established recovery;
+            # it must not become a successful-looking portable snapshot.
+            journals = Path(snapshot, ".quiz_publications")
+            if journals.exists() and any(journals.glob("publication_*.json*")):
+                raise SnapshotConsistencyError("Quiz publication recovery is pending. Restart DLMS to retry recovery before taking a backup.")
+            included_roots = sorted({rel.split("/", 1)[0] for _, rel in captured} | ({"results.db"} if db_temp else set()))
+            manifest = {
+                "schema_version": backup_schema_version,
+                "kind": "dlms-portable-backup",
+                "created_at": now().astimezone().isoformat(timespec="seconds"),
+                "dlms_version": app_version,
+                "platform": sys.platform if platform is None else platform,
+                "data_root_name": os.path.basename(os.path.normpath(app_data_dir)) or "DLMS",
+                "file_count": len(captured) + (1 if db_temp else 0),
+                "total_uncompressed_bytes": total_bytes,
+                "included_roots": included_roots,
+                "excluded_runtime_paths": [".restore_operations/", "backups/", "uploads/", "content_pack_staging/", "static/logos/_temp/", "results.db-wal", "results.db-shm", "results.db-journal"],
+                "summary": summary(),
+            }
+        fd, temp_path = tempfile.mkstemp(prefix=".dlms-backup-", suffix=".zip.tmp", dir=backup_folder)
+        os.close(fd)
         with zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as archive:
             archive.writestr(backup_manifest, json.dumps(manifest, indent=2, ensure_ascii=False))
-            for full, rel in inventory:
+            for full, rel in captured:
                 archive.write(full, backup_data_prefix + rel)
             if db_temp:
                 archive.write(db_temp, backup_data_prefix + "results.db")
@@ -274,15 +293,28 @@ def create_dlms_backup(
         if os.path.getsize(temp_path) > restore_upload_max_bytes:
             raise BackupRestoreLimitError("Backup exceeds the restore upload limit")
         validate_restore_archive(temp_path)
-        os.replace(temp_path, final_path)
+        with open(temp_path, "r+b") as handle:
+            os.fsync(handle.fileno())
+        # A hard link publishes complete bytes atomically and refuses to replace
+        # an existing snapshot. Both names are on the same filesystem. If this
+        # filesystem cannot support that guarantee, fail safely rather than
+        # expose a partially copied backup or overwrite an older one.
+        for _ in range(32):
+            filename = f"DLMS-backup-{stamp}-{safe_label}-{uuid.uuid4().hex}.zip"
+            final_path = os.path.join(backup_folder, filename)
+            try:
+                os.link(temp_path, final_path)
+                break
+            except FileExistsError:
+                continue
+        else:
+            raise FileExistsError("Unable to reserve a distinct backup filename")
+        json_files._fsync_json_directory(backup_folder)
         return final_path, manifest
     finally:
-        if db_temp and os.path.exists(db_temp):
-            try:
-                os.remove(db_temp)
-            except OSError:
-                pass
-        if os.path.exists(temp_path):
+        if snapshot:
+            shutil.rmtree(snapshot, ignore_errors=True)
+        if temp_path and os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
             except OSError:
@@ -470,6 +502,8 @@ def validate_restored_sqlite(
     except sqlite_module.Error as exc:
         raise ValueError(f"{relative_path} is not a readable SQLite database") from exc
     try:
+        from dlms.persistence.schema_programs import validate_schema_programs
+        validate_schema_programs(conn)
         integrity_rows = conn.execute("PRAGMA integrity_check").fetchall()
         if integrity_rows != [("ok",)]:
             detail = str(integrity_rows[0][0]) if integrity_rows else "no result"
@@ -733,6 +767,162 @@ def validate_backup_manifest_semantics(
             raise ValueError("Backup manifest included_roots does not match restored data")
 
 
+class SnapshotConsistencyError(ValueError):
+    """A safe public diagnostic for incomplete cross-store backup content."""
+
+
+def _validate_question_content(conn, quiz_id, payload):
+    """Compare persisted representations without imposing grading readiness.
+
+    Older columns/defaults and label-ordered legacy choices are supported. This
+    is a read-only consistency check, not a serializer or content repair.
+    """
+    choice_columns = {row[1] for row in conn.execute("PRAGMA table_info(choices)")}
+    order = "choice_order, label, id" if "choice_order" in choice_columns else "label, id"
+    questions = conn.execute("SELECT * FROM questions WHERE quiz_id=? ORDER BY question_number, id", (quiz_id,)).fetchall()
+    for ordinal, (record, item) in enumerate(zip(questions, payload), 1):
+        row = dict(record)
+        def fail(reason):
+            raise SnapshotConsistencyError(f"Backup quiz ID {quiz_id}, question {ordinal}: saved file and database disagree ({reason}). No content was changed.")
+        if not isinstance(item, dict):
+            fail("question structure")
+        choices = [dict(r) for r in conn.execute(f"SELECT * FROM choices WHERE question_id=? ORDER BY {order}", (row['id'],))]
+        kind = item.get('type') or 'choice'
+        text = item.get('question') or item.get('text') or ''
+        db_kind = row.get('question_type') or 'choice'
+        if kind == 'hotspot':
+            # This is the explicit Study Pack representation, not an exemption
+            # for arbitrary mismatched records. Geometry exists only in JSON.
+            expected = [('A', item.get('target_label'), True)]
+            actual = [(c['label'], c['text'], bool(c['is_correct'])) for c in choices]
+            if db_kind != 'choice' or row['question_text'] != text + ' [Image hotspot]' or actual != expected:
+                fail("image hotspot surrogate")
+            continue
+        if kind != db_kind or text != (row['question_text'] or ''):
+            fail("question type or text")
+        if 'explanation' in row and (item.get('explanation') or '') != (row['explanation'] or ''):
+            fail("explanation")
+        if kind == 'matching':
+            pairs = [dict(r) for r in conn.execute("SELECT * FROM matching_pairs WHERE question_id=? ORDER BY pair_order, id", (row['id'],))]
+            raw_pairs = item.get('pairs', [])
+            if not isinstance(raw_pairs, list) or any(not isinstance(p, dict) for p in raw_pairs):
+                fail("matching pairs")
+            if [(p.get('left',''), p.get('right','')) for p in raw_pairs] != [(p['left_text'], p['right_text']) for p in pairs]:
+                fail("matching pair content/order")
+            if 'matching_round_size' in row and item.get('round_size') != row['matching_round_size']:
+                fail("matching round size")
+            if 'matching_direction' in row and (item.get('direction') or 'term_to_definition') != (row['matching_direction'] or 'term_to_definition'):
+                fail("matching direction")
+        else:
+            raw_choices = item.get('choices', [])
+            if not isinstance(raw_choices, list) or any(not isinstance(c, dict) for c in raw_choices):
+                fail("choices")
+            # Legacy runtime artifacts may omit flags and carry a correct-label
+            # list instead. Never derive one duplicate label's flag from another.
+            positioned = 'choice_order' in choice_columns and all(c['choice_order'] is not None for c in choices)
+            def matches(stored, runtime):
+                return (stored['label'] == runtime.get('label') and
+                        stored['text'] == runtime.get('text') and
+                        ('is_correct' not in runtime or bool(stored['is_correct']) == bool(runtime['is_correct'])))
+            if positioned:
+                valid = len(choices) == len(raw_choices) and all(matches(c, r) for c, r in zip(choices, raw_choices))
+            else:
+                # Old artifacts can use a different order. Match explicit flags
+                # first, preserving multiplicity; omitted flags cannot hide a
+                # contradiction in another choice with the same label/text.
+                remaining = list(choices)
+                valid = len(remaining) == len(raw_choices)
+                for runtime in sorted(raw_choices, key=lambda c: 'is_correct' not in c):
+                    match = next((i for i, stored in enumerate(remaining) if matches(stored, runtime)), None)
+                    if match is None:
+                        valid = False
+                        break
+                    remaining.pop(match)
+            if not valid:
+                fail("choice labels, text, order or correctness")
+            if 'correct' in item:
+                correct = item['correct']
+                if not isinstance(correct, list) or any(not isinstance(c, str) for c in correct) or set(correct) != {c['label'] for c in choices if c['is_correct']}:
+                    fail("correct-answer references")
+        if 'media_json' in row:
+            try:
+                stored_media = json.loads(row['media_json'] or '{}')
+            except ValueError:
+                fail("media metadata")
+            media = item.get('media') or {key:item[key] for key in ('image_url','image_alt','image_edits','image_source') if item.get(key) is not None}
+            if not isinstance(media, dict):
+                fail("media metadata")
+            media = dict(media)
+            for key in ('source_number', 'composition_sources'):
+                if item.get(key) is not None:
+                    media[key] = item[key]
+            if media != stored_media:
+                fail("media metadata")
+
+
+def validate_quiz_relationships(root):
+    """Check active Library references; preserve DB-only history and payloads.
+
+    HTML is derived and rebuilt on restore. Runtime hotspot JSON intentionally
+    differs from its database grading surrogate; content is never regenerated
+    or normalized here. Existing file/schema validators run first on restore.
+    """
+    registry = Path(root, "config", "quizzes.json")
+    if not registry.exists():
+        return {"registered": 0, "legacy_without_id": 0}
+    entries = json.loads(registry.read_text(encoding="utf-8"))
+    if not isinstance(entries, list):
+        raise SnapshotConsistencyError("Backup Library registry is not a list.")
+    from dlms.rendering.quiz_artifacts import _quiz_artifact_names
+    database = Path(root, "results.db")
+    if not database.is_file():
+        raise SnapshotConsistencyError("Backup is missing its quiz database.")
+    conn = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA trusted_schema=OFF")
+        quiz_ids = {row[0] for row in conn.execute("SELECT id FROM quizzes")}
+        counts = dict(conn.execute("SELECT quiz_id, COUNT(*) FROM questions GROUP BY quiz_id"))
+        checked = legacy = 0
+        for entry in entries:
+            if not isinstance(entry, dict):
+                raise SnapshotConsistencyError("Backup Library entries must be objects.")
+            raw_id = entry.get("id")
+            quiz_id = None
+            if raw_id is not None:
+                try:
+                    if isinstance(raw_id, bool) or str(int(raw_id)) != str(raw_id) or int(raw_id) <= 0:
+                        raise ValueError()
+                    quiz_id = int(raw_id)
+                except (ValueError, TypeError):
+                    raise SnapshotConsistencyError("Backup Library contains an invalid quiz ID.") from None
+                if quiz_id not in quiz_ids:
+                    raise SnapshotConsistencyError(f"Backup contains incomplete quiz data (quiz ID {quiz_id}): the Library entry has no database record.")
+            if not entry.get("html"):
+                # Legacy metadata without a saved page is retained as before.
+                continue
+            try:
+                _html, name = _quiz_artifact_names(entry, basename=os.path.basename)
+                payload_path = Path(root, "data", name)
+                if payload_path.is_symlink() or not payload_path.is_file():
+                    raise ValueError()
+                payload = json.loads(payload_path.read_text(encoding="utf-8"))
+                if not isinstance(payload, list):
+                    raise ValueError()
+            except (ValueError, OSError, TypeError):
+                label = f"quiz ID {quiz_id}" if quiz_id else "legacy quiz"
+                raise SnapshotConsistencyError(f"Backup contains incomplete quiz data ({label}): the Library entry has no readable question file.") from None
+            if quiz_id is not None and len(payload) != counts.get(quiz_id, 0):
+                raise SnapshotConsistencyError(f"Backup contains incomplete quiz data (quiz ID {quiz_id}): question counts disagree between the saved file and database.")
+            if quiz_id is not None:
+                _validate_question_content(conn, quiz_id, payload)
+            checked += 1
+            legacy += quiz_id is None
+        return {"registered": checked, "legacy_without_id": legacy}
+    finally:
+        conn.close()
+
+
 def validate_staged_backup_semantics(
     staged_data_root,
     manifest,
@@ -771,6 +961,7 @@ def validate_staged_backup_semantics(
     if not any(item["path"] == "results.db" for item in sqlite_files):
         raise ValueError("Backup is missing required DLMS database results.db")
 
+    quiz_relationships = validate_quiz_relationships(staged_data_root)
     browser_data = validate_restored_browser_data(staged_data_root)
     portal_config = normalize_restored_portal_custom_ai_url(staged_data_root)
     assets = validate_restored_assets(staged_data_root)
@@ -780,6 +971,7 @@ def validate_staged_backup_semantics(
         "sqlite": sqlite_files,
         "json_files": json_files,
         "browser_data": browser_data,
+        "quiz_relationships": quiz_relationships,
         "portal_config": portal_config,
         "assets": assets,
         "law_imports": law_imports,

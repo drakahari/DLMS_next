@@ -29,7 +29,7 @@ from dlms.services.question_identity import is_generated_quiz
 
 
 PORTABLE_QUIZ_BUNDLE_FORMAT = "dlms-portable-quiz-bundle"
-PORTABLE_QUIZ_BUNDLE_SCHEMA_VERSION = 1
+PORTABLE_QUIZ_BUNDLE_SCHEMA_VERSION = 2
 PORTABLE_QUIZ_BUNDLE_MANIFEST = "dlms-quiz-bundle.json"
 PORTABLE_QUIZ_BUNDLE_TOKEN_RE = re.compile(r"^[0-9a-f]{32}$")
 PORTABLE_QUIZ_BUNDLE_ASSET_REF_PREFIX = "dlms-bundle-asset:"
@@ -114,6 +114,14 @@ def _normalized_text(value):
     return " ".join(normalized.strip().split())
 
 
+def _preserved_text(value, *, label, maximum):
+    if not isinstance(value, str):
+        raise PortableQuizBundleError(f"{label} must be a text string.")
+    if len(value) > maximum:
+        raise PortableQuizBundleError(f"{label} exceeds the {maximum:,}-character limit.")
+    return value
+
+
 def _required_text(value, *, label, maximum):
     if not isinstance(value, str):
         raise PortableQuizBundleError(f"{label} must be a text string.")
@@ -192,15 +200,15 @@ def _safe_generic_json(value, *, label, depth=0):
     raise PortableQuizBundleError(f"{label} contains an unsupported JSON value.")
 
 
-def _validate_source(value, *, label):
+def _validate_source(value, *, label, version=1):
     if value in (None, {}):
         return {}
     _exact_fields(value, _SOURCE_FIELDS, label=label)
     cleaned = {}
     for field in sorted(_SOURCE_FIELDS):
         maximum = _MAX_URL_CHARS if field == "url" else _MAX_SOURCE_CHARS
-        cleaned[field] = _optional_text(
-            value.get(field), label=f"{label}.{field}", maximum=maximum
+        cleaned[field] = (_preserved_text if version == 2 else _optional_text)(
+            "" if value.get(field) is None else value[field], label=f"{label}.{field}", maximum=maximum
         )
     if cleaned.get("url") and not external_ai_source_url_is_safe(cleaned["url"]):
         raise PortableQuizBundleError(f"{label}.url must use http:// or https://.")
@@ -249,7 +257,7 @@ def _asset_path_from_ref(value, *, label):
     return path
 
 
-def _validate_media(value, *, label, asset_references):
+def _validate_media(value, *, label, asset_references, version=1):
     if value in (None, {}):
         return {}
     _exact_fields(value, _MEDIA_FIELDS, label=label)
@@ -259,7 +267,7 @@ def _validate_media(value, *, label, asset_references):
         asset_references.setdefault(path, set()).add("question-media")
         cleaned["image_url"] = _asset_ref(path)
     if "image_alt" in value:
-        cleaned["image_alt"] = _optional_text(
+        cleaned["image_alt"] = (_preserved_text if version == 2 else _optional_text)(
             value["image_alt"], label=f"{label}.image_alt", maximum=_MAX_SOURCE_CHARS
         )
     for field in ("image_edits", "image_source"):
@@ -270,12 +278,35 @@ def _validate_media(value, *, label, asset_references):
     return cleaned
 
 
-def _validate_choice_question(question, *, context):
+def _validate_choice_question(question, *, context, version=1):
     _exact_fields(
         question, _QUESTION_COMMON_FIELDS | {"choices"}, label=context
     )
+    if version == 2:
+        choices = question.get("choices")
+        if not isinstance(choices, list) or len(choices) > 26:
+            raise PortableQuizBundleError(f"{context} choices must be a bounded list (at most 26).")
+        cleaned, keys = [], set()
+        for index, choice in enumerate(choices, 1):
+            label = f"{context} choice {index}"
+            _exact_fields(choice, _CHOICE_FIELDS | {"key"}, label=label)
+            key = choice.get('key')
+            if not isinstance(key, str) or not re.fullmatch(r'choice-[0-9]{3}', key) or key in keys:
+                raise PortableQuizBundleError(f"{label} must have a distinct archive-local key.")
+            keys.add(key)
+            if type(choice.get('is_correct')) is not bool:
+                raise PortableQuizBundleError(f"{label} correct flag must be a JSON boolean.")
+            cleaned.append({'key': key,
+                'label': _preserved_text(choice.get('label'), label=label+' label', maximum=32),
+                'text': _preserved_text(choice.get('text'), label=label+' text', maximum=_MAX_CHOICE_CHARS),
+                'is_correct': choice['is_correct']})
+        return cleaned
     choices = question.get("choices")
-    errors = _content_pack_choice_question_errors(question, context=context)
+    # Portable choices have label identities. Equal text is not equal answers;
+    # retain the stricter uniqueness policy for AI-authored Study Packs.
+    errors = _content_pack_choice_question_errors(
+        question, context=context, require_unique_text=False
+    )
     if errors:
         raise PortableQuizBundleError("; ".join(errors))
     cleaned = []
@@ -287,13 +318,13 @@ def _validate_choice_question(question, *, context):
             raise PortableQuizBundleError(
                 f"{context} choice {index + 1} must use label {expected}."
             )
+        _required_text(choice.get("text"), label=f"{context} choice {index + 1} text",
+                       maximum=_MAX_CHOICE_CHARS)
+        if len(choice["text"]) > _MAX_CHOICE_CHARS:
+            raise PortableQuizBundleError(f"{context} choice {index + 1} text exceeds the {_MAX_CHOICE_CHARS:,}-character limit.")
         cleaned.append({
             "label": label,
-            "text": _required_text(
-                choice.get("text"),
-                label=f"{context} choice {index + 1} text",
-                maximum=_MAX_CHOICE_CHARS,
-            ),
+            "text": choice["text"],
             "is_correct": choice.get("is_correct"),
         })
     return cleaned
@@ -359,7 +390,7 @@ def _validate_matching_question(question, *, context):
     return cleaned_pairs, round_size, direction
 
 
-def _validate_question(question, *, quiz_number, question_number, asset_references):
+def _validate_question(question, *, quiz_number, question_number, asset_references, version=1):
     context = f"Quiz {quiz_number}, question {question_number}"
     if not isinstance(question, dict):
         raise PortableQuizBundleError(f"{context} must be an object.")
@@ -382,32 +413,40 @@ def _validate_question(question, *, quiz_number, question_number, asset_referenc
     cleaned = {
         "number": number,
         "type": qtype,
-        "question": _required_text(
+        "question": (_preserved_text if version == 2 else _required_text)(
             question.get("question"), label=f"{context}.question", maximum=_MAX_QUESTION_CHARS
         ),
-        "explanation": _optional_text(
-            question.get("explanation"),
+        "explanation": (_preserved_text if version == 2 else _optional_text)(
+            question.get("explanation", ""),
             label=f"{context}.explanation",
             maximum=_MAX_EXPLANATION_CHARS,
         ),
         "concepts": _validate_concepts(
             question.get("concepts") or [], label=f"{context}.concepts"
         ),
-        "source": _validate_source(question.get("source") or {}, label=f"{context}.source"),
+        "source": _validate_source(question.get("source") or {}, label=f"{context}.source", version=version),
         "media": _validate_media(
             question.get("media") or {},
             label=f"{context}.media",
             asset_references=asset_references,
+            version=version,
         ),
     }
+    if qtype == 'choice' and cleaned['question'].endswith('[Image hotspot]'):
+        raise PortableQuizBundleError('Image hotspot target geometry cannot be preserved by this portable format.')
     if source_number is not None:
         cleaned["source_number"] = source_number
     if qtype == "choice":
-        cleaned["choices"] = _validate_choice_question(question, context=context)
+        cleaned["choices"] = _validate_choice_question(question, context=context, version=version)
     else:
         pairs, round_size, direction = _validate_matching_question(
             question, context=context
         )
+        if version == 2:
+            for raw, pair in zip(question["pairs"], pairs):
+                for field in ("left", "right", "category", "explanation"):
+                    if field in raw:
+                        pair[field] = _preserved_text("" if raw[field] is None else raw[field], label=f"{context} pair.{field}", maximum={"left": _MAX_CHOICE_CHARS, "right": _MAX_CHOICE_CHARS, "category": _MAX_CONCEPT_CHARS, "explanation": _MAX_EXPLANATION_CHARS}[field])
         cleaned.update({
             "pairs": pairs,
             "round_size": round_size,
@@ -426,7 +465,7 @@ def validate_portable_quiz_bundle_manifest(manifest):
     if manifest.get("format") != PORTABLE_QUIZ_BUNDLE_FORMAT:
         raise PortableQuizBundleError("Archive is not a DLMS portable quiz bundle.")
     version = manifest.get("schema_version")
-    if isinstance(version, bool) or version != PORTABLE_QUIZ_BUNDLE_SCHEMA_VERSION:
+    if isinstance(version, bool) or version not in (1, 2):
         raise PortableQuizBundleError(
             f"Unsupported portable quiz bundle schema version {version!r}."
         )
@@ -563,6 +602,7 @@ def validate_portable_quiz_bundle_manifest(manifest):
                 quiz_number=quiz_number,
                 question_number=number,
                 asset_references=asset_references,
+                version=version,
             )
             for number, question in enumerate(questions, 1)
         ]
@@ -589,7 +629,7 @@ def validate_portable_quiz_bundle_manifest(manifest):
 
     return {
         "format": PORTABLE_QUIZ_BUNDLE_FORMAT,
-        "schema_version": PORTABLE_QUIZ_BUNDLE_SCHEMA_VERSION,
+        "schema_version": version,
         "created_at": created_at,
         "created_by": {"application": "DLMS", "version": creator_version},
         "quizzes": cleaned_quizzes,
@@ -705,8 +745,103 @@ def _export_question(question, *, number, add_asset):
             "direction": question.get("direction") or "term_to_definition",
         })
     else:
-        exported["choices"] = copy.deepcopy(question.get("choices") or [])
+        exported["choices"] = [{**copy.deepcopy(c), "key": f"choice-{i:03d}"} for i,c in enumerate(question.get("choices") or [], 1)]
     return exported
+
+
+def _source_question_for_export(cur, question_id, question_payload_from_db):
+    # The general learning reader tolerates legacy malformed metadata. Portable
+    # preservation cannot silently discard it or coerce a corrupt boolean flag.
+    row = cur.execute('SELECT media_json FROM questions WHERE id=?', (question_id,)).fetchone()
+    if row is None:
+        raise PortableQuizBundleError('A selected source question is unavailable.')
+    media = _strict_json_loads(row[0] or '{}')
+    if not isinstance(media, dict) or set(media) - (_MEDIA_FIELDS | {'source_number', 'composition_sources'}):
+        raise PortableQuizBundleError('Question media metadata cannot be represented safely.')
+    source_number = media.get('source_number')
+    if source_number is not None and (type(source_number) is not int or source_number < 1):
+        raise PortableQuizBundleError('Stored source question number must be a positive integer.')
+    if cur.execute("SELECT 1 FROM choices WHERE question_id=? AND (typeof(is_correct)!='integer' OR is_correct NOT IN (0,1)) LIMIT 1", (question_id,)).fetchone():
+        raise PortableQuizBundleError('A stored correct flag is not a JSON boolean.')
+    question = question_payload_from_db(cur, question_id)
+    if (question.get('type') == 'choice'
+            and str(question.get('question') or '').endswith('[Image hotspot]')):
+        # Image Study stores a choice surrogate; its playable target geometry
+        # lives in the runtime artifact, outside this choice/matching format.
+        # Exporting that surrogate as an ordinary choice would change behavior.
+        raise PortableQuizBundleError('Image hotspot target geometry cannot be preserved by this portable format.')
+    return question
+
+
+def preflight_portable_quiz_export(cur, registry, selected_ids, *, question_payload_from_db,
+                                  resolve_media_source, logo_folder, validate_raster_image,
+                                  allowed_image_extensions):
+    """Inspect every selected quiz and question without publishing or repairing.
+
+    Security failures are blockers. Safely representable incomplete content is
+    reported separately; readiness is always recomputed, never archive-trusted.
+    """
+    from .quiz_readiness import question_issues
+    catalog = {q['quiz_id']: q for q in portable_quiz_export_catalog(cur, registry)['quizzes']}
+    entries = {int(q['id']): q for q in registry if isinstance(q, dict) and str(q.get('id') or '').isdigit()}
+    groups, inspected = [], 0
+    for quiz_id in selected_ids:
+        item = catalog.get(quiz_id)
+        group = {'quiz_id': quiz_id, 'title': item['title'] if item else 'Unavailable quiz',
+                 'edit_url': f'/edit_quiz/{quiz_id}' if item else None, 'warnings': [], 'blockers': []}
+        groups.append(group)
+        if not item:
+            group['blockers'].append({'position': None, 'number': None, 'reason': 'This selection is unavailable or not a supported source quiz.'})
+            continue
+
+        def check_asset(reference, role):
+            path = reference if role == 'quiz-logo' else resolve_media_source(reference)
+            if not path or not os.path.isfile(path) or os.path.islink(path):
+                raise PortableQuizBundleError('Required media is missing or unsafe.')
+            real = os.path.realpath(path)
+            if role == 'quiz-logo' and os.path.dirname(real) != os.path.realpath(logo_folder):
+                raise PortableQuizBundleError('Required logo is unsafe.')
+            if os.path.splitext(real)[1].lower() not in allowed_image_extensions:
+                raise PortableQuizBundleError('Required media type is unsupported.')
+            size = os.path.getsize(real)
+            if not 0 < size <= PORTABLE_QUIZ_BUNDLE_MAX_SINGLE_FILE_BYTES:
+                raise PortableQuizBundleError('Required media exceeds the file size limit.')
+            validate_raster_image(real, allowed_image_extensions)
+            return 'assets/quiz-001/asset-001' + os.path.splitext(real)[1].lower()
+
+        rows = cur.execute('SELECT id,question_number,media_json FROM questions WHERE quiz_id=? ORDER BY question_number,id LIMIT ?', (quiz_id, PORTABLE_QUIZ_BUNDLE_MAX_QUESTIONS_PER_QUIZ+1)).fetchall()
+        if len(rows) > PORTABLE_QUIZ_BUNDLE_MAX_QUESTIONS_PER_QUIZ:
+            group['blockers'].append({'position': None, 'number': None, 'reason': 'This quiz exceeds the 2,000-question portable limit; complete inspection is unavailable.'})
+            continue
+        for position, row in enumerate(rows, 1):
+            inspected += 1
+            if inspected > 100_000:
+                group['blockers'].append({'position': position, 'number': row['question_number'], 'reason': 'This selection exceeds the bounded preflight budget. Select a smaller batch for complete inspection.'})
+                break
+            location = {'position': position, 'number': row['question_number']}
+            try:
+                question = _source_question_for_export(cur, row['id'], question_payload_from_db)
+                group['warnings'].extend({**location, 'reason': reason} for reason in question_issues(question))
+                exported = _export_question(question, number=position, add_asset=check_asset)
+                _validate_question(exported, quiz_number=1, question_number=position, asset_references={}, version=2)
+            except (ValueError, OSError) as exc:
+                # Public reasons contain no arbitrary source text or server paths.
+                from .portable_quiz_exports import _public_reason
+                group['blockers'].append({**location, 'reason': _public_reason(exc)})
+        logo = entries[quiz_id].get('logo')
+        if logo:
+            try:
+                if not isinstance(logo, str) or logo != os.path.basename(logo):
+                    raise PortableQuizBundleError('Required logo is unsafe.')
+                check_asset(os.path.join(logo_folder, logo), 'quiz-logo')
+            except (ValueError, OSError) as exc:
+                from .portable_quiz_exports import _public_reason
+                group['blockers'].append({'position': None, 'number': None, 'reason': _public_reason(exc)})
+    report = {'quizzes': [q for q in groups if q['warnings'] or q['blockers']],
+            'selected_count': len(selected_ids), 'warning_quizzes': sum(bool(q['warnings']) for q in groups),
+            'blocked_quizzes': sum(bool(q['blockers']) for q in groups)}
+    report['signature'] = hashlib.sha256(json.dumps([selected_ids, report], sort_keys=True).encode()).hexdigest()
+    return report
 
 
 def build_portable_quiz_bundle(
@@ -721,6 +856,7 @@ def build_portable_quiz_bundle(
     allowed_image_extensions,
     app_version,
     now=datetime.now,
+    output_path=None,
 ):
     """Build one self-contained ZIP without changing any source quiz."""
     selected = []
@@ -752,6 +888,7 @@ def build_portable_quiz_bundle(
 
     archive_assets = {}
     quizzes = []
+    question_bytes = 0
     for quiz_number, catalog_item in enumerate(ordered, 1):
         quiz_id = catalog_item["quiz_id"]
         bundle_id = f"quiz-{quiz_number:03d}"
@@ -785,6 +922,8 @@ def build_portable_quiz_bundle(
             size = os.path.getsize(real_source)
             if not 0 < size <= PORTABLE_QUIZ_BUNDLE_MAX_SINGLE_FILE_BYTES:
                 raise PortableQuizBundleError("A referenced quiz asset exceeds the size limit.")
+            if sum(len(value) for value in archive_assets.values()) + size > PORTABLE_QUIZ_BUNDLE_UPLOAD_MAX_BYTES:
+                raise PortableQuizBundleError("Quiz media exceeds the 128 MiB bundle budget; use a full backup.")
             with open(real_source, "rb") as handle:
                 payload = handle.read(PORTABLE_QUIZ_BUNDLE_MAX_SINGLE_FILE_BYTES + 1)
             if len(payload) != size:
@@ -811,10 +950,23 @@ def build_portable_quiz_bundle(
             )
         questions = []
         for number, row in enumerate(question_rows, 1):
-            question = question_payload_from_db(cur, row["id"])
+            question = _source_question_for_export(cur, row["id"], question_payload_from_db)
             if not question:
                 raise PortableQuizBundleError("A selected source question is unavailable.")
-            questions.append(_export_question(question, number=number, add_asset=add_asset))
+            try:
+                exported = _export_question(question, number=number, add_asset=add_asset)
+                _validate_question(exported, quiz_number=quiz_number,
+                                   question_number=number, asset_references={}, version=2)
+            except ValueError as exc:
+                raise PortableQuizBundleError(
+                    f"Quiz {quiz_number}, question {number}: {exc}"
+                ) from exc
+            question_bytes += len(json.dumps(exported, ensure_ascii=False).encode("utf-8"))
+            if question_bytes > _MAX_MANIFEST_BYTES:
+                raise PortableQuizBundleError(
+                    f"Quiz {quiz_number}, question {number}: manifest exceeds the 4 MiB limit."
+                )
+            questions.append(exported)
 
         entry = registry_by_id[quiz_id]
         logo = None
@@ -845,16 +997,26 @@ def build_portable_quiz_bundle(
         "created_by": {"application": "DLMS", "version": str(app_version)},
         "quizzes": quizzes,
     })
-    output = io.BytesIO()
-    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+    manifest_bytes = (json.dumps(manifest, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    if len(manifest_bytes) > _MAX_MANIFEST_BYTES:
+        raise PortableQuizBundleError("Bundle manifest exceeds 4 MiB; select fewer quizzes.")
+    if len(archive_assets) + 1 > PORTABLE_QUIZ_BUNDLE_MAX_FILES:
+        raise PortableQuizBundleError("Bundle contains too many files; select fewer quizzes.")
+    output = output_path if output_path is not None else io.BytesIO()
+    # Raster files are already compressed. Stored members also cannot trigger
+    # the importer's compression-ratio protection on repetitive text.
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_STORED) as archive:
         archive.writestr(
             PORTABLE_QUIZ_BUNDLE_MANIFEST,
-            json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+            manifest_bytes,
         )
         for path in sorted(archive_assets):
             archive.writestr(path, archive_assets[path])
     safe_name = f"DLMS-Quiz-Bundle-{timestamp.strftime('%Y%m%d')}.zip"
-    return output.getvalue(), safe_name, manifest
+    size = os.path.getsize(output_path) if output_path is not None else output.tell()
+    if size > PORTABLE_QUIZ_BUNDLE_UPLOAD_MAX_BYTES:
+        raise PortableQuizBundleError("Bundle exceeds 128 MiB; select fewer quizzes.")
+    return (None if output_path is not None else output.getvalue()), safe_name, manifest
 
 
 def _validate_image_payload(payload, path, *, validate_raster_image, allowed_extensions):
@@ -1088,6 +1250,7 @@ def _collision_title(title, used_titles):
 def plan_portable_quiz_bundle_import(manifest, existing_titles):
     """Return deterministic collision-safe titles without changing the manifest."""
     used = {_title_key(title) for title in existing_titles}
+    from .quiz_readiness import question_issues
     plans = []
     for quiz in manifest["quizzes"]:
         import_title, renamed = _collision_title(quiz["title"], used)
@@ -1104,6 +1267,7 @@ def plan_portable_quiz_bundle_import(manifest, existing_titles):
             "matching_count": sum(q["type"] == "matching" for q in quiz["questions"]),
             "asset_count": len(quiz["assets"]),
             "quiz": quiz,
+            "readiness_issues": [{"position": i, "number": q.get("source_number", q["number"]), "reason": reason} for i,q in enumerate(quiz["questions"],1) for reason in question_issues(q)],
         })
     return plans
 
@@ -1146,7 +1310,7 @@ def _publication_questions(quiz, asset_urls):
                 "direction": source["direction"],
             })
         else:
-            item["choices"] = copy.deepcopy(source["choices"])
+            item["choices"] = [{key: copy.deepcopy(c[key]) for key in ("label", "text", "is_correct")} for c in source["choices"]]
             item["correct"] = [
                 choice["label"] for choice in item["choices"] if choice["is_correct"]
             ]

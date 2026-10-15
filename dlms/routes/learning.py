@@ -7,6 +7,8 @@ from typing import Any
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_from_directory
 
+from dlms.services.study_sessions import StudyConflict
+
 from dlms.services.daily_review import (
     DEFAULT_DUE_QUESTION_BATCH_SIZE,
     MAX_DUE_QUESTION_BATCH_SIZE,
@@ -84,6 +86,9 @@ def record_study_learning_event(dependencies):
             conn, cur, data
         )
         return jsonify(acknowledgement), status
+    except StudyConflict as exc:
+        conn.rollback()
+        return jsonify({"error": str(exc)}), 409
     except dependencies.learning_payload_error() as exc:
         conn.rollback()
         return jsonify({"error": str(exc)}), 400

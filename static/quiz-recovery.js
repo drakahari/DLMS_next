@@ -120,7 +120,7 @@
         return {type, pairCount, matchingCount, configuredDirection};
       }
       if (type === "hotspot") return {type};
-      return {type: "choice", choiceCount: Array.isArray(question?.choices) ? question.choices.length : 0};
+      return {type: "choice", choiceCount: Array.isArray(question?.choices) ? question.choices.length : 0, choiceLabels: (question?.choices || []).map(c => c.label)};
     });
   }
 
@@ -203,7 +203,14 @@
       if (!["saving", "failed"].includes(record.state)) return false;
       const payload = record.payload;
       if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
-      if (!exactKeys(payload, ["eventId", "questionOrdinal", "questionType", "quizId", "selected", "sessionId", "wasCorrect"])) return false;
+      const keys = ["eventId", "questionOrdinal", "questionType", "quizId", "selected", "sessionId", "wasCorrect"];
+      if (payload.contract === 2) {
+        keys.push("contract", "kind", "sequence", "owner", "generation", "assessmentRevision");
+        if (!finiteInteger(payload.sequence, 1, 1000000) || !["response", "ai_open", "prompt_copy"].includes(payload.kind)
+            || !boundedString(payload.owner, 128) || !boundedString(payload.generation, 128) || !boundedString(payload.assessmentRevision, 128)) return false;
+      }
+      if (payload.answerEncoding !== undefined) { if (payload.answerEncoding !== "choice-labels-v1") return false; keys.push("answerEncoding"); }
+      if (!exactKeys(payload, keys)) return false;
       if (!(String(payload.quizId) === String(quizId)
         && payload.sessionId === sessionId
         && payload.eventId === record.eventId
@@ -213,11 +220,13 @@
       if (record.questionKey !== `${sessionId}:${payload.questionOrdinal}`) return false;
       const descriptor = descriptors[payload.questionOrdinal - 1];
       if (payload.questionType !== descriptor.type) return false;
+      if (payload.contract === 2 && payload.kind !== "response") return payload.selected === null && payload.wasCorrect === null;
       if (descriptor.type === "choice") {
         if (!Array.isArray(payload.selected) || payload.selected.length > descriptor.choiceCount) return false;
         if (!payload.selected.every(value => typeof value === "string" && /^[A-Z]$/.test(value))) return false;
-        const selectedIndexes = payload.selected.map(value => value.charCodeAt(0) - 65);
-        if (selectedIndexes.some(value => value >= descriptor.choiceCount) || new Set(selectedIndexes).size !== selectedIndexes.length) return false;
+        const selectedIndexes = payload.selected.map(value => payload.answerEncoding === "choice-labels-v1" ? descriptor.choiceLabels.indexOf(value) : value.charCodeAt(0) - 65);
+        const limit = payload.answerEncoding === undefined && descriptor.choiceLabels.some((label,i) => label !== String.fromCharCode(65+i)) ? 26 : descriptor.choiceCount;
+        if (selectedIndexes.some(value => value < 0 || value >= limit) || new Set(selectedIndexes).size !== selectedIndexes.length) return false;
       } else if (descriptor.type === "hotspot") {
         const selected = payload.selected;
         if (!selected || typeof selected !== "object" || Array.isArray(selected)) return false;
@@ -280,7 +289,8 @@
     if (session.expiresAt !== session.updatedAt + EXPIRY_MS || session.expiresAt > now + EXPIRY_MS) return false;
     const view = record.view;
     if (!view || typeof view !== "object" || Array.isArray(view)) return false;
-    if (!exactKeys(view, ["ankiQuestionIndexes", "matchingInteractionMode", "questionIndex"])) return false;
+    if (view.answerEncoding !== undefined && view.answerEncoding !== "choice-labels-v1") return false;
+    if (!exactKeys(view, ["ankiQuestionIndexes", "matchingInteractionMode", "questionIndex", ...(view.answerEncoding === undefined ? [] : ["answerEncoding"])])) return false;
     if (!finiteInteger(view.questionIndex, 0, Number.MAX_SAFE_INTEGER)) return false;
     if (!["drag", "select"].includes(view.matchingInteractionMode)) return false;
     if (!Array.isArray(view.ankiQuestionIndexes)) return false;
@@ -325,7 +335,8 @@
     if (session.expiresAt !== session.updatedAt + EXPIRY_MS || session.expiresAt > now + EXPIRY_MS) return false;
     const view = record.view;
     if (!view || typeof view !== "object" || Array.isArray(view)) return false;
-    if (!exactKeys(view, ["ankiQuestionIndexes", "matchingInteractionMode", "questionIndex"])) return false;
+    if (view.answerEncoding !== undefined && view.answerEncoding !== "choice-labels-v1") return false;
+    if (!exactKeys(view, ["ankiQuestionIndexes", "matchingInteractionMode", "questionIndex", ...(view.answerEncoding === undefined ? [] : ["answerEncoding"])])) return false;
     if (!finiteInteger(view.questionIndex, 0, context.descriptors.length - 1)) return false;
     if (!["drag", "select"].includes(view.matchingInteractionMode)) return false;
     if (!Array.isArray(view.ankiQuestionIndexes)) return false;
@@ -484,6 +495,9 @@
           records.push({
             quizId,
             sessionId: record.session.id,
+            learningSessionId: record.learningSessionId,
+            fingerprint: record.quiz.fingerprint,
+            pendingStudyCount: record.unacknowledgedStudyEvents.length,
             revision: record.session.revision,
             ownerToken: record.session.ownerToken,
             mode: record.session.mode,
@@ -503,6 +517,45 @@
     } catch (_error) {
       return {available: false, records: []};
     }
+  }
+
+  async function reconcileCompletedStudy({quizId = null, activeQuizIds = null, limit = 2} = {}) {
+    const completed = new Set();
+    let unfinished = 0;
+    for (const listed of listStoredRecords({activeQuizIds}).records) {
+      if (quizId !== null && String(quizId) !== listed.quizId) continue;
+      if (unfinished >= limit) break;
+      const key = `${STORAGE_PREFIX}${encodeURIComponent(listed.quizId)}`;
+      try {
+        const raw = localStorage.getItem(key);
+        const record = JSON.parse(raw);
+        if (!validateRecordEnvelope(record) || record.session.mode !== "Study"
+            || record.unacknowledgedStudyEvents.length || !/^[1-9]\d*$/.test(listed.quizId)) {
+          unfinished++; continue;
+        }
+        const response = await fetch(`/api/study/quiz/${listed.quizId}?sessionId=${encodeURIComponent(record.learningSessionId)}`, {cache: "no-store"});
+        const data = response.ok ? await response.json() : null;
+        if (data?.session?.id !== record.learningSessionId || String(data.session.quiz_id) !== listed.quizId
+            || !data.session.completed_at || localStorage.getItem(key) !== raw) {
+          unfinished++; continue;
+        }
+        if (data.session.purpose === "focused") {
+          // Generated reviews also save a Library completion marker. Preserve
+          // its retry path if that second acknowledgement is still missing.
+          const statusResponse = await fetch(`/api/generated-practice/status/${listed.quizId}`, {cache: "no-store"});
+          const status = statusResponse.ok ? await statusResponse.json() : null;
+          if (!status || (status.is_transient && !status.completed)
+              || localStorage.getItem(key) !== raw) { unfinished++; continue; }
+        }
+        // Clear only this unchanged, acknowledged session. Another tab may have
+        // started a new review while the completion lookup was in flight.
+        completed.add(record.learningSessionId);
+        try { localStorage.removeItem(key); } catch (_error) { /* Hide confirmed completion even if cleanup is unavailable. */ }
+      } catch (_error) {
+        unfinished++; // Offline/failed lookups never discard recoverable work.
+      }
+    }
+    return completed;
   }
 
   function createController(options) {
@@ -553,11 +606,15 @@
       }
     }
 
-    function writeSnapshot({allowTakeover = false} = {}) {
+    function writeSnapshot({allowTakeover = false, preserveExisting = false} = {}) {
       if (!owned) return false;
       let current = null;
       try {
         const raw = localStorage.getItem(storageKey);
+        if (raw && preserveExisting) {
+          owned = false;
+          return false;
+        }
         if (raw) {
           if (storageBytes(raw) > MAX_RECORD_BYTES) {
             localStorage.removeItem(storageKey);
@@ -568,8 +625,13 @@
           }
         }
       } catch (_error) {
+        if (preserveExisting) { owned = false; storageWarning(); return false; }
         try { localStorage.removeItem(storageKey); }
         catch (_storageError) { storageWarning(); return false; }
+      }
+      if (current && preserveExisting) {
+        owned = false;
+        return false;
       }
       if (!current && savedRecord !== null && !allowTakeover) {
         owned = false;
@@ -635,17 +697,18 @@
       }
     }
 
-    function claimNew() {
+    function claimNew({preserveExisting = false} = {}) {
       owned = true;
       revision = 0;
       createdAt = Date.now();
       savedRecord = null;
-      return writeSnapshot({allowTakeover: true});
+      return writeSnapshot({allowTakeover: true, preserveExisting});
     }
 
     function claimStored(record) {
       const current = readStored();
-      if (!current || current.session.revision !== record.session.revision) return null;
+      if (!current || current.session.revision !== record.session.revision
+          || current.session.id !== record.session.id || current.learningSessionId !== record.learningSessionId) return null;
       const now = Date.now();
       const claimed = {
         ...current,
@@ -675,24 +738,40 @@
       if (recoveryPanel) recoveryPanel.hidden = true;
     }
 
-    function resumeSaved() {
+    async function resumeSaved() {
+      const button = recoveryPanel?.querySelector(".quiz-recovery-resume");
+      if (button?.disabled) return;
       const record = readStored();
-      if (!record) { hidePanel(); return; }
+      if (!record) { hidePanel(); options.recoveryChanged?.(); return; }
+      if (options.canRestore?.(record) === false) return;
       const claimed = claimStored(record);
       if (!claimed) return;
-      options.restore(claimed);
-      hidePanel();
-      writeSnapshot();
+      if (button) button.disabled = true;
+      try {
+        if (await options.restore(claimed) === false) return;
+        hidePanel();
+        writeSnapshot();
+      } finally {
+        if (button) button.disabled = false;
+      }
     }
 
-    function finishSavedSubmission() {
+    async function finishSavedSubmission() {
+      const button = recoveryPanel?.querySelector(".quiz-recovery-resume");
+      if (button?.disabled) return;
       const record = readStored();
       if (!record || record.session.phase !== "submitting") { hidePanel(); return; }
+      if (options.canRestore?.(record) === false) return;
       const claimed = claimStored(record);
       if (!claimed) return;
-      options.restore(claimed);
-      hidePanel();
-      options.finishSubmission(claimed.pendingAttempt);
+      if (button) button.disabled = true;
+      try {
+        if (await options.restore(claimed) === false) return;
+        hidePanel();
+        await options.finishSubmission(claimed.pendingAttempt);
+      } finally {
+        if (button) button.disabled = false;
+      }
     }
 
     function startOver() {
@@ -723,20 +802,40 @@
         ? `${record.session.mode} Mode · submitted ${savedTime}`
         : `${record.session.mode} Mode · Question ${record.view.questionIndex + 1} of ${context.descriptors.length} · saved ${savedTime}`;
       panel.appendChild(summary);
+      const explanation = document.createElement("p");
+      explanation.textContent = record.session.mode === "Study"
+        ? "Resume restores answers and retries pending saves. For Study, it takes ownership from other tabs and keeps newer server saves. Study Mode starts a new review."
+        : "Resume restores this browser’s Exam answers. Study Mode or Exam Mode starts a separate session.";
+      panel.appendChild(explanation);
+      if (record.unacknowledgedStudyEvents.length) {
+        const pending = document.createElement("p");
+        pending.className = "study-learning-save-status";
+        pending.textContent = `${record.unacknowledgedStudyEvents.length} response save${record.unacknowledgedStudyEvents.length === 1 ? "" : "s"} still need confirmation. Use Resume and retry saves before starting other work.`;
+        panel.appendChild(pending);
+      }
 
       const actions = document.createElement("div");
       actions.className = "quiz-recovery-actions";
       const resume = document.createElement("button");
       resume.type = "button";
       resume.className = "quiz-recovery-resume";
-      resume.textContent = record.session.phase === "submitting" ? "Finish Saving Submitted Attempt" : "Resume";
+      resume.textContent = record.session.phase === "submitting" ? "Finish Saving Submitted Attempt"
+        : record.unacknowledgedStudyEvents.length ? "Resume and retry saves" : "Resume";
       resume.addEventListener("click", record.session.phase === "submitting" ? finishSavedSubmission : resumeSaved);
       actions.appendChild(resume);
       const reset = document.createElement("button");
       reset.type = "button";
       reset.className = "quiz-recovery-start-over";
       reset.textContent = "Start Over";
-      reset.addEventListener("click", startOver);
+      reset.addEventListener("click", () => {
+        const expected = localStorage.getItem(storageKey);
+        if (!window.confirm("Discard this browser’s saved answers and pending saves for this quiz? Saved server history remains. Cancel keeps the recovery record unchanged.")) return;
+        if (localStorage.getItem(storageKey) !== expected) {
+          notify("Saved work changed in another tab. Nothing was discarded. Reload to review the current recovery record.");
+          return;
+        }
+        startOver();
+      });
       actions.appendChild(reset);
       panel.appendChild(actions);
       modeSelect.prepend(panel);
@@ -752,7 +851,14 @@
       }
       if (savedRecord) renderPanel(savedRecord);
       window.addEventListener("storage", event => {
-        if (event.key !== storageKey || !owned) return;
+        if (event.key !== storageKey) return;
+        if (!owned) {
+          recoveryPanel?.remove();
+          savedRecord = readStored({discardInvalid: false});
+          if (savedRecord) renderPanel(savedRecord);
+          options.recoveryChanged?.();
+          return;
+        }
         let incoming = null;
         try { incoming = event.newValue ? JSON.parse(event.newValue) : null; }
         catch (_error) { incoming = null; }
@@ -768,7 +874,13 @@
     }
 
     function complete() {
-      if (owned && !removeStored()) return false;
+      if (owned) {
+        const current = readStored({discardInvalid: false});
+        const snapshot = options.capture();
+        if (current && current.session.ownerToken === ownerToken && current.session.revision === revision
+            && current.session.id === snapshot.recoverySessionId && current.learningSessionId === snapshot.learningSessionId
+            && !removeStored()) return false;
+      }
       owned = false;
       savedRecord = null;
       return true;
@@ -783,6 +895,13 @@
       storageKey,
       ownerToken,
       get hasSavedState() { return Boolean(savedRecord); },
+      get savedSessionSummary() {
+        // Re-read without clearing invalid/stale data. Identity, not mode or
+        // title alone, decides whether two continuation actions are equivalent.
+        const record = readStored({discardInvalid: false});
+        return record ? {mode: record.session.mode, learningSessionId: record.learningSessionId,
+          phase: record.session.phase, pendingStudySaves: record.unacknowledgedStudyEvents.length} : null;
+      },
       get ownsState() { return owned; },
     };
   }
@@ -799,6 +918,7 @@
     validateRecordEnvelope,
     pruneStoredRecords,
     listStoredRecords,
+    reconcileCompletedStudy,
     removeStoredQuiz,
     clearUnfinishedQuiz,
     clearAllStoredRecords,

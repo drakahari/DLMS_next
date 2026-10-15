@@ -50,6 +50,7 @@ class QuizBundleDependencies:
     upload_max_bytes: Dependency
     multipart_overhead_bytes: Dependency
     print_message: Dependency
+    preflight_export: Dependency | None = None
 
 
 @dataclass(frozen=True)

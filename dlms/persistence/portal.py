@@ -4,6 +4,23 @@ import json
 import os
 
 from dlms.persistence import json_files
+from dlms.themes import normalize_theme
+from dlms.services import certification_display
+
+
+DASHBOARD_CARD_GROUPS = (
+    ("Panels", (("welcome", "Welcome"), ("daily_review", "Study next & Continue studying"),
+                ("recent_activity", "Recent quiz activity"), ("certifications", "My Certifications"), ("overview", "Results overview"))),
+    ("Quick access", (("library", "Quiz Library"), ("build", "Build Quiz"),
+                      ("study_packs", "Study Packs"), ("it", "IT Study"),
+                      ("law", "Law Study"), ("medical", "Medical Study"),
+                      ("study_history", "Study History"), ("history", "Exam History"), ("analytics", "Analytics"),
+                      ("settings", "Settings"))),
+)
+
+
+def dashboard_card_defaults():
+    return {key: True for _, cards in DASHBOARD_CARD_GROUPS for key, _ in cards}
 
 
 def _portal_defaults(
@@ -16,6 +33,10 @@ def _portal_defaults(
 ):
     return {
         "title": "Training & Practice Center",
+        "dashboard_card_visibility": dashboard_card_defaults(),
+        "show_certifications": True,
+        "certification_display_count": "3",
+        "certification_sort": "earned",
         "show_confidence": True,
         "enable_regex_replace": False,
         "background_image": None,
@@ -127,11 +148,16 @@ def load_portal_config(
         "study_area_visibility" in data
         and not isinstance(data["study_area_visibility"], dict)
     )
+    malformed_dashboard_visibility = (
+        "dashboard_card_visibility" in data
+        and not isinstance(data["dashboard_card_visibility"], dict)
+    )
     if (
         malformed_quiz_folders
         or malformed_hidden_quiz_folders
         or malformed_excluded_learning_folders
         or malformed_study_area_visibility
+        or malformed_dashboard_visibility
     ):
         preserve_malformed_json(portal_path)
 
@@ -171,9 +197,7 @@ def load_portal_config(
     bg = cfg.get("background_image")
     cfg["background_image"] = bg.strip() if isinstance(bg, str) and bg.strip() else None
 
-    valid_themes = {"dark", "light", "purple-gold", "maroon-gold"}
-    theme = str(cfg.get("theme") or default_theme).strip().lower()
-    cfg["theme"] = theme if theme in valid_themes else default_theme
+    cfg["theme"] = normalize_theme(cfg.get("theme"), default_theme)
 
     cfg["ai_helper_enabled"] = bool(cfg.get("ai_helper_enabled", False))
     cfg["ai_auto_copy_prompt"] = bool(cfg.get("ai_auto_copy_prompt", True))
@@ -199,6 +223,20 @@ def load_portal_config(
         for key in ("it", "law", "medical", "other")
     }
 
+    cfg["show_certifications"] = cfg.get("show_certifications") if isinstance(cfg.get("show_certifications"), bool) else True
+    for key, validator, default in (('certification_display_count', certification_display.count, '3'), ('certification_sort', certification_display.sort, 'earned')):
+        try:cfg[key] = validator(cfg.get(key, default))
+        except ValueError:cfg[key] = default
+    raw_dashboard = cfg.get("dashboard_card_visibility")
+    if not isinstance(raw_dashboard, dict):
+        raw_dashboard = {}
+    defaults = dashboard_card_defaults()
+    # An added shortcut must not reappear for someone who hid History.
+    defaults["study_history"] = raw_dashboard.get("history") if isinstance(raw_dashboard.get("history"), bool) else True
+    cfg["dashboard_card_visibility"] = {
+        key: raw_dashboard[key] if isinstance(raw_dashboard.get(key), bool) else default
+        for key, default in defaults.items()
+    }
     return cfg
 
 

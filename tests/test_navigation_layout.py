@@ -71,7 +71,7 @@ class NavigationLayoutTests(unittest.TestCase):
 
     def test_settings_detail_routes_use_external_templates(self):
         cases = (
-            ("/settings/navigation", "settings/navigation.html", ("visibility",)),
+            ("/settings/layout", "settings/dashboard.html", ("visibility", "sidebar_visibility", "groups")),
             ("/settings/appearance", "settings/appearance.html", ("cfg",)),
             (
                 "/settings/ai",
@@ -274,7 +274,7 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertIn("const initialStudyAreaVisibility = readCachedStudyAreaVisibility()", source)
         self.assertIn("data-nav-key=\"${key}\"", source)
         self.assertIn("if (navItem) navItem.hidden = !visible", source)
-        self.assertIn("form[action=\"/settings/navigation/save\"]", source)
+        self.assertNotIn("form[action=\"/settings/navigation/save\"]", source)
 
         configuration_sync = source[source.rindex("portalConfigPromise.then(cfg =>"):source.index("themeSelect.addEventListener('change'")]
         self.assertIn("applyStudyAreaVisibility(visibility)", configuration_sync)
@@ -288,11 +288,15 @@ class NavigationLayoutTests(unittest.TestCase):
             source.index("themeSelect.addEventListener('change'")
         ]
 
-        self.assertIn('<option value="purple-gold" selected>', theme_initialization)
+        # The compact selector gets its complete catalog from the server's
+        # registry, and cannot submit before its saved choice is applied.
+        self.assertIn('aria-label="DLMS theme" disabled', theme_initialization)
+        self.assertIn("cfg?.theme_groups", theme_initialization)
+        self.assertIn("new Option(item.name, item.id)", theme_initialization)
         self.assertIn("themeQuick.hidden = true", theme_initialization)
         self.assertIn("themeQuick.hidden = false", theme_initialization)
         self.assertLess(
-            theme_initialization.index("if (cfg?.theme) themeSelect.value = cfg.theme"),
+            theme_initialization.index("themeSelect.value = cfg.theme"),
             theme_initialization.index("themeQuick.hidden = false"),
         )
 
@@ -402,7 +406,7 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertIn("flex:0 0 auto", action.group(1))
         self.assertIn("max-width:100%", action.group(1))
         self.assertIn("white-space:normal", action.group(1))
-        self.assertEqual(page.count('class="build-secondary-link"'), 5)
+        self.assertEqual(page.count('class="build-secondary-link"'), 6)
         self.assertIn('href="/learning-scope">Manage Learning Scope</a>', page)
         self.assertIn('class="build-secondary-link" id="liModelButton"', page)
         self.assertIn('class="build-secondary-link" id="liToggleZeroEvidence"', page)

@@ -26,11 +26,28 @@ from pathlib import Path
 import pytest
 
 from dlms.rendering.quiz_artifacts import build_quiz_html
+from dlms.themes import THEME_IDS, THEME_REGISTRY
 from tests.browser._bidi import FirefoxBidi
+from tests.browser._help_screenshots import HELP_SCREENSHOTS, capture_help_screenshots
 
 
 ROOT = Path(__file__).resolve().parents[2]
 RUN_BROWSER_TESTS = os.environ.get("DLMS_RUN_BROWSER_TESTS") == "1"
+
+_CAPTURE_ENVIRONMENTS = (
+    'DLMS_CSRF_CAPTURE_DIR', 'DLMS_COMPLETION_CAPTURE_DIR', 'DLMS_STUDY_CAPTURE_DIR',
+    'DLMS_HELP_CAPTURE_DIR', 'DLMS_PRESENTATION_CAPTURE_DIR', 'DLMS_SEQUENCE_CAPTURE_DIR',
+    'DLMS_EXAM_PLAN_CAPTURE_DIR', 'DLMS_PREBUILD_CAPTURE_DIR', 'DLMS_ACTION_CAPTURE_DIR',
+    'DLMS_PLAN_PROFILE_CAPTURE_DIR', 'DLMS_CERTIFICATION_CAPTURE_DIR', 'DLMS_CERT_CONTROL_CAPTURE_DIR',
+    'DLMS_REMEDIATION_CAPTURE_DIR', 'DLMS_BUNDLE_CAPTURE_DIR',
+)
+
+
+def _prepare_capture_directories():
+    """Optional screenshots must work in fresh, nested evidence directories."""
+    for name in _CAPTURE_ENVIRONMENTS:
+        if os.environ.get(name):
+            Path(os.environ[name]).mkdir(parents=True, exist_ok=True)
 
 pytestmark = [
     pytest.mark.browser,
@@ -41,12 +58,1033 @@ pytestmark = [
 ]
 
 
+def _open_resume_management(browser, button_selector):
+    """Use the dashboard's native disclosure before its existing clear action."""
+    button = browser.evaluate("(() => {const n=document.querySelector(" + json.dumps(button_selector) + ");return {id:n.dataset.clearRecovery,open:n.closest('details').open};})()")
+    if not button['open']:
+        browser.click('details.dashboard-resume-management:has([data-clear-recovery=' + json.dumps(button['id']) + ']) > summary')
+
+
+def _wait_for_quiz_mode_controls(browser, count=2):
+    """Prepared questions precede recovery; wait for usable mode controls."""
+    browser.wait_for(
+        f"quizRecoveryReady === true && quiz.length === {count} && "
+        "!document.querySelector('.study-mode-btn').disabled && "
+        "!document.querySelector('.exam-mode-btn').disabled"
+    )
+
+
+def _new_four_question_study_quiz(stack):
+    return _new_regular_study_quiz(stack, 4)
+
+
+def _new_regular_study_quiz(stack, count):
+    browser = stack.browser
+    browser.navigate(stack.base_url + f"/create_short_quiz?count={count}")
+    browser.wait_for(f"document.querySelector('[name=question_{count}]') !== null && window.dlmsCsrfToken")
+    browser.evaluate("""document.querySelector('[name=quiz_title]').value='Completion regression';
+      for(let n=1;n<=""" + str(count) + """;n++){
+        document.querySelector(`[name=question_${n}]`).value=`Completion question ${n}?`;
+        for(const letter of ['A','B','C','D'])document.querySelector(`[name=choice_${n}_${letter}]`).value=`Option ${letter}`;
+        document.querySelector(`[name=correct_${n}_A]`).checked=true;
+      }true""")
+    browser.click("#create-short-quiz-form button[type=submit]")
+    browser.wait_for("location.pathname.startsWith('/edit_quiz/')")
+    quiz_id = int(browser.evaluate("location.pathname.split('/').pop()"))
+    registry = json.loads((stack.data_root / "config/quizzes.json").read_text())
+    entry = next(item for item in registry if item["id"] == quiz_id)
+    browser.navigate(stack.base_url + "/quizzes/" + entry["html"])
+    browser.wait_for(f"quizRecoveryReady && quiz.length === {count}")
+    return quiz_id, entry["html"]
+
+
+@pytest.mark.parametrize("failure", ["answer", "finish", "refresh_failed", "finish_refresh_failed", "lost_ack", "lost_finish_ack", "resume", "other_tab", "two_hours"])
+def test_fifty_question_study_csrf_expiry(browser_stack, failure):
+    """A fresh LAN HTTP quiz outlives the real one-hour CSRF lifetime."""
+    browser = browser_stack.browser
+    browser_stack.base_url = browser_stack.base_url.replace('127.0.0.1', 'dlms-http.test')
+    quiz_id, html = _new_regular_study_quiz(browser_stack, 50)
+    assert browser.evaluate('window.isSecureContext') is False
+    theme = {'refresh_failed':'light', 'finish_refresh_failed':'dark', 'resume':'ethereal'}.get(failure)
+    if theme:
+        assert browser.evaluate("fetch('/api/theme',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({theme:"+json.dumps(theme)+"})}).then(r=>r.ok)")
+        browser.navigate(browser_stack.base_url+'/quizzes/'+html)
+        browser.wait_for('quizRecoveryReady')
+        browser.command('browsingContext.setViewport', {'context':browser.context,'viewport':{'width':390,'height':844}})
+    browser.evaluate("""window.csrfTrace=[];window.realStudyFetch=window.fetch.bind(window);
+      window.csrfTestFailure=""" + json.dumps(failure) + """;
+      window.blockRenewal=['refresh_failed','finish_refresh_failed','resume'].includes(csrfTestFailure);
+      window.fetch=async(url,options)=>{
+        const path=String(url);const tracked=path.includes('/study')||path==='/api/csrf-token';
+        const row={path,request:options?.body?JSON.parse(options.body):null};
+        if(tracked)csrfTrace.push(row);
+        if(path==='/api/csrf-token'&&blockRenewal){
+          row.failure='connection unavailable';throw new Error('Connection unavailable');
+        }
+        const response=await realStudyFetch(url,options);
+        if(tracked){row.status=response.status;const data=await response.clone().json().catch(()=>({}));
+          row.code=data.code;row.error=data.error;row.eventId=data.event_id;
+          row.completed=Boolean(data.session?.completed_at);}
+        if(path.includes('/study-response')&&row.request?.sequence===75&&response.ok&&csrfTestFailure==='lost_ack'){
+          csrfTestFailure='lost_ack_done';throw new Error('Lost acknowledgement after commit');
+        }
+        if(path==='/api/study/finish'&&response.ok&&csrfTestFailure==='lost_finish_ack'){
+          csrfTestFailure='lost_finish_ack_done';throw new Error('Lost completion acknowledgement');
+        }
+        return response;
+      };true""")
+    browser.click('.study-mode-btn')
+    browser.wait_for('durableStudySession !== null')
+    session_id = browser.evaluate('learningSessionId')
+    key = browser.evaluate('quizRecoveryController.storageKey')
+    clock = browser_stack.data_root/'browser-signing-clock.txt'
+    output = os.environ.get('DLMS_CSRF_CAPTURE_DIR')
+    trace_before_reload = []
+    try:
+        for number in range(49):
+            browser.click("#choices .choice[data-index='" + ('1' if number < 25 else '0') + "']")
+            browser.wait_for('studyLearningEventSaves.size === 0')
+            if number < 25:
+                browser.click("#choices .choice[data-index='0']")
+                browser.wait_for('studyLearningEventSaves.size === 0')
+            if number == 24 and failure == 'two_hours':
+                clock.write_text('3601')
+            if number < 48:
+                browser.click('#nextBtn')
+        with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+            assert conn.execute('SELECT COUNT(*) FROM study_responses WHERE session_id=?',(session_id,)).fetchone()[0] == 74
+        if failure not in ('finish', 'finish_refresh_failed'):
+            clock.write_text('7202' if failure == 'two_hours' else '3601')
+        if failure == 'other_tab':
+            # A fresh second tab renews the shared cookie, but must not take over Study.
+            original = browser.context
+            other = browser.command('browsingContext.create', {'type':'tab'})['context']
+            try:
+                browser.context = other
+                browser.navigate(browser_stack.base_url+'/study-history')
+            finally:
+                browser.context = original
+                browser.command('browsingContext.close', {'context':other})
+        browser.click('#nextBtn')
+        browser.click("#choices .choice[data-index='0']")
+        if failure in ('finish', 'finish_refresh_failed'):
+            browser.wait_for('studyLearningEventSaves.size === 0')
+            browser.evaluate('durableStudyPositionSave.then(()=>true)')
+            clock.write_text('3601')
+        browser.click('#finishReviewBtn')
+        if failure in ('refresh_failed', 'lost_ack', 'resume'):
+            browser.wait_for('!studyCompletionInProgress && studyLearningEventSaves.size === 1 && [...studyLearningEventSaves.values()][0].state === "failed"')
+            assert browser.evaluate('index') == 49
+            pending = browser.evaluate('[...studyLearningEventSaves.values()].map(r=>r.payload)')
+            local = browser.evaluate('JSON.parse(localStorage.getItem('+json.dumps(key)+'))')
+            assert local['learningSessionId'] == session_id and local['view']['questionIndex'] == 49
+            assert [r['payload'] for r in local['unacknowledgedStudyEvents']] == pending
+            assert not browser.evaluate("csrfTrace.some(r=>r.path==='/api/study/finish')")
+            if output:
+                shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+                (Path(output)/f'pending-{failure}.png').write_bytes(base64.b64decode(shot['data']))
+            with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+                assert conn.execute('SELECT COUNT(*) FROM study_responses WHERE session_id=?',(session_id,)).fetchone()[0] == (75 if failure == 'lost_ack' else 74)
+            if failure == 'resume':
+                # Only after proving the whole queue is retained: reload obtains
+                # a fresh token and Resume reuses the saved identities/position.
+                trace_before_reload = browser.evaluate('csrfTrace')
+                browser.navigate(browser_stack.base_url+'/quizzes/'+html)
+                browser.wait_for('quizRecoveryReady && document.querySelector(".quiz-recovery-resume")')
+                browser.click('.quiz-recovery-resume')
+                browser.wait_for('index === 49 && studyLearningEventSaves.size === 0 && durableStudySession !== null')
+                assert browser.evaluate('learningSessionId') == session_id
+            else:
+                browser.evaluate('blockRenewal=false;true')
+                browser.click('.study-learning-save-retry')
+                browser.wait_for('studyLearningEventSaves.size === 0')
+                saves = browser.evaluate("csrfTrace.filter(r=>r.path.includes('/study-response')&&r.request.sequence===75).map(r=>r.request)")
+                assert all(payload == pending[0] for payload in saves)
+            browser.click('#finishReviewBtn')
+        elif failure in ('lost_finish_ack', 'finish_refresh_failed'):
+            browser.wait_for('studyCompletionFailed && !studyCompletionInProgress')
+            assert browser.evaluate("studyCompletionMessage.includes('Finish Review was not confirmed')")
+            assert browser.evaluate('localStorage.getItem('+json.dumps(key)+') !== null')
+            assert browser.evaluate('studyLearningEventSaves.size') == 0
+            if output:
+                shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+                (Path(output)/f'pending-{failure}.png').write_bytes(base64.b64decode(shot['data']))
+            browser.evaluate('blockRenewal=false;true')
+            browser.click('.study-learning-save-retry')
+        browser.wait_for("studyCompletionMessage.includes('Review completed') && !studyCompletionInProgress")
+        browser.evaluate('durableStudyPositionSave.then(()=>true)')
+        completed_at = browser.evaluate('durableStudySession.completed_at')
+        browser.click('#finishReviewBtn')
+        browser.wait_for('!studyCompletionInProgress')
+        assert browser.evaluate('durableStudySession.completed_at') == completed_at
+        if failure != 'resume':
+            trace = browser.evaluate('csrfTrace')
+            payloads = {}
+            for row in trace:
+                if row['path'] == '/api/learning-events/study-response':
+                    identity = row['request']['eventId']
+                    assert payloads.setdefault(identity, row['request']) == row['request']
+            if failure == 'other_tab':
+                assert not any(row.get('status') == 400 for row in trace)
+            if failure == 'two_hours':
+                assert sum(row['path'] == '/api/csrf-token' and row.get('status') == 200 for row in trace) >= 2
+        with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+            rows = conn.execute('SELECT sequence,ordinal,was_correct FROM study_responses WHERE session_id=? ORDER BY sequence',(session_id,)).fetchall()
+            assert len(rows) == 75 and [r[0] for r in rows] == list(range(1,76))
+            first = {}
+            for _,ordinal,correct in rows:
+                first.setdefault(ordinal,correct)
+            assert list(first.values()) == [0]*25+[1]*25
+            if failure == 'resume':
+                assert conn.execute('SELECT event_id FROM study_responses WHERE session_id=? AND sequence=75',(session_id,)).fetchone()[0] == pending[0]['eventId']
+            assert conn.execute('SELECT completed_at FROM study_sessions WHERE id=?',(session_id,)).fetchone()[0]
+            if failure == 'resume':
+                assert conn.execute('SELECT position FROM study_sessions WHERE id=?',(session_id,)).fetchone()[0] == 49
+        assert browser.evaluate('localStorage.getItem('+json.dumps(key)+') === null')
+    finally:
+        if output:
+            directory=Path(output);directory.mkdir(parents=True,exist_ok=True)
+            (directory/f'csrf-{failure}.json').write_text(json.dumps(trace_before_reload + browser.evaluate('typeof csrfTrace === "undefined" ? [] : csrfTrace'),indent=2))
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (directory/f'csrf-{failure}.png').write_bytes(base64.b64decode(shot['data']))
+
+
+@pytest.mark.parametrize('rejection', ['origin', 'invalid_twice', 'renewal_http'])
+def test_study_security_retries_are_bounded(browser_stack, rejection):
+    browser = browser_stack.browser
+    _new_four_question_study_quiz(browser_stack)
+    browser.click('.study-mode-btn')
+    browser.wait_for('durableStudySession !== null')
+    browser.evaluate("""window.securityPosts=0;window.securityRenewals=0;
+      window.beforeSecurityTest=window.fetch.bind(window);window.rejection="""+json.dumps(rejection)+""";
+      window.fetch=(url,options)=>{
+        if(String(url)==='/api/csrf-token'){
+          securityRenewals++;
+          if(rejection==='renewal_http')return Promise.resolve(new Response('{}',{status:503}));
+        }
+        if(String(url)==='/api/learning-events/study-response'){
+          securityPosts++;
+          options={...options,headers:{...options.headers,'X-CSRFToken':'invalid'}};
+          if(rejection==='origin')return Promise.resolve(new Response(JSON.stringify({error:'Cross-site requests are not allowed.'}),{status:403}));
+        }
+        return beforeSecurityTest(url,options);
+      };true""")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for('[...studyLearningEventSaves.values()].some(r=>r.state === "failed")')
+    assert browser.evaluate('securityPosts') == (2 if rejection == 'invalid_twice' else 1)
+    assert browser.evaluate('securityRenewals') == (0 if rejection == 'origin' else 1)
+    assert browser.evaluate("document.querySelector('.study-learning-save-message').textContent.includes('awaiting save confirmation')")
+    assert _database_value(browser_stack.data_root/'results.db','SELECT COUNT(*) FROM study_responses') == 0
+    assert browser.evaluate('studyLearningEventSaves.size') == 1
+    # A visible user retry recovers the same response once the real failure clears.
+    browser.evaluate('window.fetch=beforeSecurityTest;true')
+    browser.click('.study-learning-save-retry')
+    browser.wait_for('studyLearningEventSaves.size === 0')
+    assert _database_value(browser_stack.data_root/'results.db','SELECT COUNT(*) FROM study_responses') == 1
+
+
+@pytest.mark.parametrize("uuid_available", [True, False])
+@pytest.mark.parametrize("outcomes", ["all_wrong", "all_correct", "mixed", "corrected"])
+def test_new_regular_study_answers_complete(browser_stack, uuid_available, outcomes):
+    browser = browser_stack.browser
+    quiz_id, html = _new_four_question_study_quiz(browser_stack)
+    if not uuid_available:
+        browser.evaluate("Object.defineProperty(crypto,'randomUUID',{configurable:true,value:undefined});true")
+    browser.evaluate("""window.completionTrace=[];window.completionFetch=window.fetch.bind(window);
+      window.fetch=async(url,options)=>{
+        const row={url:String(url),request:options?.body?JSON.parse(options.body):null};
+        if(options?.method==='POST'&&String(url).includes('/study')){
+          completionTrace.push(row);const response=await completionFetch(url,options);
+          row.status=response.status;row.ack=await response.clone().json();return response;
+        }return completionFetch(url,options);
+      };true""")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    for number in range(4):
+        choice = 0 if outcomes == "all_correct" or (outcomes == "mixed" and number % 2) else 1
+        browser.click(f"#choices .choice[data-index='{choice}']")
+        browser.wait_for("studyLearningEventSaves.size === 0")
+        if outcomes == "corrected":
+            browser.click("#choices .choice[data-index='0']")
+            browser.wait_for("studyLearningEventSaves.size === 0")
+        if number < 3:
+            browser.click("#nextBtn")
+    browser.click("#finishReviewBtn")
+    browser.wait_for("completionTrace.some(r=>r.url==='/api/study/finish' && r.status)")
+    session_id = browser.evaluate("learningSessionId")
+    trace = browser.evaluate("completionTrace")
+    with sqlite3.connect(browser_stack.data_root / "results.db") as conn:
+        conn.row_factory = sqlite3.Row
+        session = dict(conn.execute("SELECT * FROM study_sessions WHERE id=?", (session_id,)).fetchone())
+        responses = [dict(row) for row in conn.execute("SELECT * FROM study_responses WHERE session_id=? ORDER BY sequence", (session_id,))]
+    output = os.environ.get("DLMS_COMPLETION_CAPTURE_DIR")
+    if output:
+        directory = Path(output); directory.mkdir(parents=True, exist_ok=True)
+        name = "uuid" if uuid_available else "fallback"
+        (directory / f"{outcomes}-{name}.json").write_text(json.dumps({"requests": trace, "session": session, "responses": responses}, indent=2))
+        shot = browser.command("browsingContext.captureScreenshot", {"context": browser.context, "origin": "document"})
+        (directory / f"{outcomes}-{name}.png").write_bytes(base64.b64decode(shot["data"]))
+    expected = {"all_wrong": [0]*4, "all_correct": [1]*4, "mixed": [0,1,0,1], "corrected": [0,1]*4}[outcomes]
+    assert [row["was_correct"] for row in responses] == expected
+    assert session["completed_at"], trace
+    assert [row["sequence"] for row in responses] == list(range(1, len(expected)+1))
+    browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent.includes('Review completed')")
+    # The visible control can be retried without creating another completion.
+    browser.click("#finishReviewBtn")
+    browser.wait_for("!studyCompletionInProgress")
+    assert browser.evaluate("durableStudySession.completed_at") == session["completed_at"]
+    if outcomes in {"all_wrong", "corrected"}:
+        plan = browser.evaluate("fetch('/api/daily-review-plan').then(r=>r.json())")
+        assert "Missed within the last 14 days" in json.dumps(plan)
+    browser.navigate(browser_stack.base_url + "/")
+    browser.wait_for("document.getElementById('regularStudyContinuity')?.textContent.includes('Review finished')")
+    assert not browser.evaluate("document.querySelector('.daily-review-unfinished')?.textContent.includes('Completion regression')")
+    browser.navigate(browser_stack.base_url + "/quizzes/" + html)
+    browser.wait_for("quizRecoveryReady")
+    assert browser.evaluate("document.querySelector('.quiz-recovery-resume') === null && document.querySelector('#durableStudyResume') === null")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null")
+    assert browser.evaluate("learningSessionId") != session_id
+
+
+@pytest.mark.parametrize("interruption", ["delayed", "failed_save", "lost_save_ack", "lost_finish_ack", "lost_finish_ack_quiz", "lost_finish_ack_retry"])
+def test_regular_study_interrupted_saves_and_finish(browser_stack, interruption):
+    browser = browser_stack.browser
+    quiz_id, html = _new_four_question_study_quiz(browser_stack)
+    browser.evaluate("""window.realCompletionFetch=window.fetch.bind(window);window.saveAttempts=[];
+      window.finishPosts=0;window.interruption=""" + json.dumps(interruption) + """;
+      window.fetch=async(url,options)=>{
+        if(String(url).includes('/study-response')){
+          const payload=JSON.parse(options.body);saveAttempts.push(payload);
+          if(payload.sequence===1 && saveAttempts.filter(p=>p.sequence===1).length===1){
+            if(interruption==='delayed')await new Promise(resolve=>window.releaseFirstSave=resolve);
+            if(interruption==='failed_save')throw new Error('Disconnected before save');
+            if(interruption==='lost_save_ack'){
+              await realCompletionFetch(url,options);throw new Error('Lost response acknowledgement');
+            }
+          }
+        }
+        if(String(url)==='/api/study/finish'){
+          finishPosts++;
+          if(interruption.startsWith('lost_finish_ack')&&finishPosts===1){
+            await realCompletionFetch(url,options);throw new Error('Lost completion acknowledgement');
+          }
+        }
+        return realCompletionFetch(url,options);
+      };true""")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    recovery_key = browser.evaluate("quizRecoveryController.storageKey")
+    session_id = browser.evaluate("learningSessionId")
+    # Establish the injected failure's visible state before pointer navigation:
+    # its asynchronous banner otherwise moves Next between pointer move/down.
+    # Successful saves are not awaited; delayed still finishes with its first
+    # response explicitly pending, without waiting for an acknowledgement.
+    for number in range(4):
+        browser.click("#choices .choice[data-index='1']")
+        if number == 0 and interruption in {"failed_save", "lost_save_ack"}:
+            browser.wait_for(
+                "[...studyLearningEventSaves.values()].some(r=>r.payload.sequence===1 && r.state==='failed') && "
+                "document.getElementById('studyLearningEventStatus').getClientRects().length>0 && "
+                "!document.querySelector('.study-learning-save-retry').disabled"
+            )
+        if number < 3:
+            browser.click("#nextBtn")
+            browser.wait_for(f"index === {number + 1}")
+    browser.click("#finishReviewBtn")
+    if interruption == "delayed":
+        browser.wait_for("studyCompletionInProgress && studyLearningEventSaves.size === 1")
+        assert browser.evaluate("finishPosts") == 0
+        with sqlite3.connect(browser_stack.data_root / "results.db") as conn:
+            assert conn.execute("SELECT sequence FROM study_responses WHERE session_id=? ORDER BY sequence", (session_id,)).fetchall() == [(2,), (3,), (4,)]
+        browser.evaluate("releaseFirstSave();true")
+    elif interruption in {"failed_save", "lost_save_ack"}:
+        browser.wait_for("!studyCompletionInProgress && studyCompletionMessage.includes('Retry the failed Study save')")
+        assert browser.evaluate("finishPosts") == 0
+        assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null")
+        browser.click(".study-learning-save-retry")
+        browser.wait_for("studyLearningEventSaves.size === 0")
+        attempts = browser.evaluate("saveAttempts.filter(p=>p.sequence===1)")
+        assert len(attempts) == 2 and attempts[0] == attempts[1]
+        browser.click("#finishReviewBtn")
+    else:
+        browser.wait_for("studyCompletionFailed && !studyCompletionInProgress")
+        assert not browser.evaluate("studyCompletionMessage.includes('Review completed')")
+        assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null")
+        # Preserve unrelated browser data while reconciling the exact completed session.
+        browser.evaluate("localStorage.setItem('completion-test-unrelated','keep');true")
+        if interruption == "lost_finish_ack_retry":
+            browser.click(".study-learning-save-retry")
+            browser.wait_for("studyCompletionMessage.includes('Review completed') && !studyCompletionInProgress")
+        elif interruption == "lost_finish_ack_quiz":
+            browser.navigate(browser_stack.base_url + "/quizzes/" + html)
+            browser.wait_for("quizRecoveryReady")
+        else:
+            browser.navigate(browser_stack.base_url + "/")
+            browser.wait_for("document.getElementById('regularStudyContinuity')?.textContent.includes('Review finished')")
+        browser.wait_for(f"localStorage.getItem({json.dumps(recovery_key)}) === null")
+        assert browser.evaluate("localStorage.getItem('completion-test-unrelated')") == "keep"
+        assert not browser.evaluate("document.querySelector('.daily-review-unfinished')?.textContent.includes('Completion regression')")
+    if not interruption.startswith("lost_finish_ack"):
+        browser.wait_for("studyCompletionMessage.includes('Review completed') && !studyCompletionInProgress")
+        assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) === null")
+    with sqlite3.connect(browser_stack.data_root / "results.db") as conn:
+        assert conn.execute("SELECT completed_at FROM study_sessions WHERE id=?", (session_id,)).fetchone()[0]
+        assert conn.execute("SELECT sequence, was_correct FROM study_responses WHERE session_id=? ORDER BY sequence", (session_id,)).fetchall() == [(1,0),(2,0),(3,0),(4,0)]
+    browser.navigate(browser_stack.base_url + "/quizzes/" + html)
+    browser.wait_for("quizRecoveryReady")
+    assert browser.evaluate("document.querySelector('.quiz-recovery-resume') === null && document.querySelector('#durableStudyResume') === null")
+
+
+def test_regular_study_genuine_sequence_gap_keeps_resume(browser_stack):
+    browser = browser_stack.browser
+    quiz_id, html = _new_four_question_study_quiz(browser_stack)
+    # Reproduce an already-affected client's sequence allocator, without editing DB facts.
+    browser.evaluate("window.originalEventId=createStudyLearningEventId;createStudyLearningEventId=()=>{studyLearningEventSequence++;return originalEventId();};true")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    for number in range(4):
+        browser.click("#choices .choice[data-index='1']")
+        browser.wait_for("studyLearningEventSaves.size === 0")
+        if number < 3:
+            browser.click("#nextBtn")
+    key = browser.evaluate("quizRecoveryController.storageKey")
+    browser.click("#finishReviewBtn")
+    browser.wait_for("studyCompletionFailed && studyCompletionMessage.includes('sequence is incomplete')")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(key)}) !== null")
+    browser.navigate(browser_stack.base_url + "/")
+    browser.wait_for("document.getElementById('regularStudyContinuity')?.textContent.includes('4 / 4 reviewed')")
+    text = browser.evaluate("document.getElementById('regularStudyContinuity').textContent")
+    assert "Saved review needs attention" in text and "Earlier saves or complete answers are missing" in text
+    assert "saved records have not been repaired" in text
+    browser.navigate(browser_stack.base_url + "/quizzes/" + html)
+    browser.wait_for("quizRecoveryReady")
+    assert browser.evaluate("document.querySelector('.quiz-recovery-resume') !== null")
+    with sqlite3.connect(browser_stack.data_root / "results.db") as conn:
+        assert conn.execute("SELECT completed_at FROM study_sessions WHERE quiz_id=?", (quiz_id,)).fetchone() == (None,)
+        assert conn.execute("SELECT sequence FROM study_responses WHERE session_id IN (SELECT id FROM study_sessions WHERE quiz_id=?) ORDER BY sequence", (quiz_id,)).fetchall() == [(2,), (4,), (6,), (8,)]
+
+
+def test_study_completion_lookup_preserves_other_and_changed_recovery(browser_stack):
+    browser = browser_stack.browser
+    browser.navigate(browser_stack.base_url + "/quizzes/" + browser_stack.metadata["companion_html"])
+    browser.wait_for("quizRecoveryReady")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    other_key = browser.evaluate("quizRecoveryController.storageKey")
+    quiz_id, _html = _new_four_question_study_quiz(browser_stack)
+    other_raw = browser.evaluate(f"localStorage.getItem({json.dumps(other_key)})")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    for number in range(4):
+        browser.click("#choices .choice[data-index='1']")
+        browser.wait_for("studyLearningEventSaves.size === 0")
+        if number < 3:
+            browser.click("#nextBtn")
+    browser.evaluate("window.completedKey=quizRecoveryController.storageKey;window.completedRaw=localStorage.getItem(completedKey);true")
+    browser.click("#finishReviewBtn")
+    browser.wait_for("studyCompletionMessage.includes('Review completed')")
+    # A failed status lookup cannot clear an otherwise valid recovery envelope.
+    browser.evaluate("localStorage.setItem(completedKey,completedRaw);window.lookupFetch=window.fetch.bind(window);window.fetch=async()=>new Response('{}',{status:503});true")
+    assert browser.evaluate(f"DLMSQuizRecovery.reconcileCompletedStudy({{quizId:{quiz_id}}}).then(s=>s.size)") == 0
+    assert browser.evaluate("localStorage.getItem(completedKey)===completedRaw")
+    # Another tab writes a newer review while the exact-session lookup is in flight.
+    browser.evaluate("""window.fetch=async(...args)=>{
+      const response=await lookupFetch(...args);const newer=JSON.parse(completedRaw);
+      newer.learningSessionId='different-new-review';newer.session.id='different-recovery';
+      newer.session.ownerToken='another-tab';window.newerRaw=JSON.stringify(newer);
+      localStorage.setItem(completedKey,newerRaw);return response;};true""")
+    assert browser.evaluate(f"DLMSQuizRecovery.reconcileCompletedStudy({{quizId:{quiz_id}}}).then(s=>s.size)") == 0
+    assert browser.evaluate("localStorage.getItem(completedKey)===newerRaw")
+    # With the original unchanged checkpoint, authoritative completion clears only it.
+    browser.evaluate("window.fetch=lookupFetch;localStorage.setItem(completedKey,completedRaw);true")
+    assert browser.evaluate(f"DLMSQuizRecovery.reconcileCompletedStudy({{quizId:{quiz_id}}}).then(s=>s.size)") == 1
+    assert browser.evaluate("localStorage.getItem(completedKey)===null")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(other_key)})") == other_raw
+
+
+@pytest.mark.parametrize("browser_stack", ["UTC", "America/New_York", "Asia/Kolkata"], indirect=True)
+def test_study_local_instants_dst_and_ambiguous_dates(browser_stack):
+    browser = browser_stack.browser
+    browser.navigate(browser_stack.base_url + "/history")
+    browser.wait_for("typeof window.DLMSLocalTime === 'object'")
+    result = browser.evaluate("({zone:Intl.DateTimeFormat().resolvedOptions().timeZone, before:DLMSLocalTime.format('2026-03-08T06:59:00Z'), after:DLMSLocalTime.format('2026-03-08T07:01:00Z'), fallBefore:DLMSLocalTime.format('2026-11-01T05:59:00Z'), fallAfter:DLMSLocalTime.format('2026-11-01T06:01:00Z'), date:DLMSLocalTime.format('2026-03-08'), ambiguous:DLMSLocalTime.format('2026-03-08 06:59:00'), sqlite:DLMSLocalTime.format('2026-03-08 06:59:00',{sqliteUTC:true}), invalid:DLMSLocalTime.format('2026-02-30T12:00:00Z')})")
+    assert result["date"] == "2026-03-08 (date only)"
+    assert "timezone unknown" in result["ambiguous"]
+    assert result["sqlite"] == result["before"]
+    assert "invalid timestamp" in result["invalid"]
+    for invalid in ("2026-02-30", "2026-03-08T24:00:00Z", "2026-03-08T07:60:00Z"):
+        assert "invalid timestamp" in browser.evaluate(f"DLMSLocalTime.format({json.dumps(invalid)})")
+    if result["zone"] == "America/New_York":
+        assert "1:59" in result["before"] and "3:01" in result["after"]
+        assert "1:59" in result["fallBefore"] and "1:01" in result["fallAfter"]
+        assert result["fallBefore"].split()[-1] != result["fallAfter"].split()[-1]
+    elif result["zone"] in {"Asia/Kolkata", "Asia/Calcutta"}:
+        assert "12:29" in result["before"] and "12:31" in result["after"]
+    else:
+        assert result["zone"] == "UTC"
+        assert "6:59" in result["before"] and "7:01" in result["after"]
+
+
+@pytest.mark.parametrize("theme", ["light", "dark", "ethereal"])
+def test_durable_study_resume_takeover_history_and_dashboard(browser_stack, theme):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.navigate(base + "/settings/appearance")
+    _set_theme(browser, theme)
+    url = base + "/quizzes/" + browser_stack.metadata["critical_html"]
+    browser.navigate(url)
+    browser.wait_for("quizRecoveryReady")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    session_id = browser.evaluate("learningSessionId")
+    first_context = browser.context
+    browser.click("#nextBtn")
+    browser.wait_for("index === 1")
+    # Server resume remains available without browser-local recovery.
+    browser.evaluate("localStorage.removeItem(quizRecoveryController.storageKey);true")
+    second_context = browser.command("browsingContext.create", {"type": "tab"})["context"]
+    browser.context = second_context
+    browser.navigate(url)
+    browser.wait_for("document.querySelector('#durableStudyResume button') !== null")
+    browser.click("#durableStudyResume button")
+    browser.wait_for("durableStudySession !== null && index === 1 && document.querySelector('#choices .choice') !== null")
+    assert browser.evaluate("learningSessionId") == session_id
+    assert browser.evaluate("userAnswers.q0") == [0]
+    browser.context = first_context
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent.includes('another tab')")
+    browser.context = second_context
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    capture_dir = os.environ.get("DLMS_STUDY_CAPTURE_DIR")
+    if capture_dir:
+        directory = Path(capture_dir); directory.mkdir(parents=True, exist_ok=True)
+        for width in (1440, 360):
+            browser.set_viewport(width, 1000)
+            capture = browser.command("browsingContext.captureScreenshot", {"context": browser.context, "origin": "document"})
+            (directory / f"study-finish-{theme}-{width}.png").write_bytes(base64.b64decode(capture["data"]))
+    browser.evaluate("document.getElementById('finishReviewBtn').focus();true")
+    browser.press_key("\ue007")
+    browser.wait_for("durableStudySession.completed_at !== null")
+    output = os.environ.get("DLMS_STUDY_CAPTURE_DIR")
+    for width in (1440, 360):
+        browser.set_viewport(width, 1000)
+        for path, label in ((url, "resume"), ("/study-history", "history"), ("/", "dashboard"), ("/help/quizzes#study-history", "help")):
+            browser.navigate(path if path.startswith("http") else base + path)
+            if label == "dashboard":
+                browser.wait_for("document.getElementById('regularStudyContinuity')?.textContent.includes('Review finished')")
+            if label == "history":
+                if not browser.evaluate("document.querySelector('.study-history-row details').open"):
+                    browser.click(".study-history-row summary")
+                browser.wait_for("document.body.textContent.includes('first graded answer incorrect')")
+                assert "first graded answer incorrect" in browser.evaluate("document.body.textContent")
+                assert browser.evaluate("document.querySelector('.study-history-row details').open")
+            assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), (theme, width, label)
+            if output:
+                directory = Path(output); directory.mkdir(parents=True, exist_ok=True)
+                browser.evaluate("window.scrollTo(0,0);true")
+                capture = browser.command("browsingContext.captureScreenshot", {"context": browser.context, "origin": "document"})
+                (directory / f"study-{label}-{theme}-{width}.png").write_bytes(base64.b64decode(capture["data"]))
+
+
+@pytest.mark.parametrize("pending", ["none", "lost_ack", "conflict"])
+def test_study_browser_resume_reconciles_newer_server_answers(browser_stack, pending):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    url = base + "/quizzes/" + browser_stack.metadata["critical_html"]
+    browser.navigate(url)
+    browser.wait_for("quizRecoveryReady")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    if pending != "none":
+        browser.evaluate("window.realReviewFetch=window.fetch;window.fetch=async (url,opts)=>{if(String(url).includes('/study-response')) {" +
+                         ("await realReviewFetch(url,opts);" if pending == "lost_ack" else "") +
+                         "throw new Error('Interrupted acknowledgement');}return realReviewFetch(url,opts);};true")
+        browser.click("#choices .choice[data-index='0']")
+        browser.wait_for("Array.from(studyLearningEventSaves.values()).some(r=>r.state==='failed')")
+        browser.evaluate("window.fetch=window.realReviewFetch;true")
+    # A second browser/profile can update the server without this local checkpoint.
+    sequence = 3 if pending == "lost_ack" else 2
+    browser.evaluate("""(async()=>{
+        const creds={...studyCredentials(),owner:'other-browser'};
+        await studyRequest('/api/study/session',{...creds,fingerprint:quizContentFingerprint,variants:{},takeover:true});
+        await studyRequest('/api/learning-events/study-response',{...creds,contract:2,eventId:'other-browser-answer',sequence:%d,
+          questionOrdinal:1,questionType:'choice',kind:'response',selected:['A'],wasCorrect:true});
+        await studyRequest('/api/study/position',{...creds,position:1});return true;
+    })()""" % sequence)
+    browser.navigate(url)
+    browser.wait_for("quizRecoveryReady && document.querySelector('.quiz-recovery-resume') !== null")
+    browser.click(".quiz-recovery-resume")
+    if pending == "conflict":
+        browser.wait_for("document.body.textContent.includes('sequence is already used')")
+        assert browser.evaluate("!document.querySelector('.quiz-recovery-panel').hidden && document.getElementById('quiz').classList.contains('hidden')")
+        assert browser.evaluate("JSON.parse(localStorage.getItem(quizRecoveryController.storageKey)).unacknowledgedStudyEvents.length") == 1
+    else:
+        browser.wait_for("index === 1 && !document.getElementById('quiz').classList.contains('hidden')")
+        assert browser.evaluate("userAnswers.q0") == [0]
+        assert browser.evaluate("studyLearningEventSaves.size") == 0
+        assert browser.evaluate("JSON.parse(localStorage.getItem(quizRecoveryController.storageKey)).answers['0'].selected") == [0]
+        assert browser.evaluate("durableStudySession.observations['0'].first.correct") is False
+
+
+def test_study_navigation_saves_stay_in_order(browser_stack):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.navigate(base + "/quizzes/" + browser_stack.metadata["critical_html"])
+    browser.wait_for("quizRecoveryReady")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.evaluate("window.positionCalls=0;window.originalPositionFetch=fetch;window.fetch=async(url,opts)=>{if(String(url).endsWith('/study/position')){positionCalls++;if(positionCalls===1)await new Promise(resolve=>window.releasePosition=resolve);}return originalPositionFetch(url,opts);};true")
+    browser.click("#nextBtn")
+    browser.wait_for("positionCalls === 1")
+    browser.click("#prevBtn")
+    assert browser.evaluate("index === 0 && positionCalls === 1")
+    browser.evaluate("releasePosition();true")
+    browser.wait_for("positionCalls === 2")
+    browser.evaluate("durableStudyPositionSave.then(()=>true)")
+    result = browser.evaluate("fetch('/api/study/quiz/'+window.QUIZ_ID).then(r=>r.json())")
+    assert result["session"]["position"] == 0
+
+
+def test_legacy_quiz_notice_is_served_without_rewriting(browser_stack):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    path = browser_stack.data_root / "quizzes" / "legacy-study.html"
+    source = '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><h1>Legacy sample quiz</h1></body></html>'
+    path.write_text(source)
+    browser.set_viewport(360, 900)
+    browser.navigate(base + "/quizzes/legacy-study.html")
+    assert browser.evaluate("document.getElementById('legacyStudyNotice').textContent.includes('do not create durable Study sessions')")
+    assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
+    browser.activate()
+    browser.evaluate("document.querySelector('#legacyStudyNotice a').focus();true")
+    browser.press_key("\ue004")
+    assert browser.evaluate("document.activeElement.getAttribute('href')") == "/help/quizzes#study-history"
+    assert path.read_text() == source
+    if os.environ.get("DLMS_STUDY_CAPTURE_DIR"):
+        capture = browser.command("browsingContext.captureScreenshot", {"context": browser.context, "origin": "document"})
+        (Path(os.environ["DLMS_STUDY_CAPTURE_DIR"]) / "legacy-study-notice-360.png").write_bytes(base64.b64decode(capture["data"]))
+
+
+def test_hotspot_keyboard_positions_without_supplying_target(browser_stack):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command("browsingContext.create", {"type": "tab"})["context"]
+    quiz_id = browser_stack.metadata["companion_id"]
+    html = browser_stack.metadata["companion_html"]
+    artifact = browser_stack.data_root / "data" / Path(html).with_suffix(".json").name
+    target = {"number":1,"type":"hotspot","question":"Locate the centre", "image_url":"/static/favicon.ico", "image_alt":"Test positioning image", "target":{"type":"circle","x":.5,"y":.5,"radius":.2}}
+    artifact.write_text(json.dumps([target]), encoding="utf-8")
+    with sqlite3.connect(browser_stack.data_root / "results.db") as conn:
+        conn.execute("UPDATE questions SET question_text='Locate the centre [Image hotspot]' WHERE quiz_id=?", (quiz_id,))
+    browser.navigate(base + "/quizzes/" + html)
+    browser.wait_for("quizRecoveryReady")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('.hotspot-image-wrap') !== null")
+    browser.wait_for("document.querySelector('.hotspot-image-wrap') !== null")
+    browser.activate()
+    browser.wait_for("document.hasFocus()")
+    browser.evaluate("document.getElementById('qText').tabIndex=-1;document.getElementById('qText').focus();true")
+    browser.press_key("\ue004")  # Real Tab navigation into the image control.
+    # The target is in the centre. Move genuinely outside it before submitting.
+    for _ in range(30):
+        browser.press_key("\ue014")  # ArrowRight, 1% per press.
+    assert browser.evaluate("userAnswers.q0 === undefined && studyLearningEventSaves.size === 0")
+    assert browser.evaluate("document.activeElement.matches('.hotspot-image-wrap:focus-visible')"), browser.evaluate("({focus:document.hasFocus(), active:document.activeElement.outerHTML, cursor:hotspotCursors[index]})")
+    browser.press_key("\ue007")
+    browser.wait_for("studyLearningEventSaves.size === 0 && userAnswers.q0 !== undefined")
+    assert browser.evaluate("userAnswers.q0.x > .79 && userAnswers.q0.y === .5")
+    assert browser.evaluate("document.querySelector('.hotspot-click-marker').classList.contains('wrong')")
+    browser.press_key("\ue015")  # ArrowDown: does not submit another response.
+    assert browser.evaluate("studyLearningEventSequence") == 1
+    browser.click("#finishReviewBtn")
+    browser.wait_for("studyCompletionMessage.includes('Review completed')")
+    assert browser.evaluate("durableStudySession.reviewed") == 1
+    assert browser.evaluate("durableStudySession.observations['0'].first.correct") is False
+
+
+def test_help_screenshot_capture_controls(browser_stack):
+    """The refresh uses the same isolated app/Firefox lifecycle as the browser gate."""
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings/appearance')
+    _set_theme(browser, 'light')
+    browser.navigate(base + '/settings/layout')
+    # A saved example demonstrates that the two locations can differ.
+    browser.evaluate("document.querySelector('[name=study_area_it]').checked=false;document.querySelector('[name=dashboard_card_law]').checked=false;true")
+    browser.click('button[value=save]')
+    browser.wait_for_page_ready("location.search.includes('saved=1')")
+    assert browser.evaluate("document.querySelector('[name=dashboard_card_it]').checked && !document.querySelector('[name=study_area_it]').checked && !document.querySelector('[name=dashboard_card_law]').checked && document.querySelector('[name=study_area_law]').checked")
+    browser.navigate(base + '/settings/appearance')
+    assert browser.evaluate("document.querySelector('#appearanceTheme').options.length") == 26
+    assert browser.evaluate("document.querySelector('.settings-form-actions button').textContent.trim()") == 'Save Appearance'
+    browser.wait_for("document.querySelector('#dlmsQuickTheme')?.value === 'light'")
+    assert browser.evaluate("document.querySelector('.dashboard-theme-quick label').textContent") == 'Theme'
+    output = os.environ.get('DLMS_HELP_CAPTURE_DIR')
+    if output:
+        capture_help_screenshots(browser, base, output)
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'omarchy-white'))
+def test_help_instruction_images_mobile_and_keyboard(browser_stack, theme):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings/appearance')
+    _set_theme(browser, theme)
+    for width in (1440, 360):
+        browser.set_viewport(width, 1000)
+        browser.navigate(base + '/help/settings')
+        browser.activate()
+        browser.wait_for('document.hasFocus()')
+        for filename in HELP_SCREENSHOTS:
+            selector = '.help-shot-controls a[href="/static/help_assets/' + filename + '"]'
+            browser.evaluate('document.querySelector(' + json.dumps(selector) + ').scrollIntoView({block:"center"});true')
+            browser.wait_for('document.querySelector(' + json.dumps(selector + ' img') + ').complete && document.querySelector(' + json.dumps(selector + ' img') + ').naturalWidth > 0')
+            assert browser.evaluate('(() => {const img=document.querySelector(' + json.dumps(selector + ' img') + ');const w=img.getBoundingClientRect().width;return img.naturalWidth===Number(img.getAttribute("width")) && img.naturalHeight===Number(img.getAttribute("height")) && w>=img.naturalWidth*.75 && w<=img.naturalWidth;})()'), (theme, width, filename)
+            assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+            review = os.environ.get('DLMS_HELP_IMAGE_REVIEW_DIR')
+            if review and filename in ('settings-appearance-theme.webp', 'settings-layout-study-areas.webp', 'settings-layout-restore.webp'):
+                directory = Path(review)
+                directory.mkdir(parents=True, exist_ok=True)
+                capture = browser.command('browsingContext.captureScreenshot', {'context': browser.context, 'origin': 'viewport'})
+                (directory / f'{Path(filename).stem}-{theme}-{width}.png').write_bytes(base64.b64decode(capture['data']))
+            browser.evaluate('document.querySelector(' + json.dumps(selector) + ').focus();true')
+            browser.press_key('\ue007')  # Enter activates the real image link.
+            browser.wait_for('!document.querySelector(".help-lightbox").hidden && document.querySelector(".help-lightbox-image").complete')
+            assert browser.evaluate('document.activeElement===document.querySelector(".help-lightbox-close")')
+            assert browser.evaluate('document.querySelector(".help-lightbox-image").alt===document.querySelector(' + json.dumps(selector + ' img') + ').alt')
+            browser.press_key('\ue004')
+            assert browser.evaluate('document.activeElement.matches(".help-lightbox-close:focus-visible")')
+            assert browser.evaluate('getComputedStyle(document.activeElement).outlineStyle!=="none"')
+            browser.press_key('\ue00c')  # Escape restores focus to the image link.
+            assert browser.evaluate('document.querySelector(".help-lightbox").hidden && document.activeElement===document.querySelector(' + json.dumps(selector) + ')')
+        for role, value in _theme_contrast_snapshot(browser, {
+            'appearance-caption': '#appearance .help-shot figcaption',
+            'navigation-caption': '#navigation .help-shot figcaption',
+        }, include_gradients=True).items():
+            assert value['contrast'] >= 4.5, (theme, width, role, value)
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark'))
+def test_navigation_help_current_links_and_keyboard(browser_stack, theme, tmp_path):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings/layout')
+    _set_theme(browser, theme)
+    for width in (1440, 360):
+        browser.set_viewport(width, 1000)
+        browser.navigate(base + '/help/settings#navigation')
+        browser.activate()
+        browser.wait_for('document.hasFocus()')
+        browser.wait_for("document.querySelector('.help-toc a[href=\"#navigation\"]')")
+        guide = browser.evaluate("document.querySelector('#navigation').innerText")
+        for label in ('Show on dashboard', 'Show in sidebar', 'Hide from both',
+                      'Save layout & navigation', 'Restore dashboard defaults', 'Restore sidebar defaults'):
+            assert label in guide
+        for role, value in _theme_contrast_snapshot(browser, {
+            'heading': '#navigation h2', 'link': '#navigation p a',
+            'step': '#navigation li', 'restore': '#navigation ul li',
+        }, include_gradients=True).items():
+            assert value['contrast'] >= 4.5, (theme, width, role, value)
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        shots = Path(os.environ.get('DLMS_NAVIGATION_HELP_REVIEW_DIR', str(tmp_path / 'navigation-help-review')))
+        shots.mkdir(parents=True, exist_ok=True)
+        capture = browser.command('browsingContext.captureScreenshot', {'context': browser.context, 'origin': 'document'})
+        (shots / f'navigation-help-{theme}-{width}.png').write_bytes(base64.b64decode(capture['data']))
+        # Tab between the actual Help links, then follow Customize navigation.
+        browser.evaluate("document.querySelector('#navigation p a').focus();true")
+        browser.press_key('\ue004')
+        assert browser.evaluate("document.activeElement.textContent==='Customize navigation' && document.activeElement.matches(':focus-visible')")
+        assert browser.evaluate("getComputedStyle(document.activeElement).outlineStyle==='solid'")
+        browser.press_key('\ue007')
+        browser.wait_for_page_ready("location.pathname==='/settings/layout' && location.hash==='#study-areas'")
+        for label in ('Show on dashboard', 'Show in sidebar', 'Hide from both',
+                      'Save layout & navigation', 'Restore dashboard defaults', 'Restore sidebar defaults'):
+            assert label in browser.evaluate("document.querySelector('.settings-detail-card').innerText")
+        browser.navigate(base + '/help/getting-started#navigation')
+        browser.click('#navigation a[href="/help/settings#navigation"]')
+        browser.wait_for_page_ready("location.pathname==='/help/settings' && location.hash==='#navigation'")
+        browser.navigate(base + '/help/troubleshooting#navigation')
+        browser.click('#navigation a[href="/settings/layout#dashboard-shortcuts"]')
+        browser.wait_for_page_ready("location.pathname==='/settings/layout' && location.hash==='#dashboard-shortcuts'")
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'omarchy-white'))
+def test_appearance_help_readability_reference_and_keyboard(browser_stack, theme, tmp_path):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings/appearance')
+    _set_theme(browser, theme)
+    for width in (1440, 360):
+        browser.set_viewport(width, 1000)
+        browser.navigate(base + '/help/settings')
+        browser.activate()
+        browser.wait_for('document.hasFocus()')
+        browser.wait_for("document.querySelector('.help-toc a[href=\"#theme-reference\"]')")
+        assert set(browser.evaluate("[...document.querySelectorAll('[data-help-theme]')].map(n=>n.dataset.helpTheme)")) == THEME_IDS
+        assert browser.evaluate("document.querySelectorAll('.help-theme-reference').length") == 3
+        browser.click('.help-toc a[href="#theme-reference"]')
+        assert browser.evaluate('location.hash') == '#theme-reference'
+        browser.evaluate("document.querySelector('#appearance a[href=\"#theme-troubleshooting\"]').focus();true")
+        browser.press_key('\ue004')  # Tab into the reference in document order.
+        assert browser.evaluate("document.activeElement===document.querySelector('.help-theme-reference summary')")
+        browser.press_key('\ue007')  # Enter expands the native details element.
+        assert browser.evaluate("document.querySelector('.help-theme-reference').open")
+        assert browser.evaluate("document.activeElement.matches('summary:focus-visible') && getComputedStyle(document.activeElement).outlineStyle==='solid'")
+        browser.press_key('\ue004')
+        assert browser.evaluate("document.activeElement===document.querySelectorAll('.help-theme-reference summary')[1]")
+        browser.press_key('\ue007')
+        browser.press_key('\ue004')
+        browser.press_key('\ue007')
+        assert browser.evaluate("[...document.querySelectorAll('.help-theme-reference')].every(n=>n.open)")
+        for role, value in _theme_contrast_snapshot(browser, {
+            'body': '#appearance p', 'step': '#appearance li', 'reference': '.help-theme-reference p',
+            'summary': '.help-theme-reference summary', 'heading': '#theme-readability h2',
+            'troubleshooting': '#theme-troubleshooting li', 'link': '#appearance p a',
+        }, include_gradients=True).items():
+            assert value['contrast'] >= 4.5, (theme, width, role, value)
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth'), (theme, width)
+        assert browser.evaluate("[...document.querySelectorAll('.help-panel')].every(n=>n.getBoundingClientRect().right<=innerWidth+1)"), (theme, width)
+        shots = Path(os.environ.get('DLMS_APPEARANCE_HELP_REVIEW_DIR', str(tmp_path / 'appearance-help-review')))
+        shots.mkdir(parents=True, exist_ok=True)
+        capture = browser.command('browsingContext.captureScreenshot', {'context': browser.context, 'origin': 'document'})
+        (shots / f'help-{theme}-{width}.png').write_bytes(base64.b64decode(capture['data']))
+        # Follow the real settings link with the keyboard, rather than constructing its URL.
+        browser.evaluate("document.querySelector('#appearance p a').focus();true")
+        browser.press_key('\ue007')
+        browser.wait_for_page_ready("location.pathname==='/settings/appearance'")
+        assert browser.evaluate("document.querySelector('#appearanceTheme').value") == theme
+
+
+@pytest.mark.parametrize('theme', sorted(THEME_IDS))
+def test_manual_theme_rendered_states_and_generated_compatibility(browser_stack, theme, tmp_path):
+    """All entries use real selectors, pages, answers, and narrow layouts."""
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.set_viewport(1440, 1000)
+    browser.navigate(base + '/settings/appearance')
+    browser.activate()
+    browser.wait_for('document.hasFocus()')
+    browser.evaluate("document.querySelector('#appearanceTheme').focus();true")
+    browser.press_key('\ue011')  # Home, then Down: native selector keyboard navigation.
+    browser.press_key('\ue015')
+    assert browser.evaluate("document.querySelector('#appearanceTheme').value") == 'light'
+    browser.evaluate("document.querySelector('#appearanceTheme').value=" + json.dumps(theme) + ';true')
+    browser.click('.settings-form-actions button[type=submit]')
+    browser.wait_for_page_ready("location.search.includes('saved=1')")
+    browser.wait_for("document.querySelector('#dlmsQuickTheme')?.value===" + json.dumps(theme))
+    assert browser.evaluate("document.querySelector('#appearanceTheme').value") == theme
+    assert browser.evaluate("document.querySelector('#dlmsQuickTheme').options.length") == 26
+    assert browser.evaluate("document.querySelector('#appearanceTheme').options.length") == 26
+    assert browser.evaluate("[...document.querySelector('#appearanceTheme').labels].some(l=>l.textContent.includes('Color theme'))")
+    browser.evaluate("document.querySelector('#appearanceTheme').focus();true")
+    browser.press_key('\ue004')
+    assert browser.evaluate("document.activeElement.matches(':focus-visible') && getComputedStyle(document.activeElement).outlineStyle==='solid'")
+
+    # The seed page was generated before selecting this theme. Generate another
+    # quiz after saving it, using the same shared renderer and isolated artifacts.
+    new_html = 'manual-theme-new.html'
+    build_quiz_html(new_html, browser_stack.metadata['recovery_json'],
+                    str(browser_stack.data_root / 'quizzes' / new_html), 'DLMS',
+                    'New generated theme fixture', None, 'browser-recovery-mixed', 5,
+                    normalize_exam_minutes=lambda value: value)
+    for html in (browser_stack.metadata['critical_html'], new_html):
+        for mode in ('.study-mode-btn', '.exam-mode-btn'):
+            browser.navigate(base + '/quizzes/' + html)
+            browser.wait_for("quizRecoveryReady && !document.querySelector('.study-mode-btn').disabled")
+            assert not browser.evaluate("document.querySelector('link[href=\"/static/action-controls.css\"]')")
+            mode_contrast = _theme_contrast_snapshot(browser, {'study': '.study-mode-btn', 'exam': '.exam-mode-btn'}, include_gradients=True)
+            for role, value in mode_contrast.items():
+                if theme.startswith('omarchy-'):
+                    assert value['contrast'] >= 4.5, (theme, role, value)
+            if not theme.startswith('omarchy-'):
+                baseline_path = Path(os.environ.get('DLMS_THEME_REVIEW_DIR', str(tmp_path / 'manual-theme-review')))
+                baseline_path.mkdir(parents=True, exist_ok=True)
+                (baseline_path / f'baseline-mode-buttons-{theme}.json').write_text(json.dumps(mode_contrast, indent=2))
+            browser.click(mode)
+            try:
+                browser.wait_for("document.querySelectorAll('#choices .choice').length>=2")
+            except TimeoutError:
+                pytest.fail(str((html, mode, browser.evaluate("({supported:durableStudySupported, id:window.QUIZ_ID, ready:quizRecoveryReady, generation:durableStudyGeneration, notice:document.getElementById('quizRecoveryNotice')?.textContent, body:document.body.textContent.slice(-1200)})"))))
+            assert browser.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--theme-body-base').trim()") == THEME_REGISTRY[theme]['colors']['body_base']
+            browser.click("#choices .choice[data-index='1']")
+            if mode == '.study-mode-btn':
+                browser.wait_for("document.querySelector('#choices .wrong-choice')")
+                assert 'Not quite' in browser.evaluate("document.querySelector('.choice-study-explanation').textContent")
+                selectors = {'question': '#qText',
+                             'incorrect': '#choices .wrong-choice', 'feedback': '.choice-study-explanation'}
+            else:
+                selectors = {'question': '#qText', 'selected': '#choices .selected', 'next': '#nextBtn'}
+            for role, value in _theme_contrast_snapshot(browser, selectors, include_gradients=True).items():
+                assert value['contrast'] >= 4.5, (theme, html, mode, role, value)
+            if mode == '.study-mode-btn':
+                browser.click("#choices .choice[data-index='0']")
+                browser.wait_for("document.querySelector('#choices .correct-choice')")
+                correct = _theme_contrast_snapshot(browser, {'correct': '#choices .correct-choice'}, include_gradients=True)
+                assert correct['correct']['contrast'] >= 4.5, (theme, correct)
+            assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+            # End the test's checkpoint before loading another quiz/mode.
+            browser.evaluate('localStorage.clear();true')
+
+    # Exercise the same shared controls on every supported theme, using only
+    # the disposable fixture database. No Study facts are created by navigation.
+    from datetime import timedelta
+    from dlms.services import exam_plans as plan_service
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as conn:
+        conn.row_factory = sqlite3.Row
+        config = {**plan_service.DEFAULTS, 'name': 'Theme controls fixture',
+                  'exam_date': (datetime.now(timezone.utc) + timedelta(days=21)).date().isoformat(),
+                  'calendar_timezone': 'UTC', 'weekdays': list(range(7)), 'folders': ['browser regression']}
+        style_plan = plan_service.save(conn, config, generation=plan_service.state(conn.cursor())['generation'], known_folders=['browser regression'])
+
+    representative = {'light', 'dark', 'ethereal', 'omarchy-catppuccin-latte',
+                      'omarchy-tokyo-night', 'omarchy-miasma', 'omarchy-white'}
+    shots = Path(os.environ.get('DLMS_THEME_REVIEW_DIR', str(tmp_path / 'manual-theme-review')))
+    if theme in representative:
+        shots.mkdir(parents=True, exist_ok=True)
+    for width in (1440, 360):
+        browser.set_viewport(width, 1000)
+        for route, selectors in (
+            ('/', {'shortcut': '.dashboard-action-copy p', 'stat': '.dashboard-stat-card span',
+                   'welcome': '.dashboard-welcome', 'study_heading':'#studyNext h2',
+                   'history_heading':'.dashboard-history-grid h2'}),
+            ('/settings/appearance', {'helper': '#themeGuidance', 'select': '#appearanceTheme', 'input': '#portalTitle'}),
+            ('/settings/ai', {'prompt':'#portfolioPromptTemplate','save':'#aiSettingsForm [type=submit]','cancel':'#cancelAISettings','status':'#aiSettingsStatus'}),
+            ('/settings/backup?storage=1', {'legend': '.storage-usage-list li', 'note': '#storageChartNote'}),
+            ('/settings/reset-remove', {'warning': '.settings-warning-panel span',
+                                        'danger': '.settings-danger-button'}),
+            ('/history', {'heading': 'h1', 'table': '.history-quiz-cell strong',
+                          'score': '.history-score-badge', 'date': '.history-date-cell'}),
+            ('/study-history', {'navigation': '[aria-label="History navigation"] .dlms-action-control',
+                                'disclosure': '#historyExplanation summary'}),
+            ('/exam-plans', {'navigation': '[aria-label="Exam Plan navigation"] .dlms-action-control',
+                             'view': '.plan-list-card > .dlms-action-control'}),
+            ('/exam-plans/' + style_plan, {'primary': '[data-practice="suggested"]',
+                                         'disclosure': '#planPlacement summary'}),
+            ('/learning-profile', {'secondary': '.learning-profile-actions a',
+                                   'schedule': '.learning-profile-retention-head > a'}),
+        ):
+            browser.navigate(base + route)
+            browser.wait_for_page_ready()
+            if route == '/history':
+                browser.wait_for("document.querySelector('.history-quiz-cell strong')")
+            if route == '/study-history':
+                browser.wait_for("document.querySelectorAll('[aria-label=\"History navigation\"] .dlms-action-control').length===4")
+                assert browser.evaluate("[...document.querySelectorAll('[aria-label=\"History navigation\"] a')].every(n=>n.getBoundingClientRect().height>=44 && n.querySelector('svg[aria-hidden=true][focusable=false]'))")
+            if route.startswith('/exam-plans') or route == '/learning-profile':
+                browser.wait_for("document.querySelector('[data-action-controls] .dlms-action-control')")
+                assert browser.evaluate("[...document.querySelectorAll('[data-action-controls] .dlms-action-control')].every(n=>{const r=n.getBoundingClientRect();return !r.height || r.height>=44})")
+                assert not browser.evaluate("document.querySelector('.plan-badge.dlms-action-control')")
+                if route == '/exam-plans':
+                    browser.evaluate("document.querySelector('.plan-links a:last-child').focus();true")
+                    browser.wait_for("document.querySelector('[role=tooltip]:not([hidden])')")
+                    assert browser.evaluate("getComputedStyle(document.querySelector('[role=tooltip]:not([hidden])')).backgroundColor.startsWith('rgb(')")
+                    tip = _theme_contrast_snapshot(browser, {'tip': '[role=tooltip]:not([hidden])'}, include_gradients=True)
+                    assert tip['tip']['contrast'] >= 4.5, (theme, width, tip)
+                    browser.press_key('\ue00c')
+                if route == '/exam-plans/' + style_plan:
+                    browser.click('#planPlacement summary')
+                    danger = _theme_contrast_snapshot(browser, {'delete': '[data-delete-plan] button'}, include_gradients=True)
+                    assert danger['delete']['contrast'] >= 4.5, (theme, width, danger)
+                    assert browser.evaluate("document.querySelector('[data-delete-plan] button').matches('.dlms-action-destructive')")
+            for role, value in _theme_contrast_snapshot(browser, selectors, include_gradients=True).items():
+                assert value['contrast'] >= 4.5, (theme, width, route, role, value)
+            assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth'), (theme, width, route)
+            if theme in representative and route in ('/', '/settings/appearance'):
+                screenshot = browser.command('browsingContext.captureScreenshot', {'context': browser.context, 'origin': 'document'})
+                name = 'dashboard' if route == '/' else 'appearance'
+                (shots / f'{theme}-{name}-{width}.png').write_bytes(base64.b64decode(screenshot['data']))
+    browser.navigate(base + '/help/build-quiz')
+    browser.wait_for("document.querySelector('.help-shot a') && document.querySelector('.help-lightbox')")
+    browser.click('.help-shot a')
+    browser.wait_for("!document.querySelector('.help-lightbox').hidden")
+    assert browser.evaluate("document.activeElement.matches('.help-lightbox-close')")
+    for value in _theme_contrast_snapshot(browser, {'caption': '.help-lightbox-caption'}, include_gradients=True).values():
+        assert value['contrast'] >= 4.5, (theme, value)
+    browser.press_key('\ue00c')
+    assert browser.evaluate("document.querySelector('.help-lightbox').hidden")
+
+
+def test_manual_theme_sidebar_failure_then_retry(browser_stack):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.navigate(base + '/')
+    browser.wait_for("document.querySelector('#dlmsQuickTheme')?.value==='purple-gold'")
+    portal = browser_stack.data_root / 'config/portal.json'
+    original = portal.read_text()
+    browser.evaluate("""(() => {
+        window.themeTestFetch = window.fetch;
+        window.fetch = (input, init) => String(input)==='/api/theme'
+            ? Promise.resolve(new Response('{}', {status:503})) : window.themeTestFetch(input, init);
+        window.alert = message => {window.themeTestError = message;};
+        const select=document.querySelector('#dlmsQuickTheme');
+        select.value='omarchy-white'; select.dispatchEvent(new Event('change'));
+        return true;
+    })()""")
+    browser.wait_for("window.themeTestError && !document.querySelector('#dlmsQuickTheme').disabled")
+    assert browser.evaluate("document.querySelector('#dlmsQuickTheme').value") == 'purple-gold'
+    assert portal.read_text() == original
+    browser.evaluate("""(() => {
+        window.fetch=window.themeTestFetch;
+        const select=document.querySelector('#dlmsQuickTheme');
+        select.value='omarchy-white'; select.dispatchEvent(new Event('change'));
+        return true;
+    })()""")
+    browser.wait_for("document.querySelector('#dlmsQuickTheme')?.value==='omarchy-white' && !document.querySelector('#dlmsQuickTheme').disabled")
+    assert json.loads(portal.read_text())['theme'] == 'omarchy-white'
+
+
+@pytest.mark.parametrize('theme', ('omarchy-catppuccin-latte', 'omarchy-tokyo-night', 'omarchy-miasma', 'omarchy-white'))
+def test_manual_theme_painted_selection_and_keyboard_focus(browser_stack, theme, tmp_path):
+    import io
+    from PIL import Image
+
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.set_viewport(1440, 1000)
+    browser.navigate(base + '/settings/appearance')
+    _set_theme(browser, theme)
+    browser.navigate(base + '/settings/appearance')
+    browser.activate()
+    browser.wait_for('document.hasFocus()')
+    browser.evaluate("document.querySelector('#portalTitle').scrollIntoView({block:'center'});true")
+    frames = 'new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>r(true))))'
+    browser.evaluate(frames)
+    before = browser.command('browsingContext.captureScreenshot', {'context': browser.context, 'origin': 'viewport'})
+    state = browser.evaluate("""(() => {
+        const node=document.querySelector('#portalTitle');node.focus();node.select();
+        const rect=node.getBoundingClientRect(), style=getComputedStyle(node);
+        return {rect:[rect.left,rect.top,rect.right,rect.bottom], focus:node.matches(':focus-visible'),
+                outline:style.outlineStyle,width:style.outlineWidth};
+    })()""")
+    browser.evaluate(frames)
+    after = browser.command('browsingContext.captureScreenshot', {'context': browser.context, 'origin': 'viewport'})
+    box = tuple(round(value) for value in state['rect'])
+    first = Image.open(io.BytesIO(base64.b64decode(before['data']))).convert('RGB').crop(box)
+    second = Image.open(io.BytesIO(base64.b64decode(after['data']))).convert('RGB').crop(box)
+    extra = THEME_REGISTRY[theme]['extra_tokens']
+    rgb = lambda color: tuple(int(color[index:index + 2], 16) for index in (1, 3, 5))
+    highlight, ink = rgb(extra['--theme-selection-bg']), rgb(extra['--theme-selection-text'])
+    changed_highlight = sum(a != highlight and b == highlight for a, b in zip(first.get_flattened_data(), second.get_flattened_data()))
+    changed_ink = sum(a != ink and b == ink for a, b in zip(first.get_flattened_data(), second.get_flattened_data()))
+    assert changed_highlight > 50 and changed_ink > 5, (theme, changed_highlight, changed_ink)
+    assert state['focus'] and state['outline'] == 'solid' and state['width'] == '3px'
+    shots = Path(os.environ.get('DLMS_THEME_REVIEW_DIR', str(tmp_path / 'manual-theme-review')))
+    shots.mkdir(parents=True, exist_ok=True)
+    (shots / f'{theme}-painted-selection.png').write_bytes(base64.b64decode(after['data']))
+
+
 def test_local_feature_icons_render_and_follow_each_theme(browser_stack):
     browser = browser_stack.browser
     browser.navigate(browser_stack.base_url + "/settings/appearance")
     browser.wait_for_page_ready()
-    exposed_themes = browser.evaluate("[...document.querySelectorAll('input[name=\"theme\"]')].map(input => input.value)")
-    assert set(exposed_themes) == {"light", "dark", "purple-gold", "maroon-gold"}
+    exposed_themes = browser.evaluate("[...document.querySelectorAll('select[name=\"theme\"] option')].map(input => input.value)")
+    assert set(exposed_themes) == THEME_IDS
     browser.navigate(browser_stack.base_url + "/")
     feature_accents = {
         "/": "blue", "/library": "blue", "/study-packs": "blue",
@@ -57,7 +1095,7 @@ def test_local_feature_icons_render_and_follow_each_theme(browser_stack):
         "/learning-intelligence": "purple",
     }
     colors = {}
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(browser_stack.base_url + "/")
         browser.wait_for_page_ready()
@@ -182,7 +1220,7 @@ def test_storage_health_themes_and_narrow_layout(browser_stack):
     browser = browser_stack.browser
     base = browser_stack.base_url
     browser.navigate(base + "/settings/backup")
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(base + "/settings/backup?storage=1")
         browser.wait_for("document.querySelector('#storage-health').textContent.includes('Database size')")
@@ -255,13 +1293,30 @@ def _set_theme(browser, theme):
     assert status == 200
 
 
-def _theme_contrast_snapshot(browser, selectors):
+def _theme_contrast_snapshot(browser, selectors, *, include_gradients=False):
     """Measure rendered text contrast against each element's effective background."""
-    # Contrast has no meaning until blocking stylesheets have loaded.
+    # Measure the requested rendered state, after stylesheets and CSS transitions.
+    # A correctness class is set before the 120 ms background transition ends;
+    # sampling that interpolation makes this steady-state check timing-dependent.
     browser.wait_for_page_ready()
+    # Let newly replaced answer nodes receive their first style/hover update.
+    browser.evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))))")
+    browser.wait_for("""(() => {
+      const nodes=new Set();
+      for(const selector of """ + json.dumps(list(selectors.values())) + """) {
+        for(let node=document.querySelector(selector);node;node=node.parentElement)nodes.add(node);
+      }
+      return [...nodes].every(node=>{
+        // Flush pending style changes before asking Firefox for transitions.
+        getComputedStyle(node).backgroundColor;
+        return node.getAnimations().every(animation=>
+          !(animation instanceof CSSTransition) || animation.playState !== 'running');
+      });
+    })()""")
     return browser.evaluate(
         "(() => {"
         "const selectors=" + json.dumps(selectors) + ";"
+        "const includeGradients=" + json.dumps(include_gradients) + ";"
         "const parseColor=value=>{"
         "const rgb=value.match(/^rgba?\\(([^)]+)\\)$/);"
         "if(rgb){const parts=rgb[1].split(/[, ]+/).filter(Boolean).map(Number);"
@@ -282,13 +1337,19 @@ def _theme_contrast_snapshot(browser, selectors):
         "const root=getComputedStyle(document.documentElement);"
         "const base=resolveColor(root.getPropertyValue('--theme-body-base')).slice(0,3);"
         "const effectiveBackground=node=>{const layers=[];"
-        "for(let item=node;item;item=item.parentElement){layers.push(parseColor(getComputedStyle(item).backgroundColor));}"
-        "return layers.reverse().reduce((background,layer)=>composite(layer,background),base);};"
+        "for(let item=node;item;item=item.parentElement){const style=getComputedStyle(item);"
+        "layers.push({color:parseColor(style.backgroundColor),image:style.backgroundImage});}"
+        "return layers.reverse().reduce((backgrounds,layer)=>{"
+        "const colors=backgrounds.map(background=>composite(layer.color,background));"
+        "if(!includeGradients||!layer.image.includes('gradient'))return colors;"
+        "const stops=layer.image.match(/rgba?\\([^)]*\\)|color\\(srgb[^)]*\\)/g)||[];"
+        "return stops.length?colors.flatMap(background=>stops.map(stop=>composite(parseColor(stop),background))):colors;"
+        "},[base]);};"
         "const measure=(name,selector)=>{const node=document.querySelector(selector);"
         "if(!node)throw new Error('Missing contrast target '+name+': '+selector);"
-        "const style=getComputedStyle(node),background=effectiveBackground(node);"
-        "const color=parseColor(style.color),foreground=composite(color,background);"
-        "return [name,{contrast:contrast(foreground,background),color:style.color,"
+        "const style=getComputedStyle(node),backgrounds=effectiveBackground(node);"
+        "const color=parseColor(style.color);"
+        "return [name,{contrast:Math.min(...backgrounds.map(background=>contrast(composite(color,background),background))),color:style.color,"
         "background:style.backgroundColor,borderColor:style.borderColor,"
         "borderStyle:style.borderStyle,outlineStyle:style.outlineStyle,"
         "opacity:style.opacity,cursor:style.cursor,text:node.textContent.trim()}];};"
@@ -365,7 +1426,7 @@ def _firefox_command(firefox, profile, port, env):
     ]
 
 
-def _connect_firefox(port, process, log_path, timeout=30.0):
+def _connect_firefox(port, process, log_path, timeout=30.0, capabilities=None):
     # Hosted cold starts can spend the old 12-second budget before the listener
     # or initial content process is ready. Share this startup-only deadline with
     # session creation; ordinary browser command/condition budgets stay unchanged.
@@ -382,7 +1443,9 @@ def _connect_firefox(port, process, log_path, timeout=30.0):
                 "127.0.0.1", port, timeout=min(0.5, max(0.05, deadline - time.monotonic()))
             )
             stage = "session initialization"
-            client.start_session(timeout=max(0.05, deadline - time.monotonic()))
+            session_options={'timeout':max(0.05, deadline-time.monotonic())}
+            if capabilities is not None:session_options['capabilities']=capabilities
+            client.start_session(**session_options)
             return client
         except Exception as exc:
             last_error = exc
@@ -428,6 +1491,7 @@ def _terminate_process_tree(process):
 
 @pytest.fixture
 def browser_server(tmp_path_factory):
+    _prepare_capture_directories()
     firefox = shutil.which("firefox") or shutil.which("firefox-esr")
     if not firefox:
         pytest.skip("Firefox is not installed")
@@ -506,16 +1570,30 @@ def browser_server(tmp_path_factory):
 
 
 @pytest.fixture
-def browser_stack(browser_server):
+def browser_stack(browser_server, request):
+    browser_env = dict(browser_server.env)
+    capabilities = request.param if isinstance(getattr(request, "param", None), dict) else None
+    if getattr(request, "param", None) and capabilities is None:
+        browser_env["TZ"] = request.param
     browser_port = _free_loopback_port()
     session_root = browser_server.work_root / f"firefox-session-{browser_port}"
     profile = session_root / "profile"
     profile.mkdir(parents=True)
+    downloads = session_root / "downloads"
+    downloads.mkdir()
     (profile / "user.js").write_text(
         '\n'.join([
             'user_pref("datareporting.healthreport.uploadEnabled", false);',
             'user_pref("toolkit.telemetry.enabled", false);',
             'user_pref("browser.crashReports.unsubmittedCheck.autoSubmit2", false);',
+            # Test-only DNS to the isolated loopback server. This is an ordinary
+            # HTTP .test origin, not a secure-context/security override.
+            'user_pref("network.dns.localDomains", "dlms-http.test");',
+            'user_pref("browser.download.folderList", 2);',
+            'user_pref("browser.download.dir", ' + json.dumps(str(downloads)) + ');',
+            'user_pref("browser.download.useDownloadDir", true);',
+            'user_pref("browser.helperApps.neverAsk.saveToDisk", "application/octet-stream,application/zip,application/apkg");',
+            'user_pref("browser.download.always_ask_before_handling_new_types", false);',
         ]),
         encoding="utf-8",
     )
@@ -526,14 +1604,14 @@ def browser_stack(browser_server):
     try:
         with browser_log.open("w", encoding="utf-8") as browser_output:
             browser_process = subprocess.Popen(
-                _firefox_command(browser_server.firefox, profile, browser_port, browser_server.env),
+                _firefox_command(browser_server.firefox, profile, browser_port, browser_env),
                 cwd=ROOT,
-                env=browser_server.env,
+                env=browser_env,
                 stdout=browser_output,
                 stderr=subprocess.STDOUT,
                 **browser_server.process_options,
             )
-            browser = _connect_firefox(browser_port, browser_process, browser_log)
+            browser = _connect_firefox(browser_port, browser_process, browser_log, capabilities=capabilities)
             yield BrowserStack(
                 browser,
                 browser_server.base_url,
@@ -651,6 +1729,10 @@ def test_fresh_profile_defaults_to_purple_gold_and_theme_selection_persists(brow
 def test_dashboard_destructive_and_success_colors_resolve_across_themes(browser_stack):
     browser = browser_stack.browser
     browser.set_viewport(1400, 1000)
+    # The removed attempt list is replaced by the reliably dated Exam summary.
+    # Seed an explicit UTC fixture; do not reinterpret the undated legacy result.
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as conn:
+        conn.execute("INSERT INTO attempts(id,quiz_id,score,total,percent,mode,completed_at) VALUES ('color-exam',?,0,2,0,'Exam','2026-10-01T12:00:00Z')", (browser_stack.metadata['critical_id'],))
     expected = {
         "light": {
             "normal": "rgb(143, 36, 53)",
@@ -690,6 +1772,7 @@ def test_dashboard_destructive_and_success_colors_resolve_across_themes(browser_
         },
         "purple-gold": {},
         "maroon-gold": {},
+        "ethereal": {},
     }
 
     def set_theme(theme):
@@ -702,7 +1785,7 @@ def test_dashboard_destructive_and_success_colors_resolve_across_themes(browser_
         assert status == 200
         browser.navigate(f"{browser_stack.base_url}/")
         browser.wait_for("document.querySelector('.dashboard-shutdown') !== null")
-        browser.wait_for("document.querySelector('.dashboard-activity-row .dashboard-score') !== null")
+        browser.wait_for("document.querySelector('.dashboard-activity-summary .dashboard-score') !== null")
         assert browser.evaluate(
             "(() => {"
             "const source = document.querySelector('.dashboard-shutdown');"
@@ -732,7 +1815,7 @@ def test_dashboard_destructive_and_success_colors_resolve_across_themes(browser_
             "const status = getComputedStyle(document.getElementById('activityStatusProbe'));"
             "const styles = id => { const value = getComputedStyle(document.getElementById(id));"
             "return {color:value.color,background:value.backgroundColor}; };"
-            "const recent = document.querySelector('.dashboard-activity-row .dashboard-score');"
+            "const recent = document.querySelector('.dashboard-activity-summary .dashboard-score');"
             "const recentStyle = getComputedStyle(recent);"
             "return {buttonColor:button.color,buttonBackground:button.backgroundImage,"
             "headingColor:heading.color,"
@@ -745,7 +1828,7 @@ def test_dashboard_destructive_and_success_colors_resolve_across_themes(browser_
             "color:recentStyle.color,background:recentStyle.backgroundColor}}; })()"
         )
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         set_theme(theme)
         palette = expected[theme] if theme in {"light", "dark"} else {
             **expected["dark"], **expected[theme],
@@ -760,7 +1843,7 @@ def test_dashboard_destructive_and_success_colors_resolve_across_themes(browser_
         for state, (color, background) in palette["scores"].items():
             assert normal["dashboardScores"][state] == {"color": color, "background": background}
             assert normal["historyScores"][state] == normal["dashboardScores"][state]
-        assert normal["recentScore"]["text"] == "0%"
+        assert normal["recentScore"]["text"] == "0 / 2 (0%)"
         assert "score-bad" in normal["recentScore"]["className"]
         assert normal["recentScore"]["color"] == palette["scores"]["bad"][0]
         assert normal["recentScore"]["background"] == palette["scores"]["bad"][1]
@@ -856,7 +1939,7 @@ def test_library_reorder_control_persists_after_refresh(browser_stack):
 def test_library_touch_navigation_and_scroll_gestures_across_themes(browser_stack):
     """Exercise Sortable's real event listeners, without emulating mobile OS physics."""
     browser = browser_stack.browser
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{browser_stack.base_url}/library")
         _set_theme(browser, theme)
         for width in (1280, 420):
@@ -1055,6 +2138,7 @@ def test_library_smart_views_use_browser_recovery_and_remain_theme_responsive(
     browser.navigate(f"{base_url}/quizzes/{critical_html}")
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
 
@@ -1096,7 +2180,7 @@ def test_library_smart_views_use_browser_recovery_and_remain_theme_responsive(
         "input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));return true;})()"
     )
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(f"{base_url}/library?view=visible&smart=unfinished")
         browser.wait_for(
@@ -1369,7 +2453,8 @@ def test_library_hidden_folder_lifecycle_search_and_order_in_real_browser(browse
         f"form.querySelector('[name=folder]').value = {json.dumps(folder_name)}; "
         "form.requestSubmit(); return true; })()"
     ) is True
-    browser.wait_for(
+    browser.wait_for_page_ready(
+        f"Boolean(({folder_lookup(folder_name)})?.querySelector('[data-id={json.dumps(critical_html)}]')) && "
         f"getComputedStyle({folder_lookup(folder_name)}).display === 'none'"
     )
 
@@ -1446,7 +2531,8 @@ def test_library_hidden_folder_lifecycle_search_and_order_in_real_browser(browse
         "folder.querySelector(\"form[action='/set_quiz_folder_hidden']\").requestSubmit(); "
         "return true; })()"
     ) is True
-    browser.wait_for(
+    browser.wait_for_page_ready(
+        f"({folder_lookup(renamed_folder)})?.dataset.folderHidden === 'true' && "
         f"getComputedStyle({folder_lookup(renamed_folder)}).display === 'none'"
     )
 
@@ -1683,8 +2769,11 @@ def test_library_folder_client_state_reconciles_rename_delete_and_legacy_promoti
     assert "Uncategorized" in final_state
 
 
-def test_navigation_visibility_persists_through_settings_and_page_reload(browser_stack):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_navigation_visibility_persists_through_settings_and_page_reload(browser_stack, theme):
     browser = browser_stack.browser
+    browser.navigate(browser_stack.base_url + "/settings")
+    _set_theme(browser, theme)
     keys = ("it", "law", "medical", "other")
     key_list = json.dumps(keys)
 
@@ -1701,7 +2790,7 @@ def test_navigation_visibility_persists_through_settings_and_page_reload(browser
     ) is True
     browser.click(".settings-primary-button")
     browser.wait_for(
-        "location.pathname === '/settings/navigation' && "
+        "location.pathname === '/settings/layout' && "
         "new URLSearchParams(location.search).get('saved') === '1'"
     )
     assert browser.evaluate(
@@ -1741,7 +2830,7 @@ def test_navigation_visibility_persists_through_settings_and_page_reload(browser
     browser.evaluate("document.querySelector('[name=study_area_law]').checked = true; true")
     browser.click(".settings-primary-button")
     browser.wait_for(
-        "location.pathname === '/settings/navigation' && "
+        "location.pathname === '/settings/layout' && "
         "document.querySelector('[name=study_area_law]').checked"
     )
     browser.navigate(f"{browser_stack.base_url}/library?navigation-reenabled=1")
@@ -1759,12 +2848,15 @@ def test_navigation_visibility_persists_through_settings_and_page_reload(browser
     )
     browser.click(".settings-primary-button")
     browser.wait_for(
-        "location.pathname === '/settings/navigation' && "
+        "location.pathname === '/settings/layout' && "
         "[...document.querySelectorAll('[name^=study_area_]')].every(input => input.checked)"
     )
 
 
-def test_custom_anki_quiz_filter_bulk_and_accordion_state(browser_stack):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_custom_anki_quiz_filter_bulk_and_accordion_state(browser_stack, theme):
+    browser_stack.browser.navigate(browser_stack.base_url + "/settings")
+    _set_theme(browser_stack.browser, theme)
     browser = browser_stack.browser
     browser.navigate(f"{browser_stack.base_url}/anki/custom")
     browser.wait_for("document.querySelectorAll('.anki-custom-quiz-group').length === 2")
@@ -2122,7 +3214,10 @@ def test_custom_anki_performance_accordion_state_persists(browser_stack):
         browser.evaluate(f"localStorage.removeItem({json.dumps(storage_key)}); true")
 
 
-def test_study_feedback_exam_save_and_history_navigation(browser_stack):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal", "omarchy-catppuccin-latte", "omarchy-tokyo-night", "omarchy-miasma", "omarchy-white"))
+def test_study_feedback_exam_save_and_history_navigation(browser_stack, theme):
+    browser_stack.browser.navigate(browser_stack.base_url + "/settings")
+    _set_theme(browser_stack.browser, theme)
     browser = browser_stack.browser
     attempts_before = _database_value(
         browser_stack.data_root / "results.db",
@@ -2130,9 +3225,10 @@ def test_study_feedback_exam_save_and_history_navigation(browser_stack):
     )
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
     browser.navigate(quiz_url)
-    browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
+    _wait_for_quiz_mode_controls(browser)
 
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for("document.querySelectorAll('#choices .choice').length === 2")
     browser.click("#choices .choice[data-index='1']")
     browser.wait_for("document.querySelector('#choices .wrong-choice') !== null")
@@ -2144,7 +3240,7 @@ def test_study_feedback_exam_save_and_history_navigation(browser_stack):
     )
 
     browser.navigate(quiz_url)
-    browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
+    _wait_for_quiz_mode_controls(browser)
     browser.click(".exam-mode-btn")
     exam_recovery_key = browser.evaluate("quizRecoveryController.storageKey")
     browser.wait_for("document.querySelectorAll('#choices .choice').length === 2")
@@ -2168,9 +3264,113 @@ def test_study_feedback_exam_save_and_history_navigation(browser_stack):
     browser.click("#result button[onclick*='/history']")
     browser.wait_for("location.pathname === '/history'")
     browser.wait_for("document.body.textContent.includes('Browser Critical Workflow')")
+    study_link = '.history-study-navigation a'
+    assert browser.evaluate("[document.querySelector('.history-study-navigation a').textContent, document.querySelector('.history-study-navigation a').getAttribute('href')]") == [
+        'Study History — finished reviews and partial work', '/study-history'
+    ]
+    assert browser.evaluate("(() => {const link=document.querySelector('.history-study-navigation a'),cards=document.querySelector('.history-table-stats'),panel=document.querySelector('.history-table-panel');return cards.getBoundingClientRect().top-link.getBoundingClientRect().bottom>=16 && panel.getBoundingClientRect().top-cards.getBoundingClientRect().bottom>=16})()")
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(browser_stack.base_url + '/history')
+    browser.activate(); browser.wait_for('document.hasFocus()')
+    browser.evaluate("document.querySelector('#shutdownBtn').focus();true")
+    for _ in range(12):
+        browser.press_key('\ue004')
+        if browser.evaluate("document.activeElement.matches('.history-study-navigation a')"):
+            break
+    assert browser.evaluate("document.activeElement.matches('.history-study-navigation a:focus') && getComputedStyle(document.activeElement).outlineStyle !== 'none'")
+    browser.click(study_link)
+    browser.wait_for("location.pathname === '/study-history'")
 
 
-def test_quiz_recovery_restores_all_question_types_and_pauses_closed_exam_time(browser_stack):
+def test_study_feedback_waits_for_deferred_recovery_initialization(browser_stack):
+    """Question-array availability does not mean the mode controls are ready."""
+    b = browser_stack.browser
+    navigate, wait, click, receive = b.navigate, b.wait_for, b.click, b._receive_text
+    state = {'visits': 0, 'interception': None, 'held': False, 'observations': []}
+    blocked = []
+    url = browser_stack.base_url + '/api/study/quiz/' + str(browser_stack.metadata['critical_id'])
+
+    def record():
+        raw = receive()
+        event = json.loads(raw)
+        if event.get('method') == 'network.beforeRequestSent' and event['params'].get('isBlocked'):
+            blocked.append(event['params']['request']['request'])
+        return raw
+
+    def request_arrived():
+        deadline = time.monotonic() + 6
+        while not blocked and time.monotonic() < deadline:
+            b.evaluate('true')
+        assert blocked, 'Expected the controlled Study-status request'
+
+    def release():
+        b.command('network.continueRequest', {'request': blocked.pop(0)})
+        state['held'] = False
+
+    def observed_navigate(target):
+        controlled_quiz_navigation = False
+        if '/quizzes/' in target:
+            state['visits'] += 1
+            if state['visits'] == 2:
+                controlled_quiz_navigation = True
+                b.command('session.subscribe', {'events': ['network.beforeRequestSent'], 'contexts': [b.context]})
+                state['interception'] = b.command('network.addIntercept', {
+                    'phases': ['beforeRequestSent'], 'contexts': [b.context],
+                    'urlPatterns': [{'type': 'string', 'pattern': url}],
+                })['intercept']
+                b._receive_text = record
+        result = navigate(target)
+        if controlled_quiz_navigation and state['interception']:
+            request_arrived()
+            release()  # The initial readiness check succeeds.
+            wait('quiz.length === 2')
+            request_arrived()  # Hold the subsequent durable-recovery lookup.
+            state['held'] = True
+            observation = b.evaluate("({questions:quiz.length,recoveryReady:quizRecoveryReady,examDisabled:document.querySelector('.exam-mode-btn').disabled})")
+            assert observation == {'questions': 2, 'recoveryReady': False, 'examDisabled': True}
+            state['observations'].append(observation)
+        return result
+
+    def observed_wait(expression, timeout=6.0):
+        if state['held'] and 'quizRecoveryReady' in expression:
+            release()
+        return wait(expression, timeout)
+
+    def observed_click(selector):
+        result = click(selector)
+        if state['held'] and selector == '.exam-mode-btn':
+            # With the pre-fix array-only wait this disabled click is ignored.
+            # Release loading, without supplying a second click or a result.
+            state['observations'].append(b.evaluate("({ignoredClick:!examMode,quizHidden:document.getElementById('quiz').classList.contains('hidden')})"))
+            release()
+            wait("quizRecoveryReady && !document.querySelector('.exam-mode-btn').disabled")
+        return result
+
+    b.navigate, b.wait_for, b.click = observed_navigate, observed_wait, observed_click
+    try:
+        test_study_feedback_exam_save_and_history_navigation(browser_stack, 'omarchy-miasma')
+        assert len(state['observations']) == 1
+    finally:
+        if state['held']:
+            release()
+        while blocked:
+            b.command('network.continueRequest', {'request': blocked.pop()})
+        b.navigate, b.wait_for, b.click, b._receive_text = navigate, wait, click, receive
+        if state['interception']:
+            b.command('network.removeIntercept', {'intercept': state['interception']})
+        output = os.environ.get('DLMS_BUNDLE_CAPTURE_DIR')
+        if output:
+            folder = Path(output);folder.mkdir(parents=True, exist_ok=True)
+            (folder/'deferred-mode-controls.json').write_text(json.dumps(state['observations'], indent=2))
+            server_log = browser_stack.data_root.parent/'server.log'
+            if server_log.exists():
+                shutil.copy2(server_log, folder/'deferred-mode-server.log')
+
+
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal", "omarchy-catppuccin-latte", "omarchy-tokyo-night", "omarchy-miasma", "omarchy-white"))
+def test_quiz_recovery_restores_all_question_types_and_pauses_closed_exam_time(browser_stack, theme):
+    browser_stack.browser.navigate(browser_stack.base_url + "/settings")
+    _set_theme(browser_stack.browser, theme)
     browser = browser_stack.browser
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['recovery_html']}"
     browser.navigate(quiz_url)
@@ -2230,6 +3430,7 @@ def test_quiz_recovery_restores_all_question_types_and_pauses_closed_exam_time(b
         f"JSON.parse(localStorage.getItem({json.dumps(storage_key)})).timer.remainingSeconds"
     ) == saved_remaining
     browser.click(".quiz-recovery-resume")
+    browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for("index === 3 && document.querySelector('.hotspot-click-marker') !== null")
     browser.evaluate("prev(); true")
     browser.wait_for("index === 2 && document.querySelector('.matching-select') !== null")
@@ -2253,12 +3454,13 @@ def test_quiz_recovery_restores_all_question_types_and_pauses_closed_exam_time(b
     browser.navigate(quiz_url)
     browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
     browser.click(".quiz-recovery-resume")
+    browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for("paused === true && document.getElementById('pauseOverlay').classList.contains('show')")
     browser.evaluate("resumeExam(); true")
     browser.wait_for("paused === false && !document.getElementById('pauseOverlay').classList.contains('show')")
 
 
-def test_quiz_recovery_preserves_failed_study_event_identity_until_explicit_retry(browser_stack):
+def test_quiz_recovery_preserves_failed_study_event_identity_until_explicit_resume_retry(browser_stack):
     browser = browser_stack.browser
     quiz_id = browser_stack.metadata["critical_id"]
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
@@ -2275,7 +3477,9 @@ def test_quiz_recovery_preserves_failed_study_event_identity_until_explicit_retr
         " ? Promise.reject(new Error('simulated lost acknowledgement')) : window.__recoveryFetch(...args); true"
     ) is True
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#studyAnkiBtn")
+    browser.wait_for("reviewMarkContext?.indexes.includes(0) === true && reviewMarkPending === null")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("document.querySelector('.study-learning-save-retry:not([hidden])') !== null")
     storage_key = browser.evaluate("quizRecoveryController.storageKey")
@@ -2290,17 +3494,17 @@ def test_quiz_recovery_preserves_failed_study_event_identity_until_explicit_retr
 
     browser.navigate(quiz_url)
     browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
-    browser.click(".quiz-recovery-resume")
-    browser.wait_for("document.querySelector('.study-learning-save-retry:not([hidden])') !== null")
-    browser.wait_for("document.querySelector('#choices .correct-choice') !== null")
-    assert browser.evaluate("studyAnkiSelections.has(0)") is True
-    assert browser.evaluate("learningSessionId") == session_id
+    assert browser.evaluate("document.querySelector('.quiz-recovery-resume').textContent") == "Resume and retry saves"
     assert _database_value(
         browser_stack.data_root / "results.db",
-        "SELECT COUNT(*) FROM learning_events WHERE quiz_id = ? AND event_type = 'study_answer'",
-        (quiz_id,),
+        "SELECT COUNT(*) FROM learning_events WHERE quiz_id = ? AND event_type = 'study_answer'", (quiz_id,),
     ) == before_count
-    browser.click(".study-learning-save-retry")
+    browser.click(".quiz-recovery-resume")
+    browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.wait_for("document.querySelector('#choices .correct-choice') !== null")
+    browser.wait_for("reviewMarkContext?.indexes.includes(0) === true")
+    assert browser.evaluate("learningSessionId") == session_id
     _wait_for_database_value(
         browser_stack.data_root / "results.db",
         f"SELECT COUNT(*) FROM learning_events WHERE quiz_id = {int(quiz_id)} AND event_type = 'study_answer'",
@@ -2316,20 +3520,21 @@ def test_quiz_recovery_preserves_failed_study_event_identity_until_explicit_retr
     )
 
 
-def test_study_recovery_clears_only_after_every_answer_is_saved(browser_stack):
+def test_study_recovery_clears_only_after_acknowledged_explicit_finish(browser_stack):
     browser = browser_stack.browser
     quiz_id = browser_stack.metadata["critical_id"]
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true && quiz.length === 2")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
 
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("studyLearningEventSaves.size === 0")
     browser.click("#nextBtn")
     browser.wait_for("index === 1")
-    assert browser.evaluate("document.getElementById('finishReviewBtn') === null") is True
+    assert browser.evaluate("document.getElementById('finishReviewBtn') !== null") is True
     assert browser.evaluate(
         f"localStorage.getItem({json.dumps(recovery_key)}) !== null"
     ) is True
@@ -2345,6 +3550,9 @@ def test_study_recovery_clears_only_after_every_answer_is_saved(browser_stack):
         f"SELECT COUNT(*) FROM learning_events WHERE quiz_id = {int(quiz_id)} AND event_type = 'study_answer'",
         before + 1,
     )
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null")
+    browser.click("#finishReviewBtn")
     browser.wait_for(
         f"localStorage.getItem({json.dumps(recovery_key)}) === null && "
         "quizRecoveryController.ownsState === false"
@@ -2385,6 +3593,7 @@ def test_adaptive_study_completion_survives_late_partial_multiselect_save(browse
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("studyLearningEventSaves.size === 0")
@@ -2435,6 +3644,7 @@ def test_adaptive_study_completion_survives_late_partial_multiselect_save(browse
     browser.navigate(quiz_url)
     browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
     browser.click(".quiz-recovery-resume")
+    browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for("index === 1 && document.getElementById('finishReviewBtn')?.style.display !== 'none'")
     assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
     browser.click("#finishReviewBtn")
@@ -2461,6 +3671,7 @@ def test_generated_finish_review_waits_for_save_and_requires_earlier_answers(bro
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
     browser.click("#nextBtn")
     browser.wait_for("index === 1 && document.getElementById('finishReviewBtn') !== null")
@@ -2487,6 +3698,9 @@ def test_generated_finish_review_waits_for_save_and_requires_earlier_answers(bro
     assert browser.evaluate(
         f"document.getElementById('finishReviewBtn').disabled && localStorage.getItem({json.dumps(recovery_key)}) !== null"
     ) is True
+    before_finish_answers = browser.evaluate("JSON.stringify(userAnswers)")
+    browser.click("#choices .choice[data-index='0']")
+    assert browser.evaluate("JSON.stringify(userAnswers)") == before_finish_answers
     browser.evaluate("window.releaseFinalStudySave(); true")
     browser.wait_for(
         "studyCompletionInProgress === false && "
@@ -2515,6 +3729,7 @@ def test_generated_finish_review_retries_failed_browser_checkpoint_clear(browser
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("studyLearningEventSaves.size === 0")
@@ -2576,12 +3791,13 @@ def test_generated_practice_study_completion_retry_library_and_retake(browser_st
         "{status:503,headers:{'Content-Type':'application/json'}})); } return original(...args); }; return true; })()"
     ) is True
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("studyLearningEventSaves.size === 0")
     browser.click("#nextBtn")
     browser.click("#choices .choice[data-index='1']")
-    browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent === 'Learning progress was not saved.'")
+    browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent === '1 Study response awaiting save confirmation. forced Study save failure'")
     browser.click("#finishReviewBtn")
     browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent.includes('Retry the failed Study save')")
     assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
@@ -2594,8 +3810,10 @@ def test_generated_practice_study_completion_retry_library_and_retake(browser_st
     browser.wait_for("studyCompletionFailed === true")
     assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
     assert browser.evaluate("document.querySelector('.study-learning-save-message').textContent") == (
-        "forced completion failure"
+        "Finish Review was not confirmed. forced completion failure"
     )
+    assert browser.evaluate(f"DLMSQuizRecovery.reconcileCompletedStudy({{quizId:{quiz_id}}}).then(s=>s.size)") == 0
+    assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null")
     browser.click("#finishReviewBtn")
     browser.wait_for(
         f"generatedPracticeStatus.completed === true && localStorage.getItem({json.dumps(recovery_key)}) === null"
@@ -2624,7 +3842,7 @@ def test_generated_practice_study_completion_retry_library_and_retake(browser_st
     browser.wait_for(
         "document.querySelector('.library-folder-completed-practice .library-folder-toggle-button').getAttribute('aria-expanded') === 'false'"
     )
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(f"{browser_stack.base_url}/library")
         browser.wait_for("document.querySelector('.library-folder-completed-practice') !== null")
@@ -2650,6 +3868,7 @@ def test_generated_practice_study_completion_retry_library_and_retake(browser_st
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("studyLearningEventSaves.size === 0")
     assert browser.evaluate("quizRecoveryController.ownsState") is True
@@ -2668,7 +3887,8 @@ def test_generated_practice_study_completion_retry_library_and_retake(browser_st
     browser.navigate(quiz_url)
     browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
     browser.click(".quiz-recovery-resume")
-    browser.wait_for("index === 1 && generatedPracticeStatus.completed === true")
+    browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
+    browser.wait_for("index === 1 && generatedPracticeStatus.completed === true && document.getElementById('finishReviewBtn') !== null")
     assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
     browser.click("#finishReviewBtn")
     browser.wait_for(f"localStorage.getItem({json.dumps(recovery_key)}) === null")
@@ -2725,6 +3945,7 @@ def test_final_study_answer_save_failure_keeps_recovery(browser_stack):
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true && quiz.length === 2")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("studyLearningEventSaves.size === 0")
@@ -2800,7 +4021,16 @@ def test_quiz_recovery_resends_one_exact_exam_attempt_after_lost_acknowledgement
         "if(String(args[0]).includes('/record_attempt'))"
         "window.__recoveryRetryResponse=await response.clone().json();return response}); }; true"
     ) is True
+    # Hold the real readiness response until we prove recovery does not race it.
+    browser.evaluate("window.__beforeReadinessFetch=window.fetch;window.__releaseReadiness=null;"
+        "window.fetch=(...args)=>String(args[0]).includes('/api/study/quiz/')?"
+        "new Promise(resolve=>{window.__releaseReadiness=()=>resolve(window.__beforeReadinessFetch(...args));}):"
+        "window.__beforeReadinessFetch(...args);true")
     browser.click(".quiz-recovery-resume")
+    browser.wait_for("typeof window.__releaseReadiness === 'function'")
+    assert browser.evaluate("window.__recoveryRetryPayload === undefined")
+    assert browser.evaluate("document.querySelector('.quiz-recovery-resume').disabled")
+    browser.evaluate("window.__releaseReadiness();true")
     browser.wait_for("document.getElementById('result').textContent.includes('saved successfully')")
     assert browser.evaluate("JSON.parse(window.__recoveryRetryPayload)") == original_payload
     assert browser.evaluate("window.__recoveryRetryResponse.already_recorded") is True
@@ -2823,6 +4053,7 @@ def test_quiz_recovery_resends_one_exact_exam_attempt_after_lost_acknowledgement
     assert browser.evaluate(f"localStorage.getItem({json.dumps(storage_key)})") is None
 
 
+@pytest.mark.parametrize('browser_stack', [{'alwaysMatch': {'unhandledPromptBehavior': 'ignore'}}], indirect=True)
 def test_quiz_recovery_rejects_bad_state_and_enforces_single_writer(browser_stack):
     browser = browser_stack.browser
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
@@ -2840,6 +4071,7 @@ def test_quiz_recovery_rejects_bad_state_and_enforces_single_writer(browser_stac
         browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
         assert browser.evaluate("quizRecoveryController.ownsState") is False
         browser.click(".quiz-recovery-resume")
+        browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
         browser.wait_for("quizRecoveryController.ownsState === true")
         browser.context = first_context
         browser.wait_for("quizRecoveryController.ownsState === false")
@@ -2908,10 +4140,11 @@ def test_quiz_recovery_rejects_bad_state_and_enforces_single_writer(browser_stac
     assert browser.evaluate(f"localStorage.getItem({json.dumps(storage_key)})") is None
 
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
     browser.navigate(quiz_url)
     browser.wait_for("document.querySelector('.quiz-recovery-start-over') !== null")
-    browser.click(".quiz-recovery-start-over")
+    assert len(browser.click_with_prompt(".quiz-recovery-start-over", accept=True)) == 1
     assert browser.evaluate(f"localStorage.getItem({json.dumps(storage_key)})") is None
     assert browser.evaluate(
         "!document.getElementById('modeSelect').classList.contains('hidden') && "
@@ -2924,13 +4157,15 @@ def test_quiz_recovery_rejects_bad_state_and_enforces_single_writer(browser_stac
         "window.__restoreRecoveryStorage = () => { Storage.prototype.setItem = original; }; return true; })()"
     ) is True
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
     assert browser.evaluate("index === 0 && userAnswers.q0[0] === 0") is True
     assert "recovery is unavailable" in browser.evaluate("document.getElementById('quizRecoveryNotice').textContent")
     browser.evaluate("window.__restoreRecoveryStorage(); true")
 
 
-def test_quiz_recovery_survives_firefox_close_and_reopen_with_same_profile(browser_server):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_quiz_recovery_survives_firefox_close_and_reopen_with_same_profile(browser_server, theme):
     profile = browser_server.work_root / "firefox-recovery-reopen-profile"
     profile.mkdir()
     quiz_url = f"{browser_server.base_url}/quizzes/{browser_server.metadata['critical_html']}"
@@ -2969,6 +4204,8 @@ def test_quiz_recovery_survives_firefox_close_and_reopen_with_same_profile(brows
     second_process = second_output = second_browser = None
     try:
         first_process, first_output, first_browser = launch("first")
+        first_browser.navigate(browser_server.base_url + "/settings")
+        _set_theme(first_browser, theme)
         first_browser.navigate(quiz_url)
         first_browser.wait_for("quizRecoveryReady === true")
         first_browser.click(".exam-mode-btn")
@@ -2982,11 +4219,13 @@ def test_quiz_recovery_survives_firefox_close_and_reopen_with_same_profile(brows
 
         second_process, second_output, second_browser = launch("second")
         second_browser.navigate(quiz_url)
+        assert second_browser.evaluate("fetch('/api/portal_config').then(response => response.json()).then(config => config.theme)") == theme
         second_browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
         assert "Question 2 of 2" in second_browser.evaluate(
             "document.querySelector('.quiz-recovery-panel p').textContent"
         )
         second_browser.click(".quiz-recovery-resume")
+        second_browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
         second_browser.wait_for("index === 1 && userAnswers.q0[0] === 1")
     finally:
         if first_browser is not None:
@@ -2995,7 +4234,8 @@ def test_quiz_recovery_survives_firefox_close_and_reopen_with_same_profile(brows
             close(second_process, second_output, second_browser)
 
 
-def test_quiz_recovery_survives_presence_shutdown_and_server_restart(tmp_path):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_quiz_recovery_survives_presence_shutdown_and_server_restart(tmp_path, theme):
     firefox = shutil.which("firefox") or shutil.which("firefox-esr")
     if not firefox:
         pytest.skip("Firefox is not installed")
@@ -3068,10 +4308,13 @@ def test_quiz_recovery_survives_presence_shutdown_and_server_restart(tmp_path):
         metadata = json.loads((data_root / "browser_fixture.json").read_text(encoding="utf-8"))
         quiz_url = f"{base_url}/quizzes/{metadata['critical_html']}"
         browser_process, browser_output, browser = start_browser("first")
+        browser.navigate(base_url + "/settings")
+        _set_theme(browser, theme)
         browser.navigate(quiz_url)
         browser.wait_for("quizRecoveryReady === true && window.dlmsBrowserPresence?.enabled === true")
         browser.wait_for("window.dlmsBrowserPresence.heartbeat()")
         browser.click(".study-mode-btn")
+        browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
         browser.click("#choices .choice[data-index='0']")
         recovery_key = browser.evaluate("quizRecoveryController.storageKey")
         browser.navigate(f"{base_url}/library")
@@ -3090,6 +4333,7 @@ def test_quiz_recovery_survives_presence_shutdown_and_server_restart(tmp_path):
         server_process, server_output = start_server("second")
         browser_process, browser_output, browser = start_browser("second")
         browser.navigate(quiz_url)
+        assert browser.evaluate("fetch('/api/portal_config').then(response => response.json()).then(config => config.theme)") == theme
         browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
         assert browser.evaluate(f"localStorage.getItem({json.dumps(recovery_key)}) !== null") is True
     finally:
@@ -3105,6 +4349,7 @@ def test_quiz_recovery_library_prunes_only_expired_malformed_and_orphaned_record
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
     current_key = browser.evaluate("quizRecoveryController.storageKey")
     browser.navigate(f"{browser_stack.base_url}/")
@@ -3168,6 +4413,7 @@ def test_quiz_recovery_fingerprint_invalidation_tracks_playable_content_not_titl
         browser.navigate(quiz_url)
         browser.wait_for("quizRecoveryReady === true")
         browser.click(".study-mode-btn")
+        browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
         browser.click("#choices .choice[data-index='0']")
         storage_key = browser.evaluate("quizRecoveryController.storageKey")
         browser.navigate(f"{browser_stack.base_url}/")
@@ -3182,7 +4428,10 @@ def test_quiz_recovery_fingerprint_invalidation_tracks_playable_content_not_titl
         artifact.write_bytes(original_bytes)
 
 
-def test_quiz_edit_persists_to_editor_and_generated_quiz(browser_stack):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_quiz_edit_persists_to_editor_and_generated_quiz(browser_stack, theme):
+    browser_stack.browser.navigate(browser_stack.base_url + "/settings")
+    _set_theme(browser_stack.browser, theme)
     browser = browser_stack.browser
     quiz_id = browser_stack.metadata["critical_id"]
     edited_title = "Browser Edited Workflow"
@@ -3195,8 +4444,12 @@ def test_quiz_edit_persists_to_editor_and_generated_quiz(browser_stack):
         f"document.querySelector('.question-text').value = {json.dumps(edited_question)}; "
         "return true; })()"
     ) is True
+    # The URL and edited input values already match before submission. Wait for
+    # the redirected document so navigation cannot race the save/rebuild.
+    browser.evaluate("window.__dlmsEditorBeforeSave = true")
     browser.click("#edit-quiz-form .build-primary-button")
     browser.wait_for(
+        "window.__dlmsEditorBeforeSave !== true && "
         f"location.pathname === '/edit_quiz/{quiz_id}' && "
         f"document.querySelector('[name=quiz_title]').value === {json.dumps(edited_title)}"
     )
@@ -3214,7 +4467,7 @@ def test_study_and_exam_quiz_shell_follow_each_theme(browser_stack):
     browser = browser_stack.browser
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
 
-    for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+    for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{browser_stack.base_url}/settings")
         browser.wait_for("window.dlmsCsrfToken")
         status = browser.evaluate(
@@ -3225,7 +4478,7 @@ def test_study_and_exam_quiz_shell_follow_each_theme(browser_stack):
 
         for mode_selector in (".study-mode-btn", ".exam-mode-btn"):
             browser.navigate(f"{quiz_url}?theme={theme}&mode={mode_selector[1:]}")
-            browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
+            _wait_for_quiz_mode_controls(browser)
             pre_quiz = browser.evaluate(
                 "(() => {"
                 "const bounds = selector => { const rect = document.querySelector(selector).getBoundingClientRect();"
@@ -3292,12 +4545,12 @@ def test_quiz_header_uses_site_heading_and_branded_title_across_modes_themes_and
     build_quiz_html(
         html_name, browser_stack.metadata["recovery_json"], str(quiz_folder / html_name),
         "Mike's Training & Practice Center", title, "header-test.png",
-        browser_stack.metadata["critical_id"], 5,
+        "browser-recovery-mixed", 5,
         normalize_exam_minutes=lambda value: int(value),
     )
     quiz_url = f"{browser_stack.base_url}/quizzes/{html_name}"
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{browser_stack.base_url}/settings")
         _set_theme(browser, theme)
         for mode_selector in (".study-mode-btn", ".exam-mode-btn"):
@@ -3358,7 +4611,7 @@ def test_quiz_header_uses_site_heading_and_branded_title_across_modes_themes_and
     build_quiz_html(
         no_logo_name, browser_stack.metadata["recovery_json"],
         str(quiz_folder / no_logo_name), "DLMS", no_logo_title, None,
-        browser_stack.metadata["critical_id"], 5,
+        "browser-recovery-mixed", 5,
         normalize_exam_minutes=lambda value: int(value),
     )
     for mode_selector in (".study-mode-btn", ".exam-mode-btn"):
@@ -3395,19 +4648,21 @@ def test_quiz_header_uses_site_heading_and_branded_title_across_modes_themes_and
     assert browser.evaluate("document.querySelector('.hero-title').children.length") == 0
 
 
+@pytest.mark.parametrize('browser_stack', [{'alwaysMatch': {'unhandledPromptBehavior': 'ignore'}}], indirect=True)
 def test_study_session_panel_is_study_only_and_contained_across_themes(browser_stack):
     browser = browser_stack.browser
     base_url = browser_stack.base_url
     quiz_url = f"{base_url}/quizzes/{browser_stack.metadata['recovery_html']}"
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(base_url + "/settings")
         _set_theme(browser, theme)
         browser.navigate(quiz_url)
         browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
         if browser.evaluate("Boolean(document.querySelector('.quiz-recovery-start-over'))"):
-            browser.click(".quiz-recovery-start-over")
+            assert len(browser.click_with_prompt(".quiz-recovery-start-over", accept=True)) == 1
         browser.click(".study-mode-btn")
+        browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
         browser.wait_for("document.getElementById('studySessionIntro') !== null")
 
         contrast = _theme_contrast_snapshot(browser, {
@@ -3462,15 +4717,16 @@ def test_study_session_panel_is_study_only_and_contained_across_themes(browser_s
         build_quiz_html(
             filename, browser_stack.metadata["recovery_json"],
             str(quiz_folder / filename), "DLMS", title, None,
-            browser_stack.metadata["critical_id"], 5,
+            "browser-recovery-mixed", 5,
             normalize_exam_minutes=lambda value: int(value),
         )
         browser.set_viewport(420, 900)
         browser.navigate(f"{base_url}/quizzes/{filename}")
         browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
         if browser.evaluate("Boolean(document.querySelector('.quiz-recovery-start-over'))"):
-            browser.click(".quiz-recovery-start-over")
+            assert len(browser.click_with_prompt(".quiz-recovery-start-over", accept=True)) == 1
         browser.click(".study-mode-btn")
+        browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
         assert browser.evaluate(
             "document.querySelector('.active-quiz-title').textContent.trim()==="
             + json.dumps(title) + "&& !document.getElementById('studySessionIntro').hidden"
@@ -3480,8 +4736,9 @@ def test_study_session_panel_is_study_only_and_contained_across_themes(browser_s
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
     if browser.evaluate("Boolean(document.querySelector('.quiz-recovery-start-over'))"):
-        browser.click(".quiz-recovery-start-over")
+        assert len(browser.click_with_prompt(".quiz-recovery-start-over", accept=True)) == 1
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#nextBtn")
     browser.wait_for("index === 1")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
@@ -3491,6 +4748,7 @@ def test_study_session_panel_is_study_only_and_contained_across_themes(browser_s
     browser.navigate(quiz_url)
     browser.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
     browser.click(".quiz-recovery-resume")
+    browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for(
         "index===1 && !document.getElementById('studySessionIntro').hidden && "
         "!document.getElementById('studyModeBadge').hidden"
@@ -3514,7 +4772,7 @@ def test_study_session_panel_is_study_only_and_contained_across_themes(browser_s
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
     if browser.evaluate("Boolean(document.querySelector('.quiz-recovery-start-over'))"):
-        browser.click(".quiz-recovery-start-over")
+        assert len(browser.click_with_prompt(".quiz-recovery-start-over", accept=True)) == 1
     browser.click(".exam-mode-btn")
     fresh_exam = browser.evaluate(
         "(() => {const bar=document.querySelector('.top-bar');"
@@ -3538,6 +4796,7 @@ def test_quiz_question_tools_share_prompt_and_preserve_attempt_state(browser_sta
     browser.navigate(quiz_url)
     browser.wait_for("quizRecoveryReady === true && quiz.length === 4")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for("document.getElementById('studyCopyBtn').offsetParent !== null")
     browser.evaluate(
         "studyAIConfig={ai_helper_enabled:true,ai_provider:'chatgpt'};"
@@ -3549,7 +4808,15 @@ def test_quiz_question_tools_share_prompt_and_preserve_attempt_state(browser_sta
         "Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__toolCalls.copies.push(text)}}});"
         "window.__toolFetch=window.fetch;window.fetch=(...args)=>{window.__toolCalls.requests.push(String(args[0]));return window.__toolFetch(...args)};true"
     )
+    # This intentionally unregistered preview cannot claim durable source marks.
+    # Existing browser-local intent must survive both a rejected transfer and tools.
+    assert browser.evaluate("durableStudySupported") is False
+    browser.evaluate("studyAnkiSelections=new Set([0]);checkpointQuizRecovery();true")
     browser.click("#studyAnkiBtn")
+    browser.wait_for("document.getElementById('reviewMarkStatus')?.textContent.includes('cannot verify its source')")
+    assert browser.evaluate("[...studyAnkiSelections]") == [0]
+    assert browser.evaluate("reviewMarkContext === null && reviewMarkPending === null")
+    assert _database_value(browser_stack.data_root / 'results.db', 'SELECT count(*) FROM review_marks') == 0
     browser.click("#choices .choice[data-index='1']")
     browser.wait_for("[...studyLearningEventSaves.values()].every(record => record.state === 'failed')")
     browser.evaluate("window.__toolCalls.requests=[];true")
@@ -3617,12 +4884,54 @@ def test_quiz_question_tools_share_prompt_and_preserve_attempt_state(browser_sta
     assert browser.evaluate("(() => {try {buildCurrentQuestionAIPrompt();return false}catch(error){return true}})()") is True
 
 
+def test_delayed_prompt_copy_keeps_original_question_and_order(browser_stack):
+    browser = browser_stack.browser
+    browser.navigate(f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}")
+    browser.wait_for("quizRecoveryReady")
+    browser.click(".study-mode-btn")
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    browser.evaluate("Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:()=>new Promise(resolve=>{window.releaseClipboard=resolve})}});true")
+    browser.click("#studyCopyBtn")
+    browser.wait_for("typeof window.releaseClipboard === 'function'")
+    browser.click("#nextBtn")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    browser.evaluate("window.releaseClipboard();true")
+    browser.wait_for("document.getElementById('questionCopyStatus').textContent === 'Copied to clipboard' && studyLearningEventSaves.size === 0")
+    with sqlite3.connect(browser_stack.data_root / "results.db") as conn:
+        assert conn.execute("SELECT ordinal,kind FROM study_responses ORDER BY sequence").fetchall() == [(2, "response"), (1, "prompt_copy")]
+    browser.click("#prevBtn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    observations = browser.evaluate("fetch(`/api/study/quiz/${window.QUIZ_ID}`).then(r=>r.json()).then(d=>d.session.observations)")
+    assert observations["0"]["first"]["prior_feedback_or_action"] is True
+    assert observations["1"]["first"]["prior_feedback_or_action"] is False
+    # Finish freezes acknowledged coverage even if an earlier clipboard promise
+    # resolves while the completion request is in flight.
+    browser.click("#studyCopyBtn")
+    browser.click("#nextBtn")
+    browser.evaluate("window.originalStudyFetch=window.fetch.bind(window);window.fetch=(...args)=>String(args[0]).includes('/api/study/finish')?new Promise(resolve=>{window.releaseFinish=()=>resolve(window.originalStudyFetch(...args))}):window.originalStudyFetch(...args);true")
+    browser.click("#finishReviewBtn")
+    browser.wait_for("typeof window.releaseFinish === 'function'")
+    browser.evaluate("window.releaseClipboard();true")
+    browser.wait_for("document.getElementById('questionCopyStatus').textContent === 'Copied to clipboard'")
+    assert browser.evaluate("studyLearningEventSequence") == 3
+    assert browser.evaluate("studyLearningEventSaves.size") == 0
+    browser.evaluate("window.releaseFinish();true")
+    browser.wait_for("durableStudySession.completed_at !== null")
+
+
 def test_quiz_question_copy_uses_real_legacy_fallback_when_clipboard_api_is_unavailable(browser_stack):
     browser = browser_stack.browser
+    # Native focus checks need a foreground tab, as in the other keyboard tests.
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
     browser.navigate(quiz_url)
+    browser.activate()
+    browser.wait_for('document.hasFocus()')
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.evaluate(
         "Object.defineProperty(navigator,'clipboard',{configurable:true,value:undefined});"
         "window.__fallbackAttempts=0;window.__copiedSelection=null;window.__opens=0;"
@@ -3658,9 +4967,15 @@ def test_quiz_question_copy_uses_real_legacy_fallback_when_clipboard_api_is_unav
     assert copied["selection"] == review_prompt == before["prompt"]
     assert copied["attempts"] == 1
     assert copied["opens"] == 0
-    assert {key: copied[key] for key in before if key != "prompt"} == {
-        key: before[key] for key in before if key != "prompt"
+    assert {key: copied[key] for key in before if key not in {"prompt", "recovery"}} == {
+        key: before[key] for key in before if key not in {"prompt", "recovery"}
     }
+    # Copy is now an observable action. Answer state is unchanged; its ordered
+    # evidence save can briefly change the browser's pending queue.
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    assert _database_value(browser_stack.data_root / "results.db",
+        "SELECT COUNT(*) FROM study_responses WHERE session_id=? AND kind='prompt_copy'",
+        (browser.evaluate("learningSessionId"),)) == 2
 
     browser.evaluate(
         "Object.defineProperty(navigator,'clipboard',{configurable:true,"
@@ -3672,17 +4987,19 @@ def test_quiz_question_copy_uses_real_legacy_fallback_when_clipboard_api_is_unav
     assert browser.evaluate("window.__copiedSelection") == before["prompt"]
     assert browser.evaluate("document.querySelectorAll('textarea').length") == before["textareas"]
 
-    browser.evaluate("document.execCommand=()=>false;true")
+    # Each error assertion must observe this click, rather than the previous
+    # identical error message. Keep the native pointer and focus assertions.
+    browser.evaluate("window.__rejectedCopies=0;document.execCommand=()=>{window.__rejectedCopies++;return false};true")
     browser.click("#studyCopyBtn")
-    browser.wait_for("document.getElementById('questionCopyStatus').textContent.includes('Could not copy')")
+    browser.wait_for("window.__rejectedCopies===1 && document.getElementById('questionCopyStatus').textContent.includes('Could not copy')")
     assert browser.evaluate("document.activeElement.id") == "studyCopyBtn"
     assert browser.evaluate("document.querySelectorAll('textarea').length") == before["textareas"]
     assert browser.evaluate("window.__opens") == 0
     assert browser.evaluate("JSON.stringify(userAnswers)") == before["answers"]
 
-    browser.evaluate("document.execCommand=()=>{throw new Error('blocked')};true")
+    browser.evaluate("window.__rejectedCopies=0;document.execCommand=()=>{window.__rejectedCopies++;throw new Error('blocked')};true")
     browser.click("#studyCopyBtn")
-    browser.wait_for("document.getElementById('questionCopyStatus').textContent.includes('Could not copy')")
+    browser.wait_for("window.__rejectedCopies===1 && document.getElementById('questionCopyStatus').textContent.includes('Could not copy')")
     assert browser.evaluate("document.querySelectorAll('textarea').length") == before["textareas"]
     assert browser.evaluate("document.activeElement.id") == "studyCopyBtn"
 
@@ -3690,12 +5007,13 @@ def test_quiz_question_copy_uses_real_legacy_fallback_when_clipboard_api_is_unav
 def test_quiz_question_tools_wrap_across_themes_and_widths(browser_stack):
     browser = browser_stack.browser
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{browser_stack.base_url}/settings")
         _set_theme(browser, theme)
         browser.navigate(quiz_url)
         browser.wait_for("quizRecoveryReady === true")
         browser.click(".study-mode-btn")
+        browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
         browser.evaluate("quiz[0].question='Long question '+ 'W'.repeat(180);renderQuestion();true")
         for width in (1440, 1024, 760, 420):
             browser.set_viewport(width, 900)
@@ -3732,7 +5050,7 @@ def test_anki_summary_cards_across_themes_and_widths(browser_stack):
         "document.querySelectorAll('[name=law_cards]').length"
     )
 
-    for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+    for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{browser_stack.base_url}/settings")
         browser.wait_for("window.dlmsCsrfToken")
         status = browser.evaluate(
@@ -3773,13 +5091,13 @@ def test_anki_summary_cards_across_themes_and_widths(browser_stack):
                 "metricColors:items.map(item => getComputedStyle(item.querySelector('strong')).color),"
                 "heading:resolve('--theme-heading')}; })()"
             )
-            assert "Questions Ever Missed:" in summary["text"]
+            assert "Questions ever missed" in summary["text"]
             assert "not yet revisited" in summary["text"]
             assert "revisited later" in summary["text"]
             assert "missed more than once" in summary["text"]
             assert "Repeat count overlaps revisit status." in summary["text"]
             assert summary["itemCount"] == 3
-            assert summary["labels"] == ["Quizzes", "Questions Ever Missed:", "Law Flashcards"]
+            assert summary["labels"] == ["Quizzes", "Questions ever missed", "Law Flashcards"]
             assert summary["lawCount"] == str(custom_law_count) == "3"
             assert summary["associated"] is True
             assert summary["overflow"] is False
@@ -3796,7 +5114,10 @@ def test_anki_summary_cards_across_themes_and_widths(browser_stack):
             assert all(color == summary["heading"] for color in summary["metricColors"])
 
 
-def test_study_learning_save_failure_is_visible_and_retry_persists(browser_stack):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_study_learning_save_failure_is_visible_and_retry_persists(browser_stack, theme):
+    browser_stack.browser.navigate(browser_stack.base_url + "/settings")
+    _set_theme(browser_stack.browser, theme)
     browser = browser_stack.browser
     database = browser_stack.data_root / "results.db"
     before = _database_value(
@@ -3805,7 +5126,7 @@ def test_study_learning_save_failure_is_visible_and_retry_persists(browser_stack
     )
     quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
     browser.navigate(quiz_url)
-    browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
+    _wait_for_quiz_mode_controls(browser)
     assert browser.evaluate(
         "(() => { const originalFetch = window.fetch.bind(window); let failStudySave = true; "
         "window.fetch = (...args) => { const target = String(args[0]); "
@@ -3817,11 +5138,12 @@ def test_study_learning_save_failure_is_visible_and_retry_persists(browser_stack
     ) is True
 
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for("document.querySelectorAll('#choices .choice').length === 2")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for(
         "!document.getElementById('studyLearningEventStatus').hidden && "
-        "document.querySelector('.study-learning-save-message').textContent.includes('not saved')"
+        "document.querySelector('.study-learning-save-message').textContent === '1 Study response awaiting save confirmation. forced browser regression failure'"
     )
     assert _database_value(
         database,
@@ -3837,8 +5159,18 @@ def test_study_learning_save_failure_is_visible_and_retry_persists(browser_stack
     )
 
 
-def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack, theme):
+    browser_stack.browser.navigate(browser_stack.base_url + "/settings")
+    _set_theme(browser_stack.browser, theme)
     browser = browser_stack.browser
+    # Create a real backup after choosing the theme, then restore it below.
+    backup_directory = browser_stack.data_root / "backups"
+    existing_backups = set(backup_directory.glob("*.zip"))
+    assert browser.evaluate("fetch('/settings/backup/create', {method:'POST'}).then(async response => {await response.arrayBuffer(); return response.status;})") == 200
+    created_backups = set(backup_directory.glob("*.zip")) - existing_backups
+    assert len(created_backups) == 1
+    restore_path = created_backups.pop()
     quiz_id = browser_stack.metadata["critical_id"]
     original_title = "Browser Critical Workflow"
     changed_title = "Browser Restore Mutation"
@@ -3849,6 +5181,7 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack)
     browser.navigate(f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}")
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("studyLearningEventSaves.size === 0")
     recovery_key = browser.evaluate("quizRecoveryController.storageKey")
@@ -3879,7 +5212,7 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack)
 
     browser.navigate(f"{browser_stack.base_url}/settings/backup")
     browser.wait_for("document.getElementById('backupFile') !== null")
-    browser.set_files("#backupFile", [browser_stack.metadata["restore_path"]])
+    browser.set_files("#backupFile", [str(restore_path)])
     browser.click("form[action='/settings/backup/restore/stage'] button[type='submit']")
     browser.wait_for_page_ready(
         "document.querySelector('h1')?.textContent.includes('Review backup before restore')"
@@ -3923,6 +5256,8 @@ def test_restore_confirmation_and_success_replace_live_quiz_state(browser_stack)
     browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
     assert browser.evaluate("document.title") == original_title
     assert browser.evaluate("quiz[0].question") == original_question
+
+    assert json.loads((browser_stack.data_root / "config" / "portal.json").read_text())["theme"] == theme
 
 
 def test_cancelled_and_invalid_restore_preserve_quiz_recovery(browser_stack, tmp_path):
@@ -3974,7 +5309,7 @@ def test_manual_quiz_choice_labels_are_readable_across_themes(browser_stack):
         "contrast:(Math.max(lum(foreground),lum(background))+.05)/(Math.min(lum(foreground),lum(background))+.05)};};"
     )
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{base_url}/settings")
         browser.wait_for("window.dlmsCsrfToken")
         assert browser.evaluate(
@@ -4032,7 +5367,7 @@ def test_paste_preview_diff_is_inert_and_fix_preserves_state(browser_stack):
     script = '<script id="preview-injected-script">window.previewInjected=true</script>'
     source = "Page 5\nDROP " + removed + script + "\n1. TOKEN\nA. First\nB. Second\nCorrect Answer: A"
     browser.navigate(base + "/settings")
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         for width in (1440, 420):
             browser.set_viewport(width, 1100)
@@ -4087,7 +5422,7 @@ def test_paste_quiz_and_preview_readability_across_themes(browser_stack, tmp_pat
         path.write_bytes(base64.b64decode(result["data"]))
         assert path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
 
-    for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+    for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{base_url}/settings")
         browser.wait_for("window.dlmsCsrfToken && document.getElementById('dlmsQuickTheme')")
         status = browser.evaluate(
@@ -4266,7 +5601,7 @@ def test_settings_hub_interaction_states_follow_each_theme(browser_stack):
             "}; })()"
         )
 
-    for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+    for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{browser_stack.base_url}/settings")
         browser.wait_for("window.dlmsCsrfToken && document.getElementById('dlmsQuickTheme')")
         status = browser.evaluate(
@@ -4609,7 +5944,7 @@ def test_reset_remove_destructive_controls_requests_and_failure_recovery(browser
 
 def test_packaged_clear_history_error_guidance_themes(browser_stack):
     browser = browser_stack.browser
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{browser_stack.base_url}/settings/reset-remove")
         _set_theme(browser, theme)
         for width in (1280, 420):
@@ -4636,7 +5971,7 @@ def test_backup_limit_guidance_layout_themes(browser_stack):
     with fixture.open("wb") as handle:
         handle.truncate(17 * 1024 * 1024)
     browser = browser_stack.browser
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{browser_stack.base_url}/settings/backup")
         _set_theme(browser, theme)
         for width in (1280, 420):
@@ -4654,7 +5989,7 @@ def test_backup_limit_guidance_layout_themes(browser_stack):
 
 def test_restore_failure_guidance_layout_themes(browser_stack):
     browser = browser_stack.browser
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{browser_stack.base_url}/settings/backup")
         _set_theme(browser, theme)
         for width in (1280, 420):
@@ -4706,7 +6041,7 @@ def test_system_tools_rebuild_workflow_states_csrf_and_text_rendering(browser_st
         "imageEditorHref": "/admin/image-editor",
     }
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         for width in (1280, 420):
             browser.set_viewport(width, 900)
@@ -5135,7 +6470,7 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
         )
         assert status == 200
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         set_theme(theme)
         # Pack metrics have three text children, unlike icon+copy dashboard
         # cards. Check real layout across the four/two/one-column breakpoints.
@@ -5389,7 +6724,10 @@ def test_content_pack_detail_and_library_consistency_across_themes(browser_stack
     set_theme(original_theme)
 
 
-def test_content_pack_import_review_install_cancel_csrf_and_escaping(browser_stack):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_content_pack_import_review_install_cancel_csrf_and_escaping(browser_stack, theme):
+    browser_stack.browser.navigate(browser_stack.base_url + "/settings")
+    _set_theme(browser_stack.browser, theme)
     browser = browser_stack.browser
     base_url = browser_stack.base_url
 
@@ -6403,7 +7741,7 @@ def test_study_packs_catalog_populated_controls_csrf_state_and_escaping(browser_
     browser.set_viewport(1280, 900)
 
     filter_palettes = {}
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         status = browser.evaluate(
             f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
             f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response => response.status)"
@@ -6421,7 +7759,7 @@ def test_study_packs_catalog_populated_controls_csrf_state_and_escaping(browser_
         )
         assert filter_palettes[theme]["active"] != filter_palettes[theme]["inactive"]
         assert filter_palettes[theme]["pressed"] == "true"
-    assert len({tuple(value["active"]) for value in filter_palettes.values()}) == 4
+    assert len({tuple(value["active"]) for value in filter_palettes.values()}) == 5
 
     status = browser.evaluate(
         "fetch('/api/theme', {method:'POST', headers:{'Content-Type':'application/json'}, "
@@ -6964,7 +8302,10 @@ def test_law_guided_create_import_preview_and_cancel_workflow(browser_stack):
     )
 
 
-def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_stack):
+@pytest.mark.parametrize("theme", ("purple-gold", "ethereal"))
+def test_segment19_smart_pdf_and_advanced_authoring_external_templates(browser_stack, theme):
+    browser_stack.browser.navigate(browser_stack.base_url + "/settings")
+    _set_theme(browser_stack.browser, theme)
     browser = browser_stack.browser
     base_url = browser_stack.base_url
     data_root = browser_stack.data_root
@@ -7549,7 +8890,7 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         })()
     """
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         status = browser.evaluate(
             f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
             f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response=>response.status)"
@@ -7682,7 +9023,7 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
     ) is True
 
     review_url = browser.evaluate("location.href")
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         status = browser.evaluate(
             f"fetch('/api/theme', {{method:'POST', headers:{{'Content-Type':'application/json'}}, "
             f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response=>response.status)"
@@ -7839,8 +9180,9 @@ def test_external_ai_shared_review_editor_and_publication(browser_stack):
         browser_stack.data_root / "external_ai_drafts" / f"{draft_id}.json"
     ).exists()
     browser.navigate(f"{base_url}/quizzes/{entry['html']}")
-    browser.wait_for("typeof quiz !== 'undefined' && quiz.length === 2")
+    _wait_for_quiz_mode_controls(browser)
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for("document.querySelectorAll('#choices .choice').length === 3")
     assert browser.evaluate(
         "document.getElementById('qText').textContent.includes('neutral browser option')"
@@ -7911,7 +9253,7 @@ def test_external_ai_matching_review_and_publication(browser_stack):
         "matching bulk help": ".pdf-review-bulk-help summary",
         "matching disabled bulk action": "#questionReviewConfirmSelected",
     }
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(review_url)
         browser.wait_for("document.querySelector('[data-matching-role=pair-row]')")
@@ -8179,7 +9521,7 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
         "(() => {const form=document.querySelector('form[action=\"/pdf-import/screenshots\"]');"
         "return {method:form.method,enctype:form.enctype,multiple:form.querySelector('[name=screenshots]').multiple,"
         "disabled:form.querySelector('[name=screenshots]').disabled,rights:form.querySelector('[name=rights_ok]').required,"
-        "help:form.closest('section').innerText.includes('selected or highlighted answer')};})()"
+        "help:form.closest('section').innerText.includes('Highlighted or selected answers are not proof of correctness.')};})()"
     )
     assert entry == {
         "method": "post",
@@ -8251,7 +9593,7 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
         "return {color:getComputedStyle(node).color,background:getComputedStyle(node).backgroundColor,"
         "contrast:(Math.max(lum(foreground),lum(background))+.05)/(Math.min(lum(foreground),lum(background))+.05)};};"
     )
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{base_url}/settings")
         browser.wait_for("window.dlmsCsrfToken")
         status = browser.evaluate(
@@ -8304,7 +9646,7 @@ def test_screenshot_ocr_batch_review_confirmation_and_theme_flow(browser_stack):
         assert theme_state["bulkFocused"] is True
         assert theme_state["overflow"] is True
         surfaces[theme] = theme_state["source"]
-    assert len(set(surfaces.values())) == 4
+    assert len(set(surfaces.values())) == 5
 
     for width in (420, 390):
         browser.set_viewport(width, 820)
@@ -8406,7 +9748,7 @@ def test_ocr_availability_diagnostics_and_badge_are_responsive(browser_stack):
     unavailable_surfaces = {}
     for width in (1120, 760, 390):
         browser.set_viewport(width, 850)
-        for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
             browser.navigate(f"{base_url}/pdf-import")
             set_theme(theme)
             browser.navigate(f"{base_url}/pdf-import")
@@ -8426,7 +9768,7 @@ def test_ocr_availability_diagnostics_and_badge_are_responsive(browser_stack):
     try:
         for width in (1120, 760, 390):
             browser.set_viewport(width, 850)
-            for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+            for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
                 browser.navigate(f"{base_url}/pdf-import")
                 browser.wait_for(
                     "document.querySelector('.pdf-ocr-availability').textContent.includes('unavailable')"
@@ -8455,8 +9797,8 @@ def test_ocr_availability_diagnostics_and_badge_are_responsive(browser_stack):
     finally:
         unavailable_executable.rename(executable)
 
-    assert len(set(available_surfaces.values())) == 4
-    assert len(set(unavailable_surfaces.values())) == 4
+    assert len(set(available_surfaces.values())) == 5
+    assert len(set(unavailable_surfaces.values())) == 5
 
 
 def test_selective_scanned_pdf_ocr_offer_merge_preview_and_theme_flow(browser_stack):
@@ -8494,7 +9836,7 @@ def test_selective_scanned_pdf_ocr_offer_merge_preview_and_theme_flow(browser_st
 
     offer_url = browser.evaluate("location.href")
     surfaces = {}
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         # Each navigation replaces the fetch wrapper; markup can be ready
         # before nav-normalize has installed CSRF protection on this page.
         browser.wait_for("window.dlmsCsrfToken && typeof window.dlmsProtectForm === 'function'")
@@ -8513,7 +9855,7 @@ def test_selective_scanned_pdf_ocr_offer_merge_preview_and_theme_flow(browser_st
         assert state["focusable"] is True
         assert state["overflow"] is True
         surfaces[theme] = state["background"]
-    assert len(set(surfaces.values())) == 4
+    assert len(set(surfaces.values())) == 5
 
     browser.set_viewport(390, 820)
     assert browser.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1") is True
@@ -8614,7 +9956,7 @@ def test_pdf_review_large_bulk_confirmation_status_stays_compact(browser_stack):
     )
 
     detail_surfaces = {}
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{base_url}/settings")
         browser.wait_for("window.dlmsCsrfToken")
         status = browser.evaluate(
@@ -8681,7 +10023,7 @@ def test_pdf_review_large_bulk_confirmation_status_stays_compact(browser_stack):
         )
         assert narrow == {"contained": True, "overflow": True}
         browser.set_viewport(1280, 1000)
-    assert len(set(detail_surfaces.values())) == 4
+    assert len(set(detail_surfaces.values())) == 5
 
 
 def test_law_semantic_surfaces_follow_all_themes(browser_stack):
@@ -8776,7 +10118,7 @@ def test_law_semantic_surfaces_follow_all_themes(browser_stack):
 
     observed_section_backgrounds = {}
     observed_law_summary_backgrounds = {}
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{base_url}/law/import")
         set_theme(theme)
 
@@ -8881,8 +10223,8 @@ def test_law_semantic_surfaces_follow_all_themes(browser_stack):
             assert case_state["scheme"] == "dark"
             assert max(case_state["section"]["background"]) < .40
 
-    assert len(set(observed_section_backgrounds.values())) == 4
-    assert len(set(observed_law_summary_backgrounds.values())) == 4
+    assert len(set(observed_section_backgrounds.values())) == 5
+    assert len(set(observed_law_summary_backgrounds.values())) == 5
 
     browser.set_viewport(390, 820)
     browser.navigate(f"{base_url}/law/cases/{case_id}")
@@ -8976,7 +10318,7 @@ def test_stateful_learning_and_editor_surfaces_follow_all_themes(browser_stack):
         "DLMS",
         "DLMS-120 Matching Theme",
         None,
-        browser_stack.metadata["critical_id"],
+        "dlms120-matching-preview",
         5,
         normalize_exam_minutes=lambda value: int(value),
     )
@@ -9061,7 +10403,7 @@ def test_stateful_learning_and_editor_surfaces_follow_all_themes(browser_stack):
     editor_url = (
         f"{base_url}/admin/image-editor?pack=dlms120_batch2_editor&dataset=visuals&kind=hotspot"
     )
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(f"{base_url}/pdf-import/review/{draft_id}")
         set_theme(theme)
         browser.navigate(f"{base_url}/pdf-import/review/{draft_id}")
@@ -9084,8 +10426,8 @@ def test_stateful_learning_and_editor_surfaces_follow_all_themes(browser_stack):
         )
         for role in ("review", "incomplete", "issue", "feedback", "deleteToggle", "muted"):
             assert pdf_state[role]["contrast"] >= 4.5, (theme, role, pdf_state[role])
-        assert "REVIEW" in pdf_state["review"]["text"]
-        assert "INCOMPLETE" in pdf_state["incomplete"]["text"]
+        assert pdf_state["review"]["text"] == "Needs review"
+        assert pdf_state["incomplete"]["text"] == "Incomplete"
         assert pdf_state["review"]["borderStyle"] != "none"
         assert pdf_state["incomplete"]["borderStyle"] != "none"
 
@@ -9097,6 +10439,7 @@ def test_stateful_learning_and_editor_surfaces_follow_all_themes(browser_stack):
         browser.navigate(quiz_url)
         browser.wait_for("quizRecoveryReady === true && quiz.length === 1")
         browser.click(".study-mode-btn")
+        browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
         browser.wait_for("document.querySelector('.matching-answer-chip')")
         initial_matching = browser.evaluate(
             "(() => {" + probe_helpers
@@ -9230,7 +10573,7 @@ def test_stateful_learning_and_editor_surfaces_follow_all_themes(browser_stack):
             assert pdf_state["scheme"] == "dark"
             assert max(initial_matching["pool"]["background"]) < .45
 
-    assert len(set(surfaces_by_theme.values())) == 4
+    assert len(set(surfaces_by_theme.values())) == 5
 
 
 def test_segment20_law_case_editor_and_anki_external_templates(browser_stack):
@@ -9446,6 +10789,7 @@ def test_quiz_deletion_prunes_only_deleted_progress_and_stops_former_owner(brows
     browser.navigate(critical_url)
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
     critical_key = browser.evaluate("quizRecoveryController.storageKey")
     first_context = browser.context
@@ -9456,6 +10800,7 @@ def test_quiz_deletion_prunes_only_deleted_progress_and_stops_former_owner(brows
         browser.navigate(companion_url)
         browser.wait_for("quizRecoveryReady === true")
         browser.click(".study-mode-btn")
+        browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
         companion_key = browser.evaluate("quizRecoveryController.storageKey")
 
         browser.context = first_context
@@ -9696,7 +11041,7 @@ def test_legacy_shell_theme_closure_across_all_themes(browser_stack):
     """
 
     surfaces = {}
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.navigate(base_url + "/")
         set_theme(theme)
         browser.navigate(base_url + "/")
@@ -9708,7 +11053,7 @@ def test_legacy_shell_theme_closure_across_all_themes(browser_stack):
         dashboard = browser.evaluate(
             "(() => {" + probe_helpers
             + "return {scheme:root.getPropertyValue('--theme-color-scheme').trim(),"
-            "panel:measure(document.querySelector('.dashboard-welcome'))};})()"
+            "panel:measure(document.querySelector('.daily-review-panel'))};})()"
         )
 
         browser.navigate(base_url + "/regex-help")
@@ -9789,9 +11134,9 @@ def test_legacy_shell_theme_closure_across_all_themes(browser_stack):
             "parse": parse_state["action"]["backgroundCss"],
         }
 
-    assert len({state["regex"] for state in surfaces.values()}) == 4
-    assert len({state["rejected"] for state in surfaces.values()}) == 4
-    assert len({state["parse"] for state in surfaces.values()}) == 4
+    assert len({state["regex"] for state in surfaces.values()}) == 5
+    assert len({state["rejected"] for state in surfaces.values()}) == 5
+    assert len({state["parse"] for state in surfaces.values()}) == 5
 
     browser.set_viewport(390, 780)
     for path, ready in (
@@ -9859,7 +11204,7 @@ def test_post_310_workflows_stack_by_available_content_width(browser_stack):
     # action is reachable before and after the user scrolls the metrics. The
     # pinned cells use an opaque theme base beneath their themed overlay so
     # neighboring metric text cannot show through them.
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.set_viewport(1024, 900)
         _set_theme(browser, theme)
         browser.navigate(base_url + "/learning-intelligence")
@@ -9993,7 +11338,7 @@ def test_learning_scope_management_filters_active_recommendations_across_themes_
         "document.body.textContent.includes('2 source quizzes included')"
     ) is True
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(base_url + "/learning-scope")
         browser.wait_for("document.querySelectorAll('.learning-scope-folder').length === 3")
@@ -10018,6 +11363,7 @@ def test_learning_scope_management_filters_active_recommendations_across_themes_
     browser.navigate(f"{base_url}/quizzes/{browser_stack.metadata['critical_html']}")
     browser.wait_for("quizRecoveryReady === true && quiz.length === 2")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for("studyLearningEventSaves.size === 0")
     browser.click("#nextBtn")
@@ -10045,7 +11391,7 @@ def test_learning_scope_management_filters_active_recommendations_across_themes_
     assert browser.evaluate(
         "fetch('/api/daily-review-plan').then(r=>r.json()).then(x=>x.summary.adaptive_candidates===0)"
     ) is True
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         for width in (1440, 1024, 760, 420):
             browser.set_viewport(width, 900)
@@ -10125,7 +11471,7 @@ def test_review_schedule_summary_and_queue_controls_stay_contained(browser_stack
 
     browser.navigate(base_url + "/")
     browser.wait_for("document.querySelector('.dashboard-shell')")
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         for width in (1440, 1024, 760, 420):
             browser.set_viewport(width, 900)
@@ -10183,8 +11529,8 @@ def test_post_310_workflow_text_and_controls_remain_readable_across_themes(
             "/",
             "document.querySelector('.daily-review-action')",
             {
-                "daily intro": ".daily-review-intro",
-                "daily count": ".daily-review-count",
+                "study heading": "#dailyReviewHeading",
+                "suggestion disclosure": ".dashboard-study-options summary",
                 "daily explanation": ".daily-review-copy p",
                 "daily action": ".daily-review-action",
             },
@@ -10214,7 +11560,7 @@ def test_post_310_workflow_text_and_controls_remain_readable_across_themes(
             "/quiz-composer",
             "document.querySelector('.mixed-builder-filters')",
             {
-                "mixed back link": ".mixed-builder-intro .build-secondary-link",
+                "mixed back link": "#mixedBuilderReturn",
                 "mixed filter label": ".mixed-builder-filter-grid label",
                 "mixed bulk action": ".mixed-builder-bulk-actions button",
                 "mixed question metadata": ".mixed-builder-question-meta span",
@@ -10297,7 +11643,7 @@ def test_post_310_workflow_text_and_controls_remain_readable_across_themes(
         ),
     )
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         for path, ready, selectors in pages:
             browser.navigate(base_url + path)
@@ -10366,7 +11712,7 @@ def test_mastery_explanation_and_recovery_actions_are_accessible_across_themes(
             }],
         })
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         browser.set_viewport(520, 900)
         browser.navigate(base_url + "/learning-intelligence")
         browser.wait_for("document.getElementById('liLoading').hidden")
@@ -10680,7 +12026,7 @@ def test_duplicate_question_report_is_advisory_and_links_to_source_editors(
     browser.click('details.duplicate-question-group summary')
     browser.wait_for("!document.querySelector('details.duplicate-question-group').open")
     browser.click('details.duplicate-question-group summary')
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(duplicate_url)
         browser.wait_for("document.querySelector('.duplicate-question-badge.exact')")
@@ -10877,7 +12223,7 @@ def test_portable_quiz_bundle_library_preview_and_import(browser_stack):
     assert "Content Packs" in state["studyPackBoundary"]
 
     browser.wait_for("window.dlmsCsrfToken && typeof window.fetch === 'function'")
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         status = browser.evaluate(
             f"fetch('/api/theme',{{method:'POST',headers:{{'Content-Type':'application/json'}},"
             f"body:JSON.stringify({{theme:{json.dumps(theme)}}})}}).then(response=>response.status)"
@@ -10890,12 +12236,14 @@ def test_portable_quiz_bundle_library_preview_and_import(browser_stack):
             layout = browser.evaluate(
                 "(() => {const panels=[...document.querySelectorAll('.portable-bundle-panel')];"
                 "const intro=document.querySelector('.portable-bundle-intro');"
-                "const back=intro.querySelector('.build-secondary-link');"
+                "const back=intro.querySelector('a[href=\"/library\"]');"
                 "const file=document.querySelector('.portable-bundle-upload-form input[type=file]');"
                 "const rect=node=>node.getBoundingClientRect();"
                 "const headings=panels.map(panel=>panel.querySelector('h2'));"
                 "return {sideBySide:Math.abs(rect(panels[0]).top-rect(panels[1]).top)<=1,"
                 "panelWidths:panels.map(panel=>Math.round(rect(panel).width)),"
+                "workflowWidth:Math.round(rect(document.querySelector('.portable-bundle-workflows')).width),"
+                "stackedOrder:rect(panels[1]).top>=rect(panels[0]).bottom,"
                 "panelInsets:panels.map(panel=>Math.round(rect(panel.firstElementChild).left-rect(panel).left)),"
                 "headingHeights:headings.map(heading=>Math.round(rect(heading).height)),"
                 "backWidth:Math.round(rect(back).width),"
@@ -10904,7 +12252,10 @@ def test_portable_quiz_bundle_library_preview_and_import(browser_stack):
                 "cardsContained:[intro,...panels].every(card=>card.scrollWidth<=card.clientWidth+1),"
                 "overflow:document.documentElement.scrollWidth<=window.innerWidth+1};})()"
             )
-            assert layout["sideBySide"] == (width == 1280), (theme, width, layout)
+            # Approved workflow: full-width export, then import below it.
+            assert layout["sideBySide"] is False, (theme, width, layout)
+            assert layout["stackedOrder"] is True, (theme, width, layout)
+            assert all(abs(size - layout["workflowWidth"]) <= 1 for size in layout["panelWidths"]), (theme, width, layout)
             assert min(layout["panelWidths"]) >= min(388, width - 32), (
                 theme, width, layout,
             )
@@ -10947,7 +12298,7 @@ def test_portable_quiz_bundle_library_preview_and_import(browser_stack):
         "bundle review cancel": ".portable-bundle-confirm-actions .library-secondary-action",
         "bundle review submit": ".portable-bundle-confirm-actions .library-primary-action",
     }
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(review_url)
         browser.wait_for("document.querySelector('.portable-bundle-confirm-panel')")
@@ -11351,7 +12702,7 @@ def test_core_filter_state_and_repeated_builder_fields_are_accessible(browser_st
         "overflow": True,
     }
 
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(f"{base_url}/learning-intelligence")
         browser.wait_for("document.getElementById('liLoading').hidden")
@@ -11425,6 +12776,7 @@ def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack
     browser.navigate(critical_url)
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.click("#choices .choice[data-index='0']")
     browser.wait_for(
         "window.DLMSQuizRecovery.listStoredRecords({activeQuizIds:["
@@ -11439,7 +12791,7 @@ def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack
     )
     plan = browser.evaluate(
         "(() => ({"
-        "kinds:[...document.querySelectorAll('.daily-review-item')].map(item => "
+        "kinds:[...document.querySelectorAll('#dailyReviewList .daily-review-item')].map(item => "
         "[...item.classList].find(name => name.startsWith('daily-review-') && "
         "name !== 'daily-review-item').replace('daily-review-', '')) ,"
         "dueText:document.querySelector('.daily-review-native_due').textContent,"
@@ -11448,7 +12800,8 @@ def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack
         "'.daily-review-native_due form input[name=csrf_token]'))"
         "}))()"
     )
-    assert plan["kinds"][:2] == ["native_due", "unfinished"]
+    assert plan["kinds"][0] == "native_due"
+    assert browser.evaluate("document.querySelector('#continueStudyPanel .daily-review-unfinished') !== null")
     assert "due" in plan["dueText"].lower()
     assert "Browser Critical Workflow" in plan["resumeText"]
     assert plan["csrf"] is True
@@ -11484,6 +12837,7 @@ def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack
 
     browser.wait_for("quizRecoveryReady === true && generatedPracticeStatus?.is_transient === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     browser.wait_for(
         "window.DLMSQuizRecovery.listStoredRecords({activeQuizIds:["
         + json.dumps(str(generated[1]))
@@ -11506,17 +12860,19 @@ def test_dashboard_today_review_unifies_due_and_unfinished_actions(browser_stack
         "document.querySelector('.daily-review-unfinished')"
     )
     assert browser.evaluate(
-        "document.querySelector('.daily-review-native_due') === null"
+        "document.querySelector('.daily-review-native_due') !== null"
     ) is True
+    generated_card = f'.daily-review-unfinished:has([data-clear-recovery^="unfinished-{generated[1]}-"])'
     assert "Spaced Review — Due Questions" in browser.evaluate(
-        "document.querySelector('.daily-review-unfinished').textContent"
+        "document.querySelector(" + json.dumps(generated_card) + ").textContent"
     )
 
-    # Abandoning generated recovery restores its valid server recommendation,
-    # without deleting the generated quiz, lineage, saved activity or schedule.
+    # Clearing only the local checkpoint keeps the shared recommendation and
+    # does not delete the generated quiz, lineage, saved activity or schedule.
     with sqlite3.connect(database_path) as connection:
         before_clear = list(connection.iterdump())
-    browser.click(".daily-review-unfinished .daily-review-remove")
+    _open_resume_management(browser, generated_card + " .daily-review-remove")
+    browser.click(generated_card + " .daily-review-remove")
     browser.wait_for("document.getElementById('dailyReviewClearDialog').open")
     browser.click("#dailyReviewClearDialog button[value='clear']")
     browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('resume point cleared')")
@@ -11626,6 +12982,7 @@ def test_today_review_keeps_recovery_local_and_due_state_shared_between_profiles
         browser.wait_for("location.pathname.startsWith('/quizzes/spaced_review_native_')")
         browser.wait_for("quizRecoveryReady === true && quiz.length === 1")
         browser.click(".study-mode-btn")
+        browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
         recovery_key = browser.evaluate("quizRecoveryController.storageKey")
         browser.click("#choices .choice[data-index='0']")
         browser.wait_for("studyLearningEventSaves.size === 0")
@@ -11651,6 +13008,7 @@ def test_today_review_keeps_recovery_local_and_due_state_shared_between_profiles
         )
         first.wait_for("quizRecoveryReady === true")
         first.click(".study-mode-btn")
+        first.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
         first_recovery_key = first.evaluate("quizRecoveryController.storageKey")
 
         second.navigate(
@@ -11658,6 +13016,7 @@ def test_today_review_keeps_recovery_local_and_due_state_shared_between_profiles
         )
         second.wait_for("quizRecoveryReady === true")
         second.click(".study-mode-btn")
+        second.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
         second_recovery_key = second.evaluate("quizRecoveryController.storageKey")
 
         first_state = dashboard_state(first, 2)
@@ -11680,6 +13039,7 @@ def test_today_review_keeps_recovery_local_and_due_state_shared_between_profiles
         second.wait_for("quizRecoveryReady === true")
         second.click(".exam-mode-btn")
         dashboard_state(second, 2)
+        _open_resume_management(first, ".daily-review-unfinished .daily-review-remove")
         first.click(".daily-review-unfinished .daily-review-remove")
         first.click("#dailyReviewClearDialog button[value='clear']")
         first.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('resume point cleared')")
@@ -11727,6 +13087,7 @@ def test_today_review_keeps_recovery_local_and_due_state_shared_between_profiles
 
 def test_today_review_clear_is_guarded_accessible_and_preserves_other_checkpoints(browser_stack):
     browser = browser_stack.browser
+    browser.context = browser.command('browsingContext.create', {'type':'tab'})['context']
     base_url = browser_stack.base_url
     # The mixed-type fixture has playable artifacts but is normally deliberately
     # absent from the Library registry. Expose it here as the third real quiz.
@@ -11741,6 +13102,7 @@ def test_today_review_clear_is_guarded_accessible_and_preserves_other_checkpoint
         browser.navigate(f"{base_url}/quizzes/{browser_stack.metadata[name + '_html']}")
         browser.wait_for("quizRecoveryReady === true")
         browser.click(f".{mode}-mode-btn")
+        browser.wait_for("!document.getElementById('quiz').classList.contains('hidden')")
         keys.append(browser.evaluate("quizRecoveryController.storageKey"))
     # Rename and move after checkpoint creation: recovery still targets quiz ID.
     registry[-1].update({
@@ -11749,27 +13111,27 @@ def test_today_review_clear_is_guarded_accessible_and_preserves_other_checkpoint
     })
     registry_path.write_text(json.dumps(registry), encoding="utf-8")
     browser.navigate(base_url + "/")
-    browser.wait_for("document.querySelectorAll('#dailyReviewList .daily-review-remove').length === 2")
+    browser.wait_for("document.querySelectorAll('#continueStudyPanel .daily-review-remove').length === 2")
 
     # Exercise real Tab order, modal focus, contrast and geometry across palettes.
-    # This headless host never gains document focus: Enter/Space does not activate
-    # even an independent native button. Keep production native button semantics;
-    # use live-element clicks for activation rather than a test-only UI workaround.
-    for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
         _set_theme(browser, theme)
         browser.navigate(base_url + "/")
-        browser.wait_for("document.querySelector('#dailyReviewList .daily-review-remove')")
+        browser.wait_for("document.querySelector('#continueStudyPanel .daily-review-remove')")
         for width in (1440, 1024, 760, 420):
             browser.set_viewport(width, 1000)
             browser.wait_for_page_ready()
-            browser.activate()
+            browser.activate(); browser.wait_for('document.hasFocus()')
+            if browser.evaluate("document.querySelector('.daily-review-unfinished details').open"):
+                browser.click('.daily-review-unfinished summary')
             browser.evaluate("document.querySelector('.daily-review-unfinished a').focus(); true")
             browser.press_key("\ue004")
-            assert browser.evaluate("document.activeElement.className") == "daily-review-remove"
-            # Activate the control whose Tab focus was just verified. A new
-            # pointer move after viewport/scroll changes can hit the adjacent
-            # resume link; pointer removal is exercised separately below.
-            browser.evaluate("document.activeElement.click();true")
+            assert browser.evaluate("document.activeElement.matches('summary:focus-visible')")
+            browser.press_key("\ue007")
+            assert browser.evaluate("document.querySelector('.daily-review-unfinished details').open")
+            browser.press_key("\ue004")
+            assert browser.evaluate("document.activeElement.matches('button.daily-review-remove.dlms-action-control:focus-visible') && document.activeElement.hasAttribute('data-clear-recovery') && document.activeElement.closest('details.dashboard-resume-management')?.open")
+            browser.press_key("\ue007")
             browser.wait_for("document.getElementById('dailyReviewClearDialog').open")
             geometry = browser.evaluate(
                 "(() => {const d=document.getElementById('dailyReviewClearDialog');"
@@ -11809,11 +13171,13 @@ def test_today_review_clear_is_guarded_accessible_and_preserves_other_checkpoint
     # Cancel leaves the same record/card intact, including the older third slot.
     target = ".daily-review-unfinished:has(a[href$='/browser_recovery_mixed.html']) .daily-review-remove"
     before = browser.evaluate(f"{json.dumps(keys)}.map(key=>localStorage.getItem(key))")
+    _open_resume_management(browser, target)
     browser.click(target)
     browser.click("#dailyReviewClearDialog button[value='cancel']")
     assert browser.evaluate(f"{json.dumps(keys)}.map(key=>localStorage.getItem(key))") == before
 
     # A revision written during confirmation must not be cleared.
+    _open_resume_management(browser, target)
     browser.click(target)
     changed_key = browser.evaluate(
         "(() => {const r=DLMSQuizRecovery.listStoredRecords().records.find(r=>r.quizId==='browser-recovery-mixed');"
@@ -11829,23 +13193,26 @@ def test_today_review_clear_is_guarded_accessible_and_preserves_other_checkpoint
     for method in ("removeItem", "getItem"):
         browser.evaluate(f"window.__storageMethod=Storage.prototype.{method};Storage.prototype.{method}=function(){{throw new Error('storage denied')}}; true")
         try:
+            _open_resume_management(browser, target)
             browser.click(target)
             browser.click("#dailyReviewClearDialog button[value='clear']")
             browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('could not be cleared')")
-            assert browser.evaluate("document.querySelectorAll('#dailyReviewList .daily-review-remove').length === 2")
+            assert browser.evaluate("document.querySelectorAll('#continueStudyPanel .daily-review-remove').length === 2")
         finally:
             browser.evaluate(f"Storage.prototype.{method}=window.__storageMethod; true")
 
     with sqlite3.connect(browser_stack.data_root / "results.db") as connection:
         saved_data = list(connection.iterdump())
     saved_registry = registry_path.read_bytes()
+    _open_resume_management(browser, target)
     browser.click(target)
     browser.click("#dailyReviewClearDialog button[value='clear']")
     browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('resume point cleared')")
     assert browser.evaluate(f"localStorage.getItem({json.dumps(changed_key)}) === null") is True
     assert browser.evaluate(f"{json.dumps(keys[:2])}.every(key=>localStorage.getItem(key)!==null)") is True
-    assert "Browser Critical Workflow" in browser.evaluate("document.getElementById('dailyReviewList').textContent")
+    assert "Browser Critical Workflow" in browser.evaluate("document.querySelector('.daily-review-panel').textContent")
     # The remaining ordinary Exam checkpoint can also be abandoned.
+    _open_resume_management(browser, ".daily-review-unfinished:has(a[href*='browser_companion']) .daily-review-remove")
     browser.click(".daily-review-unfinished:has(a[href*='browser_companion']) .daily-review-remove")
     browser.click("#dailyReviewClearDialog button[value='clear']")
     browser.wait_for(f"localStorage.getItem({json.dumps(keys[1])}) === null")
@@ -11865,6 +13232,7 @@ def test_today_review_clear_protects_failed_study_and_submitted_exam_saves(brows
             + json.dumps(endpoint) + ")?Promise.reject(new Error('simulated save failure')):window.__originalFetch(...args); true"
         )
         browser.click(f".{mode}-mode-btn")
+        browser.wait_for("!document.getElementById('quiz').classList.contains('hidden') && document.querySelector('#choices .choice') !== null")
         browser.click("#choices .choice[data-index='0']")
         if mode == "exam":
             browser.evaluate("window.confirm=()=>true; true")
@@ -11873,13 +13241,20 @@ def test_today_review_clear_protects_failed_study_and_submitted_exam_saves(brows
         else:
             browser.wait_for("document.querySelector('.study-learning-save-retry:not([hidden])')")
     browser.navigate(base_url + "/")
-    browser.wait_for("document.querySelectorAll('#dailyReviewList .daily-review-remove').length === 2")
+    browser.wait_for("document.querySelectorAll('#continueStudyPanel .daily-review-remove').length === 2")
+    assert browser.evaluate("document.querySelectorAll('[data-dashboard-primary]').length") == 1
+    assert browser.evaluate("document.querySelector('[data-dashboard-primary]').closest('[data-needs-save]') !== null")
+    if os.environ.get('DLMS_PRESENTATION_CAPTURE_DIR'):
+        shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+        target=Path(os.environ['DLMS_PRESENTATION_CAPTURE_DIR']);target.mkdir(parents=True,exist_ok=True)
+        (target/'calm-pending-saves.png').write_bytes(base64.b64decode(shot['data']))
     before = browser.evaluate("DLMSQuizRecovery.listStoredRecords().records.map(r=>localStorage.getItem(DLMSQuizRecovery.STORAGE_PREFIX+encodeURIComponent(r.quizId)))")
-    for name, message in (("companion", "Use Finish Saving"), ("critical", "Study answers waiting")):
+    for name, message in (("companion", "Use Finish saving Exam"), ("critical", "Study answers waiting")):
+        _open_resume_management(browser, f".daily-review-unfinished:has(a[href*='browser_{name}']) .daily-review-remove")
         browser.click(f".daily-review-unfinished:has(a[href*='browser_{name}']) .daily-review-remove")
         browser.click("#dailyReviewClearDialog button[value='clear']")
         browser.wait_for(f"document.getElementById('dailyReviewStatus').textContent.includes({json.dumps(message)})")
-        assert browser.evaluate("document.querySelectorAll('#dailyReviewList .daily-review-remove').length === 2")
+        assert browser.evaluate("document.querySelectorAll('#continueStudyPanel .daily-review-remove').length === 2")
     assert browser.evaluate("DLMSQuizRecovery.listStoredRecords().records.map(r=>localStorage.getItem(DLMSQuizRecovery.STORAGE_PREFIX+encodeURIComponent(r.quizId)))") == before
 
 
@@ -11888,13 +13263,15 @@ def test_today_review_clear_does_not_control_or_resurrect_an_active_quiz_tab(bro
     browser.navigate(f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}")
     browser.wait_for("quizRecoveryReady === true")
     browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
     key = browser.evaluate("quizRecoveryController.storageKey")
     quiz_context = browser.context
     dashboard_context = browser.command("browsingContext.create", {"type": "tab"})["context"]
     try:
         browser.context = dashboard_context
         browser.navigate(browser_stack.base_url + "/")
-        browser.wait_for("document.querySelector('#dailyReviewList .daily-review-remove')")
+        browser.wait_for("document.querySelector('#continueStudyPanel .daily-review-remove')")
+        _open_resume_management(browser, ".daily-review-remove")
         browser.click(".daily-review-remove")
         browser.click("#dailyReviewClearDialog button[value='clear']")
         browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('resume point cleared')")
@@ -11908,3 +13285,4870 @@ def test_today_review_clear_does_not_control_or_resurrect_an_active_quiz_tab(bro
         assert browser.evaluate(f"localStorage.getItem({json.dumps(key)}) === null") is True
     finally:
         _close_context_after_pagehide(browser, dashboard_context, quiz_context)
+
+
+def test_ethereal_rendered_selection_focus_and_responsive_typography(browser_stack, tmp_path):
+    """Check painted highlights, not just the root palette or ::selection rules."""
+    import io
+    from PIL import Image
+
+    browser = browser_stack.browser
+    base_url = browser_stack.base_url
+    # Firefox's startup tab can lack native document focus even after activate.
+    # A foreground tab receives real keyboard input and paints native selection;
+    # the fixture owns and closes the entire session, including this tab.
+    browser.context = browser.command("browsingContext.create", {"type": "tab"})["context"]
+    screenshots = tmp_path / "ethereal-review"
+    screenshots.mkdir()
+    measurements = {}
+
+    def capture(name):
+        result = browser.command("browsingContext.captureScreenshot", {
+            "context": browser.context, "origin": "viewport",
+        })
+        data = base64.b64decode(result["data"])
+        (screenshots / f"{name}.png").write_bytes(data)
+        return Image.open(io.BytesIO(data)).convert("RGB")
+
+    def contrast(first, second):
+        def luminance(rgb):
+            values = [v / 255 for v in rgb]
+            return sum((v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4) * w
+                       for v, w in zip(values, (.2126, .7152, .0722)))
+        a, b = luminance(first), luminance(second)
+        return (max(a, b) + .05) / (min(a, b) + .05)
+
+    def selection(selector, name, form=False):
+        browser.activate()
+        encoded = json.dumps(selector)
+        browser.evaluate(f"document.querySelector({encoded}).scrollIntoView({{block:'center'}}); true")
+        browser.evaluate("window.getSelection().removeAllRanges(); document.activeElement.blur(); true")
+        # Two animation frames allow scrolling/focus to be painted before capture.
+        browser.evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))")
+        before = capture(name + "-before")
+        state = browser.evaluate("""(() => {
+            const node = document.querySelector(SELECTOR);
+            if (FORM) { node.focus(); node.select(); }
+            else {
+                const range = document.createRange(); range.selectNodeContents(node);
+                const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
+            }
+            const rect = node.getBoundingClientRect(), style = getComputedStyle(node, '::selection');
+            const normal = getComputedStyle(node);
+            return {color:style.color, background:style.backgroundColor,
+                normal:normal.backgroundColor, outline:normal.outlineStyle,
+                outlineWidth:normal.outlineWidth, outlineColor:normal.outlineColor,
+                text:FORM ? node.value : window.getSelection().toString(),
+                rect:[rect.left,rect.top,rect.right,rect.bottom]};
+        })()""".replace("SELECTOR", encoded).replace("FORM", "true" if form else "false"))
+        assert state["text"].strip(), (name, state)
+        assert state["background"] == "rgb(194, 196, 240)", (name, state)
+        assert state["color"] == "rgb(6, 11, 30)", (name, state)
+        browser.evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))")
+        painted = capture(name)
+        box = tuple(round(v) for v in state["rect"])
+        before_colors = dict((rgb, count) for count, rgb in before.crop(box).getcolors(before.width * before.height))
+        after_colors = dict((rgb, count) for count, rgb in painted.crop(box).getcolors(painted.width * painted.height))
+        highlight = (194, 196, 240)
+        ink = (6, 11, 30)
+        painted_highlight = after_colors.get(highlight, 0) - before_colors.get(highlight, 0)
+        assert painted_highlight > 50, (name, painted_highlight, state)
+        new_ink = sum(old != ink and new == ink for old, new in
+                      zip(before.crop(box).get_flattened_data(), painted.crop(box).get_flattened_data()))
+        assert new_ink > 5, (name, new_ink, state)
+        assert contrast(ink, highlight) >= 7
+        # The new highlight also separates clearly from actual unselected pixels.
+        surface = max(before_colors, key=before_colors.get)
+        assert contrast(highlight, surface) >= 3, (name, surface)
+        measurements[name] = {**state, "newHighlightPixels": painted_highlight,
+                              "textContrast": contrast(ink, highlight),
+                              "surfaceContrast": contrast(highlight, surface)}
+        if form:
+            assert state["outline"] == "solid" and state["outlineWidth"] == "3px", state
+
+    browser.set_viewport(1440, 1050)
+    browser.navigate(base_url + "/settings/appearance")
+    browser.activate()
+    browser.wait_for("document.hasFocus()")
+    # Select and save through the real form, then verify the sidebar shortcut.
+    browser.evaluate("document.querySelector('#appearanceTheme').focus(); true")
+    browser.evaluate("document.querySelector('#appearanceTheme').value = 'ethereal'; true")
+    browser.click(".settings-form-actions button[type=submit]")
+    browser.wait_for_page_ready("location.search.includes('saved=1') && document.querySelector('.settings-success-banner') && document.querySelector('#appearanceTheme').value === 'ethereal'")
+    portal = browser_stack.data_root / "config" / "portal.json"
+    assert json.loads(portal.read_text())["theme"] == "ethereal"
+    browser.wait_for("document.querySelector('#dlmsQuickTheme')?.value === 'ethereal'")
+    primary = browser.evaluate("""(() => {const style=getComputedStyle(document.querySelector('.settings-primary-button'));
+        return {text:style.color,background:style.backgroundImage};})()""")
+    assert primary["text"] == "rgb(6, 11, 30)" and "rgb(125, 130, 217)" in primary["background"], primary
+    selection("#portalTitle", "appearance-selected-title", form=True)
+    browser.evaluate("document.querySelector('#appearanceTheme').focus(); true")
+    focus = browser.evaluate("""(() => {const input=document.querySelector('#appearanceTheme');
+        const style=getComputedStyle(input);
+        return {visible:input.matches(':focus-visible'),outline:style.outlineStyle,width:style.outlineWidth};})()""")
+    assert focus == {"visible": True, "outline": "solid", "width": "3px"}
+    capture("appearance-focused-theme")
+
+    browser.navigate(base_url + "/paste")
+    browser.evaluate("document.querySelector('textarea[name=quiz_text]').value = 'A readable selection in the question authoring field.\\nCorrect Answer: A'; true")
+    selection("textarea[name=quiz_text]", "authoring-selected-text", form=True)
+    selection("input[name=exam_minutes]", "authoring-selected-number", form=True)
+
+    quiz_path = browser_stack.data_root / "quizzes" / browser_stack.metadata["critical_html"]
+    # The existing artifact must inherit the theme, not be regenerated to apply it.
+    original_quiz = quiz_path.read_bytes()
+    browser.navigate(base_url + "/quizzes/" + browser_stack.metadata["critical_html"])
+    browser.wait_for("quizRecoveryReady === true")
+    browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
+    browser.wait_for("document.querySelector('#qText')?.textContent.includes('Browser question')")
+    selection("#qText", "study-selected-question")
+    browser.evaluate("window.getSelection().removeAllRanges(); true")
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for("document.querySelector('.choice-study-explanation') !== null")
+    selection(".choice-study-explanation", "study-selected-feedback")
+    assert quiz_path.read_bytes() == original_quiz
+
+    for width in (360, 768, 1440):
+        browser.set_viewport(width, 1050)
+        browser.navigate(base_url + "/settings/appearance")
+        assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
+        fonts = browser.evaluate("""({body:getComputedStyle(document.body).fontFamily,
+            heading:getComputedStyle(document.querySelector('h1')).fontFamily})""")
+        assert "system-ui" in fonts["body"] and "monospace" in fonts["heading"], fonts
+        capture(f"appearance-{width}")
+        browser.navigate(base_url + "/library")
+        assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
+        capture(f"library-{width}")
+    # Exercise 200% rendered scaling and reflow. This is CSS zoom, not an
+    # assertion about browser-chrome shortcuts or OS display scaling.
+    browser.navigate(base_url + "/settings/appearance")
+    browser.evaluate("document.documentElement.style.zoom = '2'; true")
+    assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
+    capture("appearance-200-percent")
+    browser.navigate(base_url + "/library")
+    # Switching away removes optional typography and selection values too.
+    browser.evaluate("const select=document.querySelector('#dlmsQuickTheme'); select.value='light'; select.dispatchEvent(new Event('change', {bubbles:true})); true")
+    browser.wait_for("document.querySelector('#dlmsQuickTheme')?.value === 'light' && !document.querySelector('#dlmsQuickTheme').disabled")
+    assert browser.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--theme-selection-bg').trim()") == ""
+    browser.evaluate("const select=document.querySelector('#dlmsQuickTheme'); select.value='ethereal'; select.dispatchEvent(new Event('change', {bubbles:true})); true")
+    browser.wait_for("document.querySelector('#dlmsQuickTheme')?.value === 'ethereal' && !document.querySelector('#dlmsQuickTheme').disabled")
+    browser.navigate(base_url + "/")
+    capture("dashboard")
+    for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
+        _set_theme(browser, theme)
+        browser.navigate(base_url + "/")
+        capture(f"dashboard-{theme}")
+    (screenshots / "measurements.json").write_text(json.dumps(measurements, indent=2))
+
+
+def test_ethereal_sidebar_switching_preserves_navigation_and_content(browser_stack):
+    browser = browser_stack.browser
+    base = browser_stack.base_url
+    browser.set_viewport(1440, 1050)
+    browser.navigate(base + '/settings')
+
+    def snapshot():
+        return browser.evaluate("""(() => {
+            const sidebar=document.querySelector('.dashboard-sidebar');
+            const properties=['color','backgroundColor','backgroundImage','boxShadow','borderColor',
+                'padding','margin','fontFamily','fontSize','fontWeight','lineHeight','gap','display'];
+            const visual=node=>{const s=getComputedStyle(node), r=node.getBoundingClientRect();
+                return {box:[r.x,r.y,r.width,r.height],style:properties.map(p=>s[p])};};
+            return {
+                links:[...sidebar.querySelectorAll('a,button,select')].map(n=>[
+                    n.tagName,n.getAttribute('href'),n.textContent.trim(),n.hidden,
+                    n.getAttribute('aria-current'),n.disabled||false]),
+                sidebar:[sidebar,...sidebar.querySelectorAll('*')].map(visual),
+                content:[...document.querySelectorAll('.dashboard-main header,.dashboard-main header *, .dashboard-action-card,.study-pack-card')].map(visual)
+            };
+        })()""")
+
+    # Both directions through the real quick selector; reload reads portal.json.
+    for original in ('light', 'dark', 'purple-gold', 'maroon-gold'):
+        _set_theme(browser, original)
+        browser.navigate(base + '/study-packs')
+        browser.wait_for(f"document.querySelector('.dashboard-sidebar').dataset.theme === {json.dumps(original)}")
+        before = snapshot()
+        browser.evaluate("document.querySelector('.dashboard-sidebar').removeAttribute('data-theme'); true")
+        assert snapshot() == before  # No sidebar override leaks to another theme.
+        for selected in ('ethereal', original):
+            browser.evaluate(f"const select=document.querySelector('#dlmsQuickTheme'); select.value={json.dumps(selected)};select.dispatchEvent(new Event('change',{{bubbles:true}}));true")
+            browser.wait_for(f"document.querySelector('.dashboard-sidebar')?.dataset.theme === {json.dumps(selected)} && !document.querySelector('#dlmsQuickTheme').disabled")
+            assert json.loads((browser_stack.data_root / 'config/portal.json').read_text())['theme'] == selected
+            assert snapshot()['links'] == before['links']
+        assert snapshot() == before
+
+    _set_theme(browser, 'ethereal')
+    routes = (
+        ('/', '/'), ('/library', '/library'), ('/paste', '/upload'),
+        ('/anki/custom', '/anki/custom'), ('/learning-profile', '/learning-profile'),
+        ('/study-packs', '/study-packs'),
+        ('/study-packs?domain_group=other', '/study-packs?domain_group=other'),
+        ('/settings/navigation', '/settings'), ('/help/settings', '/help'),
+    )
+    for path, current in routes:
+        browser.navigate(base + path)
+        browser.wait_for("document.querySelector('.dashboard-sidebar')?.dataset.theme === 'ethereal'")
+        state = browser.evaluate("""(() => {
+            const sidebar=document.querySelector('.dashboard-sidebar');
+            const current=[...sidebar.querySelectorAll('[aria-current=page]')];
+            const label=sidebar.querySelector('.dashboard-nav-section-label');
+            return {current:current.map(n=>n.getAttribute('href')),
+                marker:current.map(n=>getComputedStyle(n).boxShadow),
+                divider:getComputedStyle(label,'::after').display,
+                labelCase:getComputedStyle(label).textTransform,
+                contexts:[...sidebar.querySelectorAll('.nav-context')].map(n=>getComputedStyle(n).boxShadow),
+                targets:[...sidebar.querySelectorAll('.dashboard-nav-item:not([hidden])')].map(n=>n.getBoundingClientRect().height)};
+        })()""")
+        assert state['current'] == [current], (path, state)
+        assert all('inset' in value and '3px' in value for value in state['marker']), (path, state)
+        assert all(value == 'none' for value in state['contexts']), (path, state)
+        assert state['divider'] == 'none' and state['labelCase'] == 'none'
+        assert all(height >= 44 for height in state['targets'])
+        refined = snapshot()
+        browser.evaluate("document.querySelector('.dashboard-sidebar').removeAttribute('data-theme');true")
+        baseline = snapshot()
+        assert refined['links'] == baseline['links'], path
+        # Ethereal now intentionally changes these landing-page headers/cards.
+        # Other pages still keep the content presentation from the sidebar pass.
+        if path not in ('/', '/study-packs', '/study-packs?domain_group=other'):
+            assert refined['content'] == baseline['content'], path
+
+
+def test_ethereal_sidebar_mobile_scroll_long_labels_and_native_keyboard(browser_stack):
+    browser = browser_stack.browser
+    base = browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings')
+    browser.activate()
+    browser.wait_for('document.hasFocus()')
+    _set_theme(browser, 'ethereal')
+    for width, height in ((360, 640), (320, 480), (768, 600)):
+        browser.set_viewport(width, height)
+        browser.navigate(base + '/anki/custom')
+        browser.wait_for("document.querySelector('.dashboard-sidebar')?.dataset.theme === 'ethereal'")
+        browser.evaluate("document.querySelector('.dashboard-menu-button').focus();true")
+        browser.press_key('\ue007')  # Enter opens the existing mobile menu.
+        browser.wait_for("document.querySelector('.dashboard-sidebar').classList.contains('open') && document.activeElement.closest('.dashboard-sidebar')")
+        # Firefox may start the drawer animation after the class changes. Wait
+        # for its actual position before asserting every focused target is visible.
+        browser.wait_for("(() => {const r=document.querySelector('.dashboard-sidebar').getBoundingClientRect();return r.left >= 0 && r.right <= innerWidth;})()")
+        # An existing long label plus an unbroken synthetic label exercise wrapping.
+        browser.evaluate("document.querySelector('[data-nav-key=learning] span').textContent='Learning Intelligence WithAnUnbrokenLongNavigationLabelForWrapping';true")
+        count = browser.evaluate("[...document.querySelectorAll('.dashboard-sidebar a,.dashboard-sidebar button:not(:disabled),.dashboard-sidebar select')].filter(n=>n.getClientRects().length && !n.hidden).length")
+        seen = []
+        for _ in range(count):
+            browser.evaluate("new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>r(true))))")
+            state = browser.evaluate("""(() => {
+                const n=document.activeElement,s=document.querySelector('.dashboard-sidebar');
+                const r=n.getBoundingClientRect(),box=s.getBoundingClientRect(),style=getComputedStyle(n);
+                    return {inside:s.contains(n),name:n.getAttribute('href')||n.id||n.className,
+                        rect:[r.x,r.y,r.width,r.height],sidebar:[box.x,box.y,box.width,box.height],pageScroll:scrollY,
+                    height:r.height,visible:r.top>=0 && r.bottom<=innerHeight+1 && r.left>=0 && r.right<=innerWidth,
+                    focus:n.matches(':focus-visible'),outline:style.outlineStyle,
+                    contained:s.scrollWidth<=s.clientWidth+1,scroll:s.scrollTop,
+                    pageContained:document.documentElement.scrollWidth<=innerWidth+1};
+            })()""")
+            assert state['inside'] and state['visible'], (width, state)
+            assert state['height'] >= 44, (width, state)
+            assert state['focus'] and state['outline'] == 'solid', (width, state)
+            assert state['contained'] and state['pageContained'], (width, state)
+            seen.append(state['name'])
+            if len(seen) < count:
+                browser.press_key('\ue004')
+        assert '/settings/layout#study-areas' in seen and 'dlmsQuickTheme' in seen
+        assert browser.evaluate("document.querySelector('.dashboard-sidebar').scrollTop > 0")
+        browser.press_key('\ue00c')  # Escape closes it and returns focus to the trigger.
+        browser.wait_for("!document.querySelector('.dashboard-sidebar').classList.contains('open')")
+        assert browser.evaluate("document.activeElement.matches('.dashboard-menu-button') && document.activeElement.getAttribute('aria-expanded') === 'false'")
+
+
+def test_ethereal_landing_headers_cards_and_catalog_remain_accessible(browser_stack, tmp_path):
+    browser = browser_stack.browser
+    base = browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings')
+    browser.activate()
+    browser.wait_for('document.hasFocus()')
+    _set_theme(browser, 'ethereal')
+    shots = tmp_path / 'ethereal-presentation'
+    shots.mkdir()
+
+    def capture(name):
+        browser.evaluate('document.fonts.ready.then(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>r(true)))))')
+        data = browser.command('browsingContext.captureScreenshot', {'context': browser.context, 'origin': 'viewport'})
+        (shots / (name + '.png')).write_bytes(base64.b64decode(data['data']))
+
+    def ready(path):
+        browser.navigate(base + path)
+        browser.wait_for("document.querySelector('.dashboard-sidebar')?.dataset.theme === 'ethereal'")
+
+    browser.set_viewport(1440, 1050)
+    ready('/')
+    browser.wait_for("document.querySelector('.daily-review-action') && !document.querySelector('#recentActivity .dashboard-loading')")
+    browser.wait_for("getComputedStyle(document.querySelector('.dashboard-action-card')).boxShadow === 'none'")
+    hierarchy = browser.evaluate("""(() => {
+        const card=document.querySelector('.dashboard-action-card'),review=document.querySelector('.daily-review-panel');
+        return {cardBorder:getComputedStyle(card).borderColor,reviewBorder:getComputedStyle(review).borderColor,
+            cardShadow:getComputedStyle(card).boxShadow,decoration:String(document.querySelector('.dashboard-welcome-accent') === null),
+            titleSize:parseFloat(getComputedStyle(document.querySelector('.dashboard-header h1')).fontSize),
+            subtitleSize:parseFloat(getComputedStyle(document.querySelector('.dashboard-welcome')).fontSize)};
+    })()""")
+    assert hierarchy['cardBorder'] != hierarchy['reviewBorder'] and hierarchy['cardShadow'] == 'none'
+    assert hierarchy['decoration'] == 'true' and 26 <= hierarchy['titleSize'] <= 36
+    assert hierarchy['subtitleSize'] == 16
+    contrasts = _theme_contrast_snapshot(browser, {'title': '.dashboard-header h1', 'subtitle': '.dashboard-welcome', 'action': '.daily-review-action', 'card': '.dashboard-action-copy p'})
+    assert all(value['contrast'] >= 4.5 for value in contrasts.values()), contrasts
+    capture('dashboard-desktop')
+    # The primary action and all nine feature destinations remain available.
+    links = browser.evaluate("[...document.querySelectorAll('.dashboard-action-card')].map(n=>n.getAttribute('href'))")
+    assert links == ['/study-history','/history','/library','/upload','/study-packs','/it','/law','/medical','/dashboard','/settings']
+    browser.evaluate("document.querySelector('.dashboard-action-card').focus();true")
+    browser.press_key('\ue004')
+    focus = browser.evaluate("({href:document.activeElement.getAttribute('href'),visible:document.activeElement.matches(':focus-visible'),outline:getComputedStyle(document.activeElement).outlineStyle})")
+    assert focus == {'href': '/history', 'visible': True, 'outline': 'solid'}
+    capture('dashboard-card-focus')
+    # Exercise the real renderer's empty-history presentation without mutating data.
+    browser.evaluate("""(() => {
+        const original = window.fetch;
+        window.fetch = (url, ...args) => {
+            if (url !== '/api/dashboard/quiz-activity') return original(url, ...args);
+            window.fetch = original;
+            const empty = {entry: null, record_count: 0, undated_count: 0};
+            return Promise.resolve(new Response(JSON.stringify({study: empty, exam: empty, recent_attempts: [],
+                quiz_sequence: {state: 'empty', anchor: null, next: null, folder: null}})));
+        };
+        const script = document.createElement('script');
+        script.src = '/static/dashboard-activity.js'; document.body.append(script);
+        return true;
+    })()""")
+    browser.wait_for("document.querySelector('#recentActivity').textContent.includes('Save a Study answer in a regular quiz to start a sequence.') && document.querySelector('#recentActivity').textContent.includes('No completed Exam attempts yet.')")
+    browser.evaluate("document.querySelector('#recentActivity').scrollIntoView({block:'center'});true")
+    capture('dashboard-empty-history')
+
+    # Real empty catalog, followed by a small isolated matching pack.
+    ready('/study-packs')
+    assert browser.evaluate("document.body.textContent.includes('No usable study packs yet')")
+    capture('packs-empty')
+    pack = browser_stack.data_root / 'content_packs/DLMS_Study_ethereal_presentation'
+    (pack / 'data').mkdir(parents=True)
+    (pack / 'manifest.json').write_text(json.dumps({'schema_version':1,'id':'ethereal_presentation','name':'Foundations of Science and Engineering','version':'1.0','content_domain':'Science','description':'Isolated presentation review pack.','datasets':[{'id':'terms','title':'Core terminology','type':'matching','path':'data/terms.json'}]}))
+    (pack / 'data/terms.json').write_text(json.dumps({'schema_version':1,'id':'terms','title':'Core terminology','description':'Review these two definitions.','category':'Foundations','source':{'organization':'DLMS test','license':'CC0'},'terms':[{'term':'Mass','definition':'Quantity of matter.'},{'term':'Force','definition':'Mass times acceleration.'}]}))
+    ready('/study-packs')
+    browser.wait_for("document.querySelector('[data-pack-id=ethereal_presentation]')")
+    browser.evaluate("document.querySelector('[data-pack-id=ethereal_presentation] summary').focus();true")
+    browser.press_key(' ')
+    browser.wait_for("!document.querySelector('[data-pack-id=ethereal_presentation]').open")
+    browser.press_key(' ')
+    browser.wait_for("document.querySelector('[data-pack-id=ethereal_presentation]').open")
+    browser.click('.study-dataset-title-button')
+    browser.wait_for("document.querySelector('.study-dataset-title-button').getAttribute('aria-expanded') === 'true'")
+    # Removing the theme marker changes the header, but the expanded catalog's
+    # own geometry and styles must remain identical relative to its origin.
+    snapshot = """(() => {const pack=document.querySelector('[data-pack-id=ethereal_presentation]'),origin=pack.getBoundingClientRect();return [pack,...pack.querySelectorAll('*')].filter(n=>n.getClientRects().length).map(n=>{const r=n.getBoundingClientRect(),s=getComputedStyle(n);return [...[r.x,r.y-origin.y,r.width,r.height].map(v=>Math.round(v*100)/100),s.fontSize,s.color,s.display];});})()"""
+    expanded = browser.evaluate(snapshot)
+    browser.evaluate("document.querySelector('.dashboard-sidebar').removeAttribute('data-theme');true")
+    assert browser.evaluate(snapshot) == expanded
+    browser.evaluate("document.querySelector('.dashboard-sidebar').dataset.theme='ethereal';true")
+    browser.evaluate("document.querySelector('[data-pack-id=ethereal_presentation]').scrollIntoView({block:'center'});true")
+    capture('packs-expanded')
+    ready('/study-packs')
+    assert browser.evaluate("document.querySelector('[data-pack-id=ethereal_presentation]').open")
+
+    for width in (320, 360, 768):
+        browser.set_viewport(width, 1000)
+        for path, name in (('/', 'dashboard'), ('/study-packs', 'packs')):
+            ready(path)
+            assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), (width, path)
+            capture(f'{name}-{width}')
+            # Stress both word wrapping and a title with no natural break.
+            browser.evaluate("document.querySelector('.dashboard-header h1').textContent='Advanced Science and Engineering — ALongUnbrokenLearningCenterTitleForSmallScreens';true")
+            state = browser.evaluate("""(() => {const n=document.querySelector('.dashboard-header h1'),r=n.getBoundingClientRect(),header=n.closest('header');return {inside:r.left>=0&&r.right<=innerWidth&&n.scrollWidth<=n.clientWidth+1,header:header.scrollWidth<=header.clientWidth+1,page:document.documentElement.scrollWidth<=innerWidth+1,text:parseFloat(getComputedStyle(n).fontSize)};})()""")
+            assert state['inside'] and state['header'] and state['page'] and state['text'] >= 24, (width, path, state)
+            capture(f'{name}-long-{width}')
+
+
+def _dashboard_card_layout_snapshot(browser):
+    """Measure text space and actual word fragmentation, beyond page overflow."""
+    return browser.evaluate("""(() => {
+ const grid=document.querySelector('.dashboard-action-grid');
+ const broken=[];
+ const cards=[...document.querySelectorAll('.dashboard-action-card')].map(card=>{
+   const copy=card.querySelector('.dashboard-action-copy'), heading=copy.querySelector('h2'), desc=copy.querySelector('p');
+   for(const node of [heading,desc]) {
+     const walker=document.createTreeWalker(node,NodeFilter.SHOW_TEXT);
+     while(walker.nextNode()) {
+       const text=walker.currentNode;
+       for(const word of text.textContent.matchAll(/[A-Za-z]+/g)) {
+         if(word[0].length>24)continue;
+         const range=document.createRange();range.setStart(text,word.index);range.setEnd(text,word.index+word[0].length);
+         const lines=new Set([...range.getClientRects()].filter(r=>r.width>0).map(r=>Math.round(r.top)));
+         if(lines.size>1)broken.push({heading:heading.textContent,word:word[0]});
+       }
+     }
+   }
+   const rect=card.getBoundingClientRect(),r=copy.getBoundingClientRect();
+   return {href:card.getAttribute('href'),title:heading.textContent,description:desc.textContent,width:rect.width,copyWidth:r.width,
+     font:parseFloat(getComputedStyle(heading).fontSize),bodyFont:parseFloat(getComputedStyle(desc).fontSize),
+     contained:[card,copy,heading,desc].every(n=>n.scrollWidth<=n.clientWidth+1) && [heading,desc].every(n=>{const range=document.createRange();range.selectNodeContents(n);return [...range.getClientRects()].every(r=>r.left>=rect.left&&r.right<=rect.right+1&&r.top>=rect.top&&r.bottom<=rect.bottom+1)}),
+     visible:[heading,desc,card.querySelector('.dashboard-action-icon')].every(n=>{const r=n.getBoundingClientRect(),s=getComputedStyle(n);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility==='visible'&&s.overflowX!=='hidden'&&s.textOverflow!=='ellipsis'}),
+     copyInside:r.left>=rect.left&&r.right<=rect.right+1};
+ });
+ return {viewport:innerWidth,dpr:devicePixelRatio,rootFont:parseFloat(getComputedStyle(document.documentElement).fontSize),gridWidth:grid.getBoundingClientRect().width,columns:getComputedStyle(grid).gridTemplateColumns.split(' ').length,broken,cards,pageContained:document.documentElement.scrollWidth<=innerWidth+1};
+})()""")
+
+
+def test_ethereal_dashboard_cards_keep_readable_text_at_intermediate_widths(browser_stack):
+    browser = browser_stack.browser
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(browser_stack.base_url + '/settings')
+    browser.activate()
+    _set_theme(browser, 'ethereal')
+    browser.navigate(browser_stack.base_url + '/')
+    browser.wait_for("document.querySelector('.dashboard-sidebar')?.dataset.theme === 'ethereal'")
+    original = browser.evaluate("[...document.querySelectorAll('.dashboard-action-card')].map(n=>({href:n.getAttribute('href'),title:n.querySelector('h2').textContent,description:n.querySelector('p').textContent}))")
+    assert [card['href'] for card in original] == ['/study-history','/history','/library','/upload','/study-packs','/it','/law','/medical','/dashboard','/settings']
+
+    # Include both sides of the desktop grid transitions and sidebar collapse.
+    # These tests used to pass an overflow-only check while words broke mid-word.
+    for width in (1920, 1600, 1440, 1280, 1200, 1180, 1140, 1120, 1100, 1024,
+                  960, 900, 840, 821, 820, 768, 600, 480, 432, 430, 400, 390, 360, 320):
+        browser.set_viewport(width, 1000)
+        browser.evaluate("document.fonts.ready.then(()=>new Promise(r=>requestAnimationFrame(()=>r(true))))")
+        state = _dashboard_card_layout_snapshot(browser)
+        assert state['columns'] == max(1, int((state['gridWidth'] + 12) // (15 * state['rootFont'] + 12))), (width, state)
+        assert state['pageContained'] and not state['broken'], (width, state)
+        assert len(state['cards']) == len(original)
+        assert browser.evaluate("document.querySelectorAll('.dashboard-history-grid a').length") == 2
+        for card, saved in zip(state['cards'], original):
+            assert {key:card[key] for key in saved} == saved
+            assert card['copyWidth'] >= 160, (width, card)
+            assert card['contained'] and card['visible'] and card['copyInside'], (width, card)
+            assert card['font'] == card['bodyFont'] == state['rootFont'] and state['rootFont'] >= 16, (width, card)
+
+        # Multiword headings and complete descriptions grow the card naturally.
+        browser.evaluate("document.querySelector('.dashboard-action-copy h2').textContent='Professional Certification Preparation and Learning Analytics';document.querySelector('.dashboard-action-copy p').textContent='Comprehensive preparation and practice with complete explanations, question review, and progress tracking.';true")
+        long_state = _dashboard_card_layout_snapshot(browser)
+        assert not long_state['broken'], (width, long_state)
+        assert all(card['contained'] and card['visible'] for card in long_state['cards'])
+        # An exceptional unbroken identifier may wrap, but must remain complete.
+        browser.evaluate("document.querySelector('.dashboard-action-copy h2').textContent='ALongUnbrokenDashboardHeadingForAnIsolatedLayoutRegressionTest';true")
+        assert _dashboard_card_layout_snapshot(browser)['cards'][0]['contained']
+        browser.evaluate("document.querySelector('.dashboard-action-copy h2').textContent=" + json.dumps(original[0]['title']) + ";document.querySelector('.dashboard-action-copy p').textContent=" + json.dumps(original[0]['description']) + ";true")
+
+    # Every destination remains keyboard reachable, with a visible focus outline.
+    browser.set_viewport(1200, 1000)
+    browser.evaluate("document.querySelector('.dashboard-action-card').focus();true")
+    for saved in original[1:]:
+        browser.press_key('\ue004')
+        browser.wait_for("document.activeElement.matches(':focus-visible')")
+        focus = browser.evaluate("({href:document.activeElement.getAttribute('href'),outline:getComputedStyle(document.activeElement).outlineStyle})")
+        assert focus == {'href':saved['href'], 'outline':'solid'}
+
+
+def _open_dashboard_layout_from_settings(browser):
+    if browser.evaluate("innerWidth<=820 && !document.getElementById('dashboardSidebar').classList.contains('open')"):
+        browser.click('#menuButton')
+    browser.activate()
+    browser.evaluate("document.querySelector('.dashboard-sidebar a[href=\"/settings\"]').focus();true")
+    browser.press_key('\ue007')
+    browser.wait_for("location.pathname==='/settings'")
+    browser.click('main a[href="/settings/layout"]')
+    browser.wait_for("location.pathname==='/settings/layout'")
+
+
+def test_dashboard_activity_consolidation_order_identity_and_error(browser_stack):
+    """Sequence uses its own completion DTO and works in either load order."""
+    browser, base = browser_stack.browser, browser_stack.base_url
+    qid, html = _new_regular_study_quiz(browser_stack, 2)
+    next_id, next_html = _new_regular_study_quiz(browser_stack, 1)
+    browser.navigate(base + '/quizzes/' + html); browser.wait_for('quizRecoveryReady')
+    browser.click('.study-mode-btn'); browser.wait_for('durableStudySession !== null')
+    for index in range(2):
+        browser.click("#choices .choice[data-index='1']")
+        browser.wait_for('studyLearningEventSaves.size===0')
+        if not index: browser.click('#nextBtn')
+    browser.click('#finishReviewBtn'); browser.wait_for('durableStudySession.completed_at !== null')
+    paths = ['/api/daily-review-plan', '/api/dashboard/quiz-activity']
+    for first in (0, 1):
+        preload = browser.command('script.addPreloadScript', {'contexts': [browser.context], 'functionDeclaration': """() => {
+            const original=fetch.bind(window); window.releaseDashboard={}; window.dashboardRequests=[];
+            window.fetch=(...args)=>{const path=String(args[0]);dashboardRequests.push(path);
+                if (!['/api/daily-review-plan','/api/dashboard/quiz-activity'].includes(path)) return original(...args);
+                return original(...args).then(response=>new Promise(resolve=>{releaseDashboard[path]=()=>resolve(response);}));};
+        }"""})['script']
+        try:
+            browser.navigate(base+'/')
+            browser.wait_for('Object.keys(releaseDashboard).length===2')
+            browser.evaluate('releaseDashboard['+json.dumps(paths[first])+']();true')
+            browser.evaluate('releaseDashboard['+json.dumps(paths[1-first])+']();true')
+            browser.wait_for("document.querySelector('#recentActivity .dashboard-quiz-sequence a[href^=\"/quizzes/\"]')!==null")
+            assert browser.evaluate("document.getElementById('continueStudyHeading').textContent") == 'Last regular quiz'
+            assert browser.evaluate("document.getElementById('regularStudyContinuity').textContent.includes('Review finished')")
+            assert browser.evaluate("document.querySelector('#regularStudyContinuity a').textContent") == 'Open current quiz'
+            assert browser.evaluate("document.querySelector('#recentActivity .dashboard-quiz-sequence a').getAttribute('href')") == '/quizzes/' + next_html
+            assert not browser.evaluate("document.getElementById('recentActivity').textContent.includes('Last studied')")
+            browser.activate(); browser.click('#recentActivity .dashboard-activity-context summary')
+            browser.evaluate("document.querySelector('#regularStudyContinuity h3').append(' ');true")
+            assert browser.evaluate("document.querySelector('#recentActivity .dashboard-activity-context').open")
+            browser.evaluate("document.getElementById('continueStudyPanel').hidden=true;true")
+            browser.wait_for("document.querySelector('#recentActivity .dashboard-quiz-sequence a').textContent==='Open next quiz'")
+            assert browser.evaluate("dashboardRequests.filter(p=>p==='/api/dashboard/quiz-activity').length") == 1
+        finally: browser.command('script.removePreloadScript', {'script': preload})
+    preload = browser.command('script.addPreloadScript', {'contexts': [browser.context], 'functionDeclaration': """() => {
+        const original=fetch.bind(window);let fail=true;
+        window.fetch=(...args)=>{
+            if (String(args[0])==='/api/dashboard/quiz-activity' && fail){fail=false;return Promise.resolve(new Response('',{status:503}));}
+            return original(...args);};
+    }"""})['script']
+    try:
+        browser.navigate(base+'/')
+        browser.wait_for("document.querySelector('#recentActivity button')!==null")
+        assert browser.evaluate("document.getElementById('recentActivity').textContent.includes('Couldn’t load')")
+        browser.click('#recentActivity button')
+        browser.wait_for("document.querySelector('#recentActivity .dashboard-quiz-sequence a')!==null")
+        assert browser.evaluate("document.activeElement.textContent") == 'Continue your quiz sequence'
+    finally: browser.command('script.removePreloadScript', {'script': preload})
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        before=list(conn.iterdump())
+    browser.click('#recentActivity .dashboard-quiz-sequence a')
+    browser.wait_for('quizRecoveryReady && typeof quiz !== "undefined"')
+    assert browser.evaluate('location.pathname')=='/quizzes/'+next_html
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        assert list(conn.iterdump())==before
+    # Activity's preference remains independent of Study next. No new request
+    # or hidden continuation panel is required to offer the sequence link.
+    browser.navigate(base+'/settings/layout')
+    browser.click('[name=dashboard_card_daily_review]');browser.click('button[value=save]')
+    browser.wait_for("location.search==='?saved=1'")
+    browser.navigate(base+'/');browser.wait_for('document.getElementById("recentActivity").getAttribute("aria-busy")==="false"')
+    assert browser.evaluate('document.getElementById("continueStudyPanel")===null')
+    assert browser.evaluate("document.querySelector('#recentActivity .dashboard-quiz-sequence a').textContent")=='Open next quiz'
+    assert browser.evaluate("!performance.getEntriesByType('resource').some(e=>e.name.includes('/api/daily-review-plan'))")
+    registry_path=browser_stack.data_root/'config/quizzes.json'
+    registry=json.loads(registry_path.read_text())
+    for entry in registry:
+        if entry['id']==qid: entry['folder']='Only this quiz'
+    registry_path.write_text(json.dumps(registry))
+    browser.navigate(base+'/');browser.wait_for('document.getElementById("recentActivity").getAttribute("aria-busy")==="false"')
+    assert browser.evaluate("document.querySelector('#recentActivity .dashboard-quiz-sequence').textContent.includes('end of this folder')")
+    assert browser.evaluate("document.querySelector('#recentActivity .dashboard-quiz-sequence a').textContent")=='Choose another quiz'
+
+
+@pytest.mark.parametrize('theme', ['light', 'dark', 'ethereal'])
+def test_dashboard_generated_resume_identity_and_sequence(browser_stack, theme):
+    """Actual plan publication, two equal titles, and retained browser records."""
+    from datetime import timedelta
+    from tests.browser._help_screenshots import capture_control
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings/appearance'); _set_theme(browser, theme)
+    anchor, anchor_html = _new_regular_study_quiz(browser_stack, 4)
+    registry_path=browser_stack.data_root/'config/quizzes.json'
+    registry=json.loads(registry_path.read_text())
+    title='CISM — Information Security Governance: roles and responsibilities'
+    for entry in registry:
+        if entry['id']==anchor: entry['title']=title
+    registry_path.write_text(json.dumps(registry))
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        conn.execute('UPDATE quizzes SET title=? WHERE id=?',(title,anchor))
+    browser.click('.study-mode-btn'); browser.wait_for('durableStudySession !== null')
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for('studyLearningEventSaves.size===0')
+    next_id, next_html = _new_regular_study_quiz(browser_stack, 1)
+    registry=json.loads(registry_path.read_text())
+    for entry in registry:
+        if entry['id']==next_id: entry['title']='CISM — Risk Management: next review'
+    registry_path.write_text(json.dumps(registry))
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        conn.execute('UPDATE quizzes SET title=? WHERE id=?',('CISM — Risk Management: next review',next_id))
+    browser.navigate(base+'/exam-plans/new')
+    browser.wait_for('window.dlmsCsrfToken && document.getElementById("examPlanForm")')
+    exam=(datetime.now(timezone.utc)+timedelta(days=21)).date().isoformat()
+    browser.evaluate("document.querySelector('[name=name]').value='CISM';document.querySelector('[name=exam_date]').value="+json.dumps(exam)+";document.querySelector('[name=calendar_timezone]').value='UTC';document.querySelectorAll('[name=weekdays],[name=folders]').forEach(n=>n.checked=true);document.querySelector('[name=use_dashboard]').checked=true;true")
+    browser.click('#examPlanForm button[type=submit]'); browser.wait_for('document.getElementById("planSummary")!==null')
+    generated=[]
+    for position in (0, 1):
+        browser.navigate(base+'/');browser.wait_for('document.querySelector("#planPractice [data-practice=suggested]")!==null')
+        browser.click('#planPractice [data-practice=suggested]')
+        browser.wait_for('location.pathname.startsWith("/quizzes/") && typeof quizRecoveryReady!=="undefined" && quizRecoveryReady')
+        browser.click('.study-mode-btn');browser.wait_for('durableStudySession!==null')
+        assert browser.evaluate('durableStudySession.purpose')=='focused'
+        generated.append(browser.evaluate('String(durableStudySession.quiz_id)'))
+        if position: browser.click('#nextBtn')
+    browser.navigate(base+'/');browser.wait_for('document.getElementById("recentActivity").getAttribute("aria-busy")==="false" && document.querySelectorAll("#continuationList .daily-review-item").length===2')
+    records=browser.evaluate('DLMSQuizRecovery.listStoredRecords().records')
+    assert len(set(generated))==2
+    rows=browser.evaluate("[...document.querySelectorAll('#continuationList article')].map(n=>({id:n.dataset.quizId,title:n.querySelector('h3').textContent,checkpoint:n.querySelector('.dashboard-resume-checkpoint').textContent}))")
+    assert {r['id'] for r in rows}==set(generated)
+    assert all(r['title']=='Exam Plan — CISM' for r in rows)
+    assert len({r['checkpoint'] for r in rows})==2
+    for row in rows:
+        record=next(r for r in records if r['quizId']==row['id'])
+        assert f"Question {record['questionIndex']+1}" in row['checkpoint']
+        assert f"Quiz {record['quizId']}" in row['checkpoint']
+    assert browser.evaluate("document.querySelectorAll('#recentActivity a[href='+JSON.stringify('/quizzes/'+"+json.dumps(anchor_html)+")+']').length") == 0
+    assert browser.evaluate("document.getElementById('recentActivity').textContent.includes('Finish your current regular review')")
+    # Identical records are a rendering duplicate; different recovery sessions stay distinct.
+    assert browser.evaluate("""(async()=>{const p=await fetch('/api/daily-review-plan').then(r=>r.json());
+      const original=DLMSQuizRecovery.listStoredRecords, records=original().records;
+      try {
+        DLMSQuizRecovery.listStoredRecords=()=>({available:true,records:[records[0],records[0],records[1]]});
+        const exact=DLMSDailyReview.mergeBrowserSessions(p).items.filter(i=>i.kind==='unfinished');
+        DLMSQuizRecovery.listStoredRecords=()=>({available:true,records:[records[0],{...records[0],sessionId:'another-browser-session',learningSessionId:'another-study-session'}]});
+        const distinct=DLMSDailyReview.mergeBrowserSessions(p).items.filter(i=>i.kind==='unfinished');
+        return exact.length===2 && distinct.length===2 && distinct[0].id!==distinct[1].id;
+      }finally{DLMSQuizRecovery.listStoredRecords=original;}})()""")
+    assert browser.evaluate("""(async()=>{const p=await fetch('/api/daily-review-plan').then(r=>r.json()),original=DLMSQuizRecovery.listStoredRecords;
+      const record=original().records[0];try{
+        DLMSQuizRecovery.listStoredRecords=()=>({available:true,records:[{...record,updatedAt:null,questionIndex:null,pendingStudyCount:3}]});
+        const i=DLMSDailyReview.mergeBrowserSessions(p).items.find(i=>i.kind==='unfinished');
+        return i.checkpointLabel.includes('saved time unavailable') && i.checkpointLabel.includes('Question position unavailable') && i.needsSave && i.action.label==='Resolve Study saves';
+      }finally{DLMSQuizRecovery.listStoredRecords=original;}})()""")
+    assert browser.evaluate("DLMSQuizRecovery.listStoredRecords().records") == records
+    output=os.environ.get('DLMS_SEQUENCE_CAPTURE_DIR')
+    baseline=os.environ.get('DLMS_SEQUENCE_BASELINE_DIR')
+    if output and baseline:
+        # Optional visual comparison: replay the verified baseline display
+        # scripts against the same disposable records and unchanged template.
+        browser.evaluate((Path(baseline)/'daily-review.js').read_text())
+        browser.evaluate((Path(baseline)/'dashboard-activity.js').read_text())
+        browser.wait_for("document.querySelectorAll('#continuationList article').length===2 && document.getElementById('recentActivity').textContent.includes('Last studied')")
+        for width in (1440,390):
+            browser.set_viewport(width,1000)
+            browser.wait_for("!document.getAnimations().some(a=>a.playState==='running' && a.effect.getTiming().iterations!==Infinity)")
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (Path(output)/f'baseline-replay-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+        browser.navigate(base+'/')
+        browser.wait_for('document.getElementById("recentActivity").getAttribute("aria-busy")==="false" && document.querySelectorAll("#continuationList article").length===2')
+    for width in (1440,390):
+        browser.set_viewport(width,1000)
+        browser.wait_for("!document.getAnimations().some(a=>a.playState==='running' && a.effect.getTiming().iterations!==Infinity)")
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        if output:
+            path=Path(output);path.mkdir(parents=True,exist_ok=True)
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (path/f'sequence-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+            if theme=='ethereal' and width==1440:
+                from tests.browser._help_screenshots import capture_viewport
+                capture_viewport(browser,path/'dashboard.webp')
+    browser.activate();browser.evaluate("document.querySelector('#recentActivity .dashboard-activity-context summary').focus();true")
+    browser.press_key('\ue007')
+    assert browser.evaluate("document.querySelector('#recentActivity .dashboard-activity-context').open && document.activeElement.matches(':focus-visible')")
+    for quiz_id in generated:
+        browser.click('#continuationList article[data-quiz-id='+json.dumps(quiz_id)+'] a.daily-review-action')
+        browser.wait_for('document.querySelector(".quiz-recovery-resume")!==null')
+        browser.click('.quiz-recovery-resume');browser.wait_for('quizRecoveryReady && durableStudySession!==null')
+        assert browser.evaluate('String(durableStudySession.quiz_id)')==quiz_id
+        expected=next(r for r in records if r['quizId']==quiz_id)
+        assert browser.evaluate('index')==expected['questionIndex']
+        browser.navigate(base+'/');browser.wait_for('document.querySelectorAll("#continuationList article").length===2')
+    # Browser-only resumed generated practice never displaces regular durable work.
+    assert browser.evaluate("fetch('/api/daily-review-plan').then(r=>r.json()).then(p=>p.regular_study.quiz_id)")==anchor
+    browser.navigate(base+'/quizzes/'+anchor_html)
+    browser.wait_for('document.querySelector(".quiz-recovery-resume")!==null')
+    browser.click('.quiz-recovery-resume');browser.wait_for('quizRecoveryReady && durableStudySession!==null')
+    for position in range(1,4):
+        browser.click('#nextBtn')
+        browser.click("#choices .choice[data-index='1']")
+        browser.wait_for('studyLearningEventSaves.size===0')
+    browser.click('#finishReviewBtn');browser.wait_for('durableStudySession.completed_at!==null')
+    browser.navigate(base+'/');browser.wait_for('document.getElementById("recentActivity").getAttribute("aria-busy")==="false"')
+    assert browser.evaluate("document.querySelector('#recentActivity .dashboard-quiz-sequence a').getAttribute('href')")=='/quizzes/'+next_html
+    assert browser.evaluate("document.getElementById('continueStudyHeading').textContent")=='Continue studying'  # generated work remains unfinished
+    assert browser.evaluate("document.getElementById('regularStudyContinuity').textContent.includes('Review finished')")
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        assert conn.execute("SELECT count(*) FROM study_sessions WHERE purpose='focused' AND completed_at IS NOT NULL").fetchone()[0]==0
+        assert conn.execute("SELECT count(*) FROM study_sessions WHERE quiz_id=? AND completed_at IS NOT NULL",(anchor,)).fetchone()[0]==1
+    for width in (1440,390):
+        browser.set_viewport(width,1000)
+        browser.wait_for("!document.getAnimations().some(a=>a.playState==='running' && a.effect.getTiming().iterations!==Infinity)")
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        for role, sample in _theme_contrast_snapshot(browser, {
+            'checkpoint':'#continuationList .dashboard-resume-checkpoint',
+            'sequence':'#recentActivity .dashboard-quiz-sequence h3',
+            'next_link':'#recentActivity .dashboard-sequence-link',
+        }, include_gradients=True).items():
+            assert sample['contrast']>=4.5, (theme,width,role,sample)
+        if output:
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (Path(output)/f'sequence-ready-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn: before=list(conn.iterdump())
+    browser.activate();browser.evaluate("document.querySelector('#recentActivity .dashboard-sequence-link').focus();true")
+    browser.press_key('\ue007');browser.wait_for('quizRecoveryReady && typeof quiz!=="undefined"')
+    assert browser.evaluate('location.pathname')=='/quizzes/'+next_html
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn: assert list(conn.iterdump())==before
+
+
+@pytest.mark.parametrize("theme", ("light", "dark", "ethereal"))
+def test_dashboard_card_customization_and_all_hidden_requests(browser_stack, theme, tmp_path):
+    browser = browser_stack.browser
+    # Use the established foreground-tab pattern for native Firefox keyboard focus.
+    browser.context = browser.command("browsingContext.create", {"type": "tab"})["context"]
+    browser.navigate(browser_stack.base_url + "/settings/dashboard")
+    _set_theme(browser, theme)
+    browser.navigate(browser_stack.base_url + "/settings/dashboard")
+    browser.activate()
+    browser.set_viewport(390, 844)
+    browser.wait_for("document.querySelectorAll('[name^=dashboard_card_]').length === 15")
+    assert browser.evaluate("[...document.querySelectorAll('[name^=dashboard_card_]')].every(input => input.labels.length === 1 && input.labels[0].textContent.trim())")
+    for name, sample in _theme_contrast_snapshot(browser, {
+        "checkbox_label": ".settings-toggle-row strong", "helper": ".settings-scope-note",
+    }).items():
+        assert sample["contrast"] >= 4.5, (theme, name, sample)
+    # Native checkbox activation and tab movement must remain usable.
+    browser.click("[name=dashboard_card_welcome]")
+    browser.evaluate("window.focus(); document.querySelector('[name=dashboard_card_welcome]').focus(); true")
+    browser.press_key(" ")
+    assert browser.evaluate("document.querySelector('[name=dashboard_card_welcome]').checked") is True
+    browser.press_key("\ue004")
+    assert browser.evaluate("document.activeElement.name") == "dashboard_card_daily_review"
+    assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    browser.evaluate("document.querySelectorAll('[name^=dashboard_card_]').forEach(input => input.checked = false); true")
+    browser.click("button[value=save]")
+    browser.wait_for("location.search === '?saved=1'")
+    assert browser.evaluate("[...document.querySelectorAll('[name^=dashboard_card_]')].every(input => !input.checked)")
+    sidebar_before = browser.evaluate("fetch('/config/portal.json').then(r => r.json()).then(c => c.study_area_visibility)")
+    browser.navigate(browser_stack.base_url + "/")
+    browser.wait_for_page_ready("document.querySelector('.dashboard-nav-normalized') !== null")
+    assert browser.evaluate("document.querySelector('main h1') !== null && document.querySelector('.dashboard-customize') === null && document.querySelector('.dashboard-sidebar a[href=\"/settings\"]') !== null")
+    assert browser.evaluate("document.querySelectorAll('.dashboard-action-card, .dashboard-lower-grid, .dashboard-action-grid, .daily-review-panel, .dashboard-welcome').length") == 0
+    assert browser.evaluate("document.querySelector('#myCertifications') === null")
+    requests = browser.evaluate("performance.getEntriesByType('resource').map(entry => new URL(entry.name).pathname)")
+    assert "/api/dashboard/quiz-activity" not in requests
+    assert "/api/attempts/overview" not in requests
+    assert "/api/daily-review-plan" not in requests
+    assert "/static/certifications.css" not in requests
+    assert not any(path.startswith('/certifications/attachments/') for path in requests)
+    assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    if theme == "ethereal":
+        assert browser.evaluate("parseFloat(getComputedStyle(document.querySelector('main h1')).fontSize)") == 24
+    _open_dashboard_layout_from_settings(browser)
+    if theme == "ethereal":
+        # Hiding Today's Review must keep Ethereal's card and header styling.
+        browser.click("[name=dashboard_card_library]")
+        browser.click("button[value=save]")
+        browser.wait_for("location.search === '?saved=1'")
+        browser.navigate(browser_stack.base_url + "/")
+        browser.wait_for("document.querySelector('.dashboard-sidebar')?.dataset.theme === 'ethereal'")
+        assert browser.evaluate("document.querySelector('.daily-review-panel') === null")
+        browser.wait_for("getComputedStyle(document.querySelector('.dashboard-action-card')).boxShadow === 'none'")
+        assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        _open_dashboard_layout_from_settings(browser)
+    browser.click("button[value=dashboard_defaults]")
+    browser.wait_for("location.search === '?saved=1'")
+    assert browser.evaluate("[...document.querySelectorAll('[name^=dashboard_card_]')].every(input => input.checked)")
+    assert browser.evaluate("fetch('/config/portal.json').then(r => r.json()).then(c => c.study_area_visibility)") == sidebar_before
+    browser.navigate(browser_stack.base_url + "/")
+    browser.wait_for("document.getElementById('recentActivity')?.getAttribute('aria-busy') === 'false'")
+    assert browser.evaluate("document.querySelectorAll('.dashboard-action-card').length") == 10
+    for name, sample in _theme_contrast_snapshot(browser, {
+        "activity_heading": ".dashboard-activity-summary h3",
+        "activity_detail": ".dashboard-activity-explanation", "settings": ".dashboard-sidebar a[href=\"/settings\"]",
+    }).items():
+        assert sample["contrast"] >= 4.5, (theme, name, sample)
+    browser.evaluate("document.querySelector('.dashboard-activity-panel').scrollIntoView(); true")
+    screenshot = browser.command("browsingContext.captureScreenshot", {"context": browser.context, "origin": "viewport"})
+    (tmp_path / f"dashboard-activity-{theme}.png").write_bytes(base64.b64decode(screenshot["data"]))
+    assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_dashboard_activity_saved_responses_exam_and_retry(browser_stack):
+    browser = browser_stack.browser
+    quiz_url = f"{browser_stack.base_url}/quizzes/{browser_stack.metadata['critical_html']}"
+    browser.navigate(quiz_url)
+    _wait_for_quiz_mode_controls(browser)
+    browser.click(".study-mode-btn")
+    browser.wait_for("(!durableStudySupported || durableStudySession !== null) && !document.getElementById('quiz').classList.contains('hidden')")
+    browser.click("#choices .choice[data-index='0']")
+    browser.wait_for("studyLearningEventSaves.size === 0")
+    # Leave this two-question Study session after only one response.
+    browser.navigate(browser_stack.base_url + "/")
+    browser.wait_for("document.getElementById('recentActivity')?.getAttribute('aria-busy') === 'false'")
+    text = browser.evaluate("document.getElementById('recentActivity').textContent")
+    assert "Continue your quiz sequence" in text and "Finish your current regular review" in text
+    assert "does not indicate quiz completion" in text
+    assert "completion times cannot be determined" in text  # Seeded legacy Exam has no zone.
+    assert "View undated results in Exam History" in text
+    assert browser.evaluate("document.querySelector('.dashboard-activity-context time').dateTime.endsWith('+00:00')")
+    browser.navigate(quiz_url)
+    _wait_for_quiz_mode_controls(browser)
+    browser.click(".exam-mode-btn")
+    browser.click("#choices .choice[data-index='0']")
+    browser.click("#nextBtn")
+    browser.click("#choices .choice[data-index='1']")
+    browser.evaluate("window.confirm = () => true; true")
+    browser.click("#submitBtn")
+    browser.wait_for("document.getElementById('result').textContent.includes('saved successfully')")
+    browser.navigate(browser_stack.base_url + "/")
+    browser.wait_for("document.getElementById('recentActivity')?.getAttribute('aria-busy') === 'false'")
+    text = browser.evaluate("document.getElementById('recentActivity').textContent")
+    assert "Latest Exam completed" in text and "2 / 2 (100%)" in text
+    assert "Latest shown uses reliably dated records" in text
+    assert "today’s content" in text
+    browser.set_viewport(390, 844)
+    assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    assert browser.evaluate("document.querySelectorAll('.dashboard-activity-summary a[href^=\"/review?attempt=\"]').length") == 1
+    # Reload only this widget to exercise loading, network failure, and retry.
+    browser.evaluate("""(() => {
+        const original = window.fetch.bind(window);
+        window.fetch = (...args) => {
+            if (String(args[0]) === '/api/dashboard/quiz-activity') {
+                window.fetch = original;
+                return new Promise((_resolve, reject) => { window.failActivity = () => reject(new Error('test failure')); });
+            }
+            return original(...args);
+        };
+        const script = document.createElement('script');
+        script.src = '/static/dashboard-activity.js'; document.body.append(script);
+        return true;
+    })()""")
+    browser.wait_for("typeof window.failActivity === 'function'")
+    assert browser.evaluate("document.getElementById('recentActivity').getAttribute('aria-busy')") == "true"
+    browser.evaluate("window.failActivity(); true")
+    browser.wait_for("document.querySelector('#recentActivity button') !== null")
+    assert "Couldn’t load" in browser.evaluate("document.getElementById('recentActivity').textContent")
+    browser.click("#recentActivity button")
+    browser.wait_for("document.getElementById('recentActivity')?.getAttribute('aria-busy') === 'false' && document.querySelector('#recentActivity button') === null")
+    browser.click('.dashboard-activity-summary a[href^="/review?attempt="]')
+    browser.wait_for("location.pathname === '/review'")
+
+
+@pytest.mark.parametrize("theme", ("light", "dark", "ethereal"))
+def test_unified_layout_and_complete_dashboard_presentation(browser_stack, theme, tmp_path):
+    browser = browser_stack.browser
+    base = browser_stack.base_url
+    browser.context = browser.command("browsingContext.create", {"type": "tab"})["context"]
+    browser.navigate(base + "/settings/layout")
+    browser.activate()
+    _set_theme(browser, theme)
+    browser.navigate(base + "/settings/layout")
+    before = browser.evaluate("fetch('/config/portal.json').then(r=>r.json())")
+    browser.click('[data-hide-study-area="it"]')
+    assert browser.evaluate("!document.querySelector('[name=dashboard_card_it]').checked && !document.querySelector('[name=study_area_it]').checked")
+    assert browser.evaluate("fetch('/config/portal.json').then(r=>r.json())") == before
+    # Keep a deliberate difference in the other direction for Law.
+    browser.click('[name=dashboard_card_law]')
+    browser.click('button[value=save]')
+    browser.wait_for("location.search === '?saved=1'")
+    saved = browser.evaluate("fetch('/config/portal.json').then(r=>r.json())")
+    assert not saved['dashboard_card_visibility']['it'] and not saved['study_area_visibility']['it']
+    assert not saved['dashboard_card_visibility']['law'] and saved['study_area_visibility']['law']
+    browser.click('button[value=sidebar_defaults]')
+    browser.wait_for("[...document.querySelectorAll('[name^=study_area_]')].every(n=>n.checked)")
+    assert browser.evaluate("fetch('/config/portal.json').then(r=>r.json()).then(c=>c.dashboard_card_visibility)") == saved['dashboard_card_visibility']
+    browser.click('button[value=dashboard_defaults]')
+    browser.wait_for("[...document.querySelectorAll('[name^=dashboard_card_]')].every(n=>n.checked)")
+
+    # Isolated durable fixtures exercise dated summaries and deduplication in the
+    # real endpoint/renderer. No production data or running server is touched.
+    connection = sqlite3.connect(browser_stack.data_root / 'results.db')
+    try:
+        quiz_id = browser_stack.metadata['critical_id']
+        connection.execute("INSERT INTO learning_events(event_type, quiz_id, mode, occurred_at) VALUES ('study_answer', ?, 'Study', '2026-10-01 12:00:00')", (quiz_id,))
+        connection.executemany("INSERT INTO attempts(id, quiz_id, score, total, percent, mode, completed_at) VALUES (?, ?, 1, 2, 50, 'Exam', ?)",
+                               [(f'layout-{n}', quiz_id, f'2026-10-01T12:0{n}:00Z') for n in range(5)])
+        connection.commit()
+    finally:
+        connection.close()
+    browser.navigate(base + '/')
+    browser.wait_for("document.querySelector('#recentActivity')?.getAttribute('aria-busy') === 'false'")
+    browser.wait_for("document.querySelector('#dailyReviewList .daily-review-action') !== null")
+    assert browser.evaluate("document.querySelectorAll('.dashboard-recent-attempt').length") == 0
+    featured = browser.evaluate("document.querySelector('.dashboard-activity-summary a[href^=\"/review\"]').href")
+    assert featured not in browser.evaluate("[...document.querySelectorAll('.dashboard-recent-attempt a')].map(n=>n.href)")
+    assert browser.evaluate("Boolean(document.querySelector('.dashboard-activity-panel').compareDocumentPosition(document.querySelector('.dashboard-action-grid')) & Node.DOCUMENT_POSITION_FOLLOWING)")
+    shots = tmp_path / 'layout-review'
+    shots.mkdir()
+    for width, name in ((1440, 'desktop'), (390, 'mobile')):
+        browser.set_viewport(width, 1000)
+        browser.evaluate("document.fonts.ready.then(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>r(true)))))")
+        if width <= 820:
+            browser.wait_for("document.querySelector('.dashboard-sidebar').getBoundingClientRect().right <= 0")
+        assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        assert browser.evaluate("document.querySelector('.dashboard-overview-panel').getBoundingClientRect().height < document.querySelector('.dashboard-activity-panel').getBoundingClientRect().height")
+        for key, value in _theme_contrast_snapshot(browser, {
+            'shortcut': '.dashboard-action-copy p', 'context': '.dashboard-activity-detail',
+            'summary': '.dashboard-activity-summary h3', 'stat': '.dashboard-stat-card span',
+        }).items():
+            assert value['contrast'] >= 4.5, (theme, width, key, value)
+        screenshot = browser.command('browsingContext.captureScreenshot', {'context': browser.context, 'origin': 'document'})
+        (shots / f'dashboard-{theme}-{name}.png').write_bytes(base64.b64decode(screenshot['data']))
+        browser.evaluate("document.querySelector('.dashboard-activity-summary strong').textContent='Professional Certification Preparation WithAnExceptionallyLongUnbrokenQuizTitleForLayoutChecks'; true")
+        assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    browser.evaluate("document.querySelector('.dashboard-activity-summary a').focus();true")
+    browser.press_key('\ue004')
+    assert browser.evaluate("document.activeElement.matches(':focus-visible') && getComputedStyle(document.activeElement).outlineStyle !== 'none'")
+
+    # Server-rendered sparse combinations must neither reserve empty grids nor
+    # fetch hidden panels. These saves go through the unified, CSRF-protected form.
+    for cards in (['recent_activity'], ['overview'], ['daily_review'], ['library', 'settings']):
+        browser.navigate(base + '/settings/layout')
+        browser.evaluate("document.querySelectorAll('[name^=dashboard_card_]').forEach(n=>n.checked=" + json.dumps(cards) + ".includes(n.name.replace('dashboard_card_', '')));true")
+        browser.click('button[value=save]')
+        browser.wait_for("location.search === '?saved=1'")
+        browser.navigate(base + '/')
+        browser.wait_for_page_ready()
+        requests = browser.evaluate("performance.getEntriesByType('resource').map(e=>new URL(e.name).pathname)")
+        for card, endpoint in (('recent_activity', '/api/dashboard/quiz-activity'), ('overview', '/api/attempts/overview'), ('daily_review', '/api/daily-review-plan')):
+            if card not in cards:
+                assert endpoint not in requests, (cards, endpoint)
+        assert browser.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        assert browser.evaluate("document.querySelector('.dashboard-action-grid') !== null") == ('library' in cards)
+
+
+@pytest.mark.parametrize('browser_stack', ('America/Los_Angeles', 'Asia/Tokyo'), indirect=True)
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_exam_plan_setup_dashboard_practice_and_help(browser_stack, theme):
+    """Real plan forms and generated Study pages, isolated from owner data."""
+    from datetime import timedelta
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type':'tab'})['context']
+    browser.navigate(base + '/settings/appearance')
+    _set_theme(browser, theme)
+    browser.navigate(base + '/learning-intelligence')
+    browser.wait_for("document.querySelector('.dashboard-nav a[href=\"/exam-plans\"]') !== null")
+    browser.click('.dashboard-nav a[href="/exam-plans"]')
+    browser.wait_for("location.pathname === '/exam-plans'")
+    browser.click('a[href="/exam-plans/new"]')
+    browser.wait_for("document.getElementById('examPlanForm') !== null && window.dlmsCsrfToken")
+    assert browser.evaluate("document.querySelector('[name=calendar_timezone]').value === Intl.DateTimeFormat().resolvedOptions().timeZone")
+    exam = (datetime.now(timezone.utc).date() + timedelta(days=21)).isoformat()
+    browser.evaluate("""document.querySelector('[name=name]').value='CISM certification — sample plan';
+      document.querySelector('[name=exam_date]').value=""" + json.dumps(exam) + """;
+      document.querySelector('[name=calendar_timezone]').value='America/Chicago';
+      document.querySelectorAll('[name=weekdays]').forEach(n=>n.checked=true);
+      document.querySelectorAll('[name=folders]').forEach(n=>n.checked=true);
+      document.querySelector('[name=use_dashboard]').checked=true;true""")
+    browser.click('#previewPlan')
+    browser.wait_for("document.getElementById('planPreview').textContent.includes('base shortfall')")
+    output = os.environ.get('DLMS_EXAM_PLAN_CAPTURE_DIR')
+    if output and theme == 'light':
+        # Capture a current filled form without navigation/resetting its values.
+        browser.set_viewport(390, 1000)
+        from tests.browser._help_screenshots import capture_control
+        capture_control(browser, Path(output) / 'exam-plan-setup.webp', '#planExamFields')
+        capture_control(browser, Path(output) / 'exam-plan-availability.webp', '#planAvailability')
+        capture_control(browser, Path(output) / 'exam-plan-selection.webp', '#planDashboardChoice')
+    browser.click('#examPlanForm button[type=submit]')
+    browser.wait_for("document.getElementById('planSummary') !== null")
+    detail_path = browser.evaluate('location.pathname')
+    assert browser.evaluate("document.querySelector('#planSummary').textContent.includes('America/Chicago')")
+    for width in (1440, 390):
+        browser.set_viewport(width, 1000)
+        browser.navigate(base + detail_path)
+        browser.wait_for_page_ready()
+        assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth'), (theme,width)
+        browser.activate()
+        browser.wait_for('document.hasFocus()')
+        if width == 390:
+            browser.evaluate("document.getElementById('menuButton').focus();true")
+            browser.press_key('\ue007')
+            browser.wait_for("document.getElementById('dashboardSidebar').classList.contains('open')")
+            browser.press_key('\ue00c')
+            browser.wait_for("!document.getElementById('dashboardSidebar').classList.contains('open') && document.activeElement.id==='menuButton'")
+        assert browser.evaluate("(() => {const t=document.querySelector('#planSummary time');return t.textContent===DLMSLocalTime.format(t.dataset.localInstant);})()")
+        browser.evaluate("document.querySelector('#planWhy summary').scrollIntoView({block:'center'});document.querySelector('#planWhy summary').focus();true")
+        browser.press_key('\ue007')
+        browser.wait_for("document.querySelector('#planWhy').open")
+        browser.press_key('\ue004')
+        assert browser.evaluate("document.activeElement.matches(':focus-visible')")
+        for role,value in _theme_contrast_snapshot(browser, {'body':'#planSummary p','action':'[data-practice="suggested"]','disclosure':'#planWhy summary'}, include_gradients=True).items():
+            assert value['contrast'] >= 4.5, (theme,width,role,value)
+        if output:
+            target = Path(output); target.mkdir(parents=True,exist_ok=True)
+            shot = browser.command('browsingContext.captureScreenshot', {'context':browser.context,'origin':'document'})
+            (target/f'plan-detail-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+        browser.navigate(base + '/exam-plans/new')
+        assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth'), (theme,width,'form')
+    browser.navigate(base + '/')
+    browser.wait_for("document.getElementById('activeExamPlan')?.textContent.includes('CISM certification')")
+    assert browser.evaluate("document.querySelector('#activeExamPlan summary').textContent") == 'Why this suggestion?'
+    # A plan owns visual priority; eligible ordinary review remains discoverable.
+    assert browser.evaluate("document.querySelector('.dashboard-other-options summary').textContent") == 'More review options'
+    assert not browser.evaluate("document.querySelector('.dashboard-other-options').open")
+    assert browser.evaluate("document.querySelector('[data-dashboard-primary]').matches('#activeExamPlan [data-practice=suggested]')")
+    if output and theme == 'light':
+        from tests.browser._help_screenshots import capture_control
+        capture_control(browser, Path(output) / 'exam-plan-dashboard.webp', '#activeExamPlan')
+    if output:
+        for width in (1440,390):
+            browser.set_viewport(width,1000)
+            browser.navigate(base+'/')
+            browser.wait_for("document.getElementById('activeExamPlan')?.textContent.includes('CISM certification')")
+            browser.wait_for_page_ready()
+            assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth')
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (Path(output)/f'plan-dashboard-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+    assert browser.evaluate("[...document.querySelectorAll('#activeExamPlan a')].filter(a=>a.pathname==="+json.dumps(detail_path)+").map(a=>a.textContent)") == ['View plan']
+    # Simulate a lost acknowledgement after the real publication commits.
+    browser.evaluate("""window.planFetch=window.fetch.bind(window);window.planLostAck=false;
+      window.fetch=async(url,options)=>{const r=await planFetch(url,options);
+        if(String(url).endsWith('/generate')&&!planLostAck){planLostAck=true;throw Error('Lost publication acknowledgement');}
+        return r;};true""")
+    browser.click('#activeExamPlan [data-practice="suggested"]')
+    browser.wait_for("!document.getElementById('retryPlanPractice').hidden")
+    assert browser.evaluate("document.getElementById('planPracticeStatus').textContent.includes('Lost publication acknowledgement')")
+    browser.click('#retryPlanPractice')
+    browser.wait_for("location.pathname.startsWith('/quizzes/') && quizRecoveryReady")
+    browser.click('.study-mode-btn')
+    browser.wait_for('durableStudySession !== null')
+    assert browser.evaluate('durableStudySession.purpose') == 'focused'
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        assert conn.execute('SELECT count(*) FROM exam_plan_actions WHERE quiz_id IS NOT NULL').fetchone()[0] == 1
+    browser.navigate(base + '/help/learning-intelligence#exam-plans')
+    assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    assert browser.evaluate("document.querySelector('#exam-plans').textContent.includes('first-pass')")
+    for width in (1440,390):
+        browser.set_viewport(width,1000)
+        browser.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+        browser.wait_for("!document.getAnimations().some(a=>a.playState==='running' && a.effect.getTiming().iterations!==Infinity)")
+        assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth'),(theme,width,'Help')
+        browser.evaluate("document.querySelector('#exam-plans').scrollIntoView();true")
+        if output:
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'viewport'})
+            (Path(output)/f'plan-help-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+    for filename in ('exam-plan-setup.webp','exam-plan-availability.webp','exam-plan-dashboard.webp','exam-plan-selection.webp','exam-plan-excluded.webp','exam-plan-workload.webp'):
+        selector = '#exam-plans a[href="/static/help_assets/' + filename + '"]'
+        browser.evaluate('document.querySelector(' + json.dumps(selector) + ').scrollIntoView({block:"center"});true')
+        browser.wait_for('document.querySelector(' + json.dumps(selector + ' img') + ').naturalWidth > 0')
+        browser.evaluate('document.querySelector(' + json.dumps(selector) + ').focus();true')
+        browser.press_key('\ue007')
+        browser.wait_for('!document.querySelector(".help-lightbox").hidden && document.querySelector(".help-lightbox-image").complete')
+        browser.press_key('\ue00c')
+        browser.wait_for('document.querySelector(".help-lightbox").hidden')
+    # Exercise actual form controls and dashboard states, not only JSON APIs.
+    browser.navigate(base + detail_path)
+    browser.click('#planPlacement summary')
+    browser.click('button[value=pause]')
+    browser.wait_for("document.querySelector('#planSummary').textContent.includes('Suggestions paused')")
+    browser.navigate(base + '/')
+    browser.wait_for("document.querySelector('#activeExamPlan')?.textContent.includes('Suggestions are paused')")
+    assert not browser.evaluate("document.querySelector('#activeExamPlan').textContent.includes('Start suggested work')")
+    browser.navigate(base + detail_path)
+    browser.click('#planPlacement summary')
+    browser.click('button[value=hide]')
+    browser.wait_for("document.querySelector('#planSummary').textContent.includes('Hidden from dashboard')")
+    browser.navigate(base + '/')
+    browser.wait_for("document.querySelector('#activeExamPlan')?.hidden === true")
+    browser.navigate(base + detail_path)
+    browser.click('#planPlacement summary')
+    browser.click('button[value=activate]')
+    browser.wait_for("!document.querySelector('#planSummary').textContent.includes('Hidden from dashboard')")
+    browser.click('#planPlacement summary')
+    browser.click('button[value=pause]')
+    browser.wait_for("!document.querySelector('#planSummary').textContent.includes('Suggestions paused')")
+    # Confirm only the isolated plan is deleted; browser confirmation is explicit.
+    browser.click('#planPlacement summary')
+    browser.evaluate("window.confirm=()=>true;true")
+    browser.click('button[value=delete]')
+    browser.wait_for("location.pathname==='/exam-plans' && document.body.textContent.includes('No exam plans yet')")
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        assert conn.execute('SELECT count(*) FROM study_sessions').fetchone()[0] > 0
+        assert conn.execute("SELECT count(*) FROM quizzes WHERE generation_kind='adaptive_study'").fetchone()[0] == 1
+    browser.navigate(base + '/')
+    browser.wait_for("document.querySelector('#activeExamPlan')?.hidden === true")
+    browser.navigate(base + '/settings/layout')
+    browser.wait_for("document.querySelector('[name=dashboard_card_daily_review]') !== null")
+    browser.evaluate("document.querySelector('[name=dashboard_card_daily_review]').checked=false;true")
+    browser.click('button[value=save]')
+    browser.wait_for("location.search.includes('saved=1')")
+    browser.navigate(base + '/')
+    browser.wait_for_page_ready()
+    assert browser.evaluate("document.getElementById('dailyReviewList') === null")
+    assert '/api/daily-review-plan' not in browser.evaluate("performance.getEntriesByType('resource').map(e=>new URL(e.name).pathname)")
+
+
+def test_exam_plan_fifty_question_study_workflow(browser_stack):
+    """Owner's regular Study workflow through newly built HTML and Plan UI."""
+    from datetime import timedelta
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.navigate(base+'/settings/appearance')
+    _set_theme(browser,'light')
+    qid, html = _new_regular_study_quiz(browser_stack, 50)
+    browser.click('.study-mode-btn')
+    browser.wait_for("durableStudySession !== null && document.querySelector('#choices .choice') !== null")
+    for number in range(50):
+        if number < 25:
+            browser.click("#choices .choice[data-index='1']")
+            browser.wait_for('studyLearningEventSaves.size === 0')
+        browser.click("#choices .choice[data-index='0']")
+        browser.wait_for('studyLearningEventSaves.size === 0')
+        if number < 49:
+            browser.click('#nextBtn')
+    session_id = browser.evaluate('learningSessionId')
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        assert conn.execute('SELECT completed_at FROM study_sessions WHERE id=?',(session_id,)).fetchone()[0] is None
+        assert conn.execute('SELECT count(*) FROM study_responses WHERE session_id=?',(session_id,)).fetchone()[0] == 75
+    browser.click('#finishReviewBtn')
+    browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent.includes('Review completed')")
+    browser.navigate(base + '/exam-plans/new')
+    browser.wait_for('window.dlmsCsrfToken && document.getElementById("examPlanForm")')
+    exam = (datetime.now(timezone.utc).date()+timedelta(days=21)).isoformat()
+    browser.evaluate("""document.querySelector('[name=name]').value='CISM — 50-question review';
+      document.querySelector('[name=exam_date]').value="""+json.dumps(exam)+""";
+      document.querySelectorAll('[name=folders],[name=weekdays]').forEach(n=>n.checked=true);
+      document.querySelector('[name=use_dashboard]').checked=true;true""")
+    browser.click('#examPlanForm button[type=submit]')
+    browser.wait_for('document.getElementById("planProgress") !== null')
+    detail_path = browser.evaluate('location.pathname')
+    def count(label):
+        return browser.evaluate("Array.from(document.querySelectorAll('#planProgress .plan-grid p')).find(n=>n.textContent.includes("+json.dumps(label)+")).querySelector('strong').textContent")
+    assert count('first-response mistake') == '25'
+    assert count('later corrected') == '25'
+    assert count('Quizzes with a current full review finished') == '1'
+    assert count('independent Study success') == '25'
+    browser.set_viewport(390,1000)
+    browser.navigate(base+detail_path)
+    browser.wait_for_page_ready()
+    assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    output = os.environ.get('DLMS_EXAM_PLAN_CAPTURE_DIR')
+    if output:
+        shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+        (Path(output)/'plan-fifty-question-review.png').write_bytes(base64.b64decode(shot['data']))
+    browser.evaluate("document.querySelector('#other-practice').open=true;document.getElementById('practiceCount').value='10';true")
+    browser.click('[data-practice=missed]')
+    browser.wait_for("location.pathname.startsWith('/quizzes/') && quizRecoveryReady")
+    browser.click('.study-mode-btn')
+    browser.wait_for('durableStudySession !== null')
+    assert browser.evaluate('durableStudySession.purpose') == 'focused'
+    assert browser.evaluate('quiz.length') == 10
+    for number in range(10):
+        browser.click("#choices .choice[data-index='0']")
+        browser.wait_for('studyLearningEventSaves.size === 0')
+        if number < 9:
+            browser.click('#nextBtn')
+    browser.click('#finishReviewBtn')
+    browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent.includes('Review completed')")
+    browser.navigate(base+detail_path)
+    assert count('Quizzes with a current full review finished') == '1'
+    assert count('Focused sessions finished') == '1'
+    assert count('first-response mistake') == '25'
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        assert conn.execute('SELECT count(*) FROM questions g JOIN questions s ON g.source_question_uid=s.question_uid WHERE g.is_generated_copy=1 AND s.quiz_id=? AND s.question_number<=25',(qid,)).fetchone()[0] == 10
+    browser.navigate(base+'/')
+    browser.wait_for("document.getElementById('regularStudyContinuity')?.textContent.includes('Review finished')")
+    assert browser.evaluate("document.querySelector('#regularStudyContinuity a').getAttribute('href')") == '/quizzes/'+html
+    assert browser.evaluate("document.querySelector('#regularStudyContinuity').textContent.includes('50 / 50')")
+    # Expand this exact full review, not the newer generated focused session.
+    browser.navigate(base+'/study-history')
+    row='[data-session-id="'+session_id+'"]'
+    browser.click(row+' summary')
+    browser.wait_for("document.querySelectorAll('"+row+" .study-history-observations li').length===25")
+    browser.click(row+' [data-session-page]')
+    browser.wait_for("document.querySelector('"+row+" .study-history-observations li').value===26")
+    browser.navigate(base+'/study-history')
+    browser.wait_for("document.querySelector('"+row+" .study-history-observations li')?.value===26")
+    assert browser.evaluate("document.querySelector('"+row+" details').open")
+
+
+@pytest.mark.parametrize('theme', ('light','dark','ethereal'))
+def test_exam_plan_no_work_states_and_switching(browser_stack, theme):
+    """Real service responses over disposable source quizzes and saved plans."""
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    browser.navigate(base+'/settings/appearance'); _set_theme(browser,theme)
+    qid, html = _new_regular_study_quiz(browser_stack,4)
+    extra, _ = _new_regular_study_quiz(browser_stack,1)
+    root=browser_stack.data_root
+    registry_path=root/'config/quizzes.json'
+    registry=[r for r in json.loads(registry_path.read_text()) if r['id'] in (qid,extra)]
+    for entry in registry: entry['folder']='Uncategorized' if entry['id']==qid else 'Extra'
+    registry_path.write_text(json.dumps(registry))
+    with sqlite3.connect(root/'results.db') as conn:
+        conn.execute('PRAGMA foreign_keys=ON')
+        conn.execute('DELETE FROM quizzes WHERE id NOT IN (?,?)',(qid,extra))
+    today=datetime.now(ZoneInfo('America/Chicago')).date()
+    exam=(today+timedelta(days=21)).isoformat()
+    def create(name,choose=False):
+        browser.navigate(base+'/exam-plans/new')
+        browser.wait_for("document.getElementById('examPlanForm') && window.dlmsCsrfToken")
+        browser.evaluate("""document.querySelector('[name=name]').value="""+json.dumps(name)+""";
+          document.querySelector('[name=exam_date]').value="""+json.dumps(exam)+""";
+          document.querySelector('[name=calendar_timezone]').value='America/Chicago';
+          document.querySelectorAll('[name=weekdays]').forEach(n=>n.checked=true);
+          document.querySelectorAll('[name=folders]').forEach(n=>n.checked=n.value==='uncategorized');
+          document.querySelector('[name=use_dashboard]').checked="""+json.dumps(choose)+";true")
+        browser.click('#examPlanForm button[type=submit]')
+        browser.wait_for("document.getElementById('planSummary') !== null")
+        return browser.evaluate('location.pathname')
+    path=create('CISM — four questions',True)
+    pid=path.rsplit('/',1)[-1]
+    with sqlite3.connect(root/'results.db') as conn:
+        original=json.loads(conn.execute('SELECT config_json FROM exam_plans WHERE id=?',(pid,)).fetchone()[0])
+    portal=root/'config/portal.json'
+    output=os.environ.get('DLMS_EXAM_PLAN_CAPTURE_DIR')
+    def fixture(**changes):
+        excluded=changes.pop('excluded',[])
+        cfg=json.loads(portal.read_text());cfg['excluded_learning_folders']=excluded;portal.write_text(json.dumps(cfg))
+        with sqlite3.connect(root/'results.db') as conn:
+            conn.execute('UPDATE exam_plans SET config_json=?,revision=revision+1 WHERE id=?',(json.dumps({**original,**changes}),pid))
+    def check(code, label):
+        for width in (1440,390):
+            browser.set_viewport(width,1000);browser.navigate(base+path);browser.wait_for_page_ready()
+            assert browser.evaluate("document.getElementById('planWorkStatus').textContent") == label
+            assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth'),(theme,width,code)
+            if label!='Ready to study':
+                assert not browser.evaluate("!!document.querySelector('[data-practice=suggested]')")
+            assert not browser.evaluate("document.body.textContent.includes('allowance is used, or')")
+            if output:
+                shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+                (Path(output)/f'state-{code}-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+        browser.navigate(base+'/')
+        browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+        if code=='hidden':
+            browser.wait_for("document.getElementById('activeExamPlan').hidden")
+        else:
+            browser.wait_for("document.getElementById('activeExamPlan').textContent.includes("+json.dumps(label)+")")
+            assert browser.evaluate("[...document.querySelectorAll('#activeExamPlan a')].filter(a=>a.pathname==="+json.dumps(path)+").map(a=>a.textContent)") == ['View plan']
+        if code == 'allowance_used':
+            # The plan's allowance is exhausted, but the separate unreviewed
+            # source still qualifies for optional canonical Adaptive Study.
+            payload = browser.evaluate("fetch('/api/daily-review-plan').then(r=>r.json())")
+            assert payload['exam_plan']['selected_count'] == 0
+            assert [item['kind'] for item in payload['items']] == ['adaptive']
+            assert browser.evaluate("document.querySelector('.dashboard-other-options summary').textContent") == 'More review options'
+    check('ready','Ready to study')
+    browser.navigate(base+'/quizzes/'+html);browser.wait_for('quizRecoveryReady');browser.click('.study-mode-btn')
+    browser.wait_for('durableStudySession !== null')
+    for n in range(4):
+        browser.click("#choices .choice[data-index='0']");browser.wait_for('studyLearningEventSaves.size===0')
+        if n<3: browser.click('#nextBtn')
+    browser.click('#finishReviewBtn');browser.wait_for("document.querySelector('.study-learning-save-message')?.textContent.includes('Review completed')")
+    check('future_reviews','Today’s questions have saved answers; reviews come later')
+    browser.navigate(base+path)
+    assert browser.evaluate("document.getElementById('planEstimate').textContent.includes('10.0 estimated minutes')")
+    cases=[('allowance_used',{'minutes':10},'Today’s estimated allowance is used'),
+           ('non_study_day',{'weekdays':[(today.weekday()+1)%7]},'Today is not a selected study day'),
+           ('paused',{'paused':True},'Suggestions are paused'),
+           ('excluded',{'excluded':['uncategorized']},'No study material is included'),
+           ('partial_exclusion',{'folders':['uncategorized','extra'],'excluded':['uncategorized']},'Ready to study'),
+           ('no_material',{'folders':['Deleted folder']},'Choose study material'),
+           ('exam_today',{'exam_date':today.isoformat()},'Exam is today'),
+           ('exam_passed',{'exam_date':(today-timedelta(days=1)).isoformat()},'Exam date has passed')]
+    for code,changes,label in cases:
+        fixture(**changes)
+        check(code,label)
+        if code=='non_study_day':
+            assert browser.evaluate("document.querySelector('#activeExamPlan').textContent.includes('Suggestions follow your selected study days. Optional practice is available today.')")
+            assert not browser.evaluate("document.querySelector('#activeExamPlan').textContent.toLowerCase().includes('weekdays')")
+        if code=='excluded':
+            browser.navigate(base+path)
+            assert not browser.evaluate("document.body.textContent.includes('Known work fits')")
+            browser.navigate(base+path+'/edit')
+            browser.wait_for("document.getElementById('planFolderWarning').textContent.includes('All selected folders are excluded')")
+            browser.click('#previewPlan')
+            browser.wait_for("document.getElementById('planPreview').textContent.includes('4 questions are excluded')")
+            if output and theme=='light':
+                from tests.browser._help_screenshots import capture_control
+                capture_control(browser,Path(output)/'exam-plan-excluded.webp','#planMaterial')
+    fixture()
+    artifact=root/'quizzes'/html; moved=artifact.with_suffix('.unavailable-fixture')
+    artifact.rename(moved)
+    try: check('unavailable','Included material is unavailable')
+    finally: moved.rename(artifact)
+    fixture(visible=False)
+    check('hidden','Today’s questions have saved answers; reviews come later')
+    fixture()
+    second=create('Second certification',False)
+    with sqlite3.connect(root/'results.db') as conn:
+        assert conn.execute('SELECT active_plan_id FROM exam_plan_state').fetchone()[0]==pid
+    browser.click('#planPlacement summary')
+    assert browser.evaluate("document.getElementById('planPlacement').textContent.includes('CISM — four questions')")
+    browser.click('button[value=activate]');browser.wait_for("document.querySelector('#planSummary').textContent.includes('On dashboard')")
+    browser.navigate(base+path+'/edit')
+    assert not browser.evaluate("document.querySelector('[name=use_dashboard]').checked")
+    browser.click('#examPlanForm button[type=submit]');browser.wait_for('location.pathname==='+json.dumps(path))
+    with sqlite3.connect(root/'results.db') as conn:
+        assert conn.execute('SELECT active_plan_id FROM exam_plan_state').fetchone()[0]==second.rsplit('/',1)[-1]
+    browser.navigate(base+'/exam-plans')
+    assert browser.evaluate("document.querySelectorAll('.plan-list-card a').length") == 2
+
+
+@pytest.mark.parametrize('theme,browser_stack', [('light','America/New_York'),('dark','Asia/Kolkata'),('ethereal','UTC')], indirect=['browser_stack'])
+def test_compact_study_history_pagination_and_recovery(browser_stack, theme):
+    browser,base=browser_stack.browser,browser_stack.base_url
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    browser.navigate(base+'/settings/appearance');_set_theme(browser,theme)
+    qid,html=_new_regular_study_quiz(browser_stack,4)
+    browser.click('.study-mode-btn');browser.wait_for('durableStudySession !== null')
+    browser.click("#choices .choice[data-index='1']");browser.wait_for('studyLearningEventSaves.size===0')
+    for n in range(4):
+        browser.click("#choices .choice[data-index='0']");browser.wait_for('studyLearningEventSaves.size===0')
+        if n<3:browser.click('#nextBtn')
+    browser.click('#finishReviewBtn');browser.wait_for('durableStudySession.completed_at !== null')
+    original=browser.evaluate('learningSessionId')
+    other,_=_new_regular_study_quiz(browser_stack,4)
+    browser.click('.study-mode-btn');browser.wait_for('durableStudySession !== null')
+    browser.click("#choices .choice[data-index='1']");browser.wait_for('studyLearningEventSaves.size===0')
+    root=browser_stack.data_root
+    with sqlite3.connect(root/'results.db') as conn:
+        conn.row_factory=sqlite3.Row
+        row=dict(conn.execute('SELECT * FROM study_sessions WHERE id=?',(original,)).fetchone())
+        responses=[dict(r) for r in conn.execute('SELECT * FROM study_responses WHERE session_id=?',(original,))]
+        for n in range(56):
+            session={**row,'id':f'fixture-history-{n:03}','purpose':'focused' if n%2 else 'regular','completed_at':'2026-03-08T07:02:00Z' if n%3==0 else None,'started_at':'2026-03-08T06:59:00Z','last_activity_at':'2026-03-08T07:01:00Z'}
+            conn.execute('INSERT INTO study_sessions('+','.join(session)+') VALUES('+','.join('?' for _ in session)+')',tuple(session.values()))
+            for record in responses:
+                item={**record,'session_id':session['id'],'event_id':f'fixture-history-{n}-{record["sequence"]}'}
+                conn.execute('INSERT INTO study_responses('+','.join(item)+') VALUES('+','.join('?' for _ in item)+')',tuple(item.values()))
+        conn.execute("DELETE FROM study_responses WHERE session_id='fixture-history-055' AND sequence=1")
+        for n in range(63):
+            conn.execute('INSERT INTO study_legacy_responses(quiz_id,was_correct,occurred_at) VALUES(?,?,?)',(qid,n%2,'2026-03-08 06:59:00'))
+    browser.navigate(base+'/study-history');browser.wait_for_page_ready()
+    assert browser.evaluate("document.querySelectorAll('.study-history-row').length") == 20
+    assert not browser.evaluate("document.getElementById('legacyHistory').open")
+    assert not browser.evaluate("performance.getEntriesByType('resource').some(e=>e.name.includes('/study-history/session/'))")
+    assert browser.evaluate("document.querySelector('.study-history-row summary').textContent.includes('Earlier saves missing')")
+    ids=browser.evaluate("[...document.querySelectorAll('[data-session-id]')].map(n=>n.dataset.sessionId)")
+    browser.activate();browser.wait_for('document.hasFocus()')
+    browser.evaluate("document.querySelector('.study-history-row summary').focus();true");browser.press_key('\ue007')
+    browser.wait_for("document.querySelector('.study-history-detail').textContent.includes('First outcome unverified')")
+    assert browser.evaluate("document.querySelector('.study-history-row details').open")
+    assert browser.evaluate("document.activeElement.matches(':focus-visible') && getComputedStyle(document.activeElement).outlineStyle!=='none'")
+    requests=browser.evaluate("performance.getEntriesByType('resource').filter(e=>e.name.includes('/study-history/session/')).length")
+    browser.press_key(' ');browser.wait_for("!document.querySelector('.study-history-row details').open")
+    browser.press_key(' ');browser.wait_for("document.querySelector('.study-history-row details').open")
+    assert browser.evaluate("performance.getEntriesByType('resource').filter(e=>e.name.includes('/study-history/session/')).length")==requests
+    for role,value in _theme_contrast_snapshot(browser,{'summary':'.study-history-title','warning':'.study-history-warning'},include_gradients=True).items():
+        assert value['contrast']>=4.5,(theme,role,value)
+    # Lazy failure is actionable and never changes facts or invents a repair.
+    browser.evaluate("window.historyFetch=fetch;window.historyFail=true;window.fetch=(...args)=>{if(historyFail && String(args[0]).includes('/study-history/session/')){historyFail=false;return Promise.resolve(new Response('fixture unavailable',{status:503}));}return historyFetch(...args)};true")
+    second='.study-history-row:nth-of-type(2)'
+    browser.click(second+' summary');browser.wait_for("document.querySelector('"+second+"').textContent.includes('Retry session details')")
+    browser.click(second+' button');browser.wait_for("document.querySelector('"+second+"').textContent.includes('A later correct answer was saved')")
+    assert browser.evaluate("document.activeElement.matches('[data-detail-heading]')")
+    browser.evaluate('window.fetch=historyFetch;true')
+    output=os.environ.get('DLMS_PRESENTATION_CAPTURE_DIR')
+    for width in (1440,390):
+        browser.set_viewport(width,1000)
+        browser.wait_for("!document.getAnimations().some(a=>a.playState==='running' && a.effect.getTiming().iterations!==Infinity)")
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth'),(theme,width)
+        assert browser.evaluate("document.querySelector('.study-history-row time').textContent===DLMSLocalTime.format('2026-03-08T07:01:00Z')")
+        if output:
+            folder=Path(output);folder.mkdir(parents=True,exist_ok=True)
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (folder/f'history-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+        if theme=='light' and width==390 and output:
+            from tests.browser._help_screenshots import capture_control
+            # Capture a real expanded row and a real compact row independently.
+            capture_control(browser,Path(output)/'study-history-expanded.webp',second)
+            capture_control(browser,Path(output)/'study-history-row.webp','.study-history-row:nth-of-type(3)')
+    browser.click('[aria-label="Study session pages"] a:last-child')
+    browser.wait_for("location.search.includes('sessions_before')")
+    next_ids=browser.evaluate("[...document.querySelectorAll('[data-session-id]')].map(n=>n.dataset.sessionId)")
+    assert not set(ids)&set(next_ids)
+    browser.click('#legacyHistory summary');browser.click('[aria-label="Legacy response pages"] a:last-child')
+    browser.wait_for("location.search.includes('legacy_before')")
+    assert browser.evaluate('document.getElementById("legacyHistory").open')
+    assert browser.evaluate("[...document.querySelectorAll('[data-session-id]')].map(n=>n.dataset.sessionId)")==next_ids
+    assert browser.evaluate("document.querySelectorAll('[data-legacy-id]').length")==25
+    browser.click('[aria-label="Study session pages"] a:first-child')
+    browser.wait_for("document.querySelector('.study-history-row').dataset.sessionId==="+json.dumps(ids[0]))
+    browser.wait_for("document.querySelector('"+second+"').textContent.includes('A later correct answer was saved')")
+    assert browser.evaluate("document.querySelector('"+second+" details').open")
+    browser.navigate(base+'/study-history?page=999')
+    assert browser.evaluate("document.body.textContent.includes('No Study sessions on this page')")
+    assert not browser.evaluate("document.body.textContent.includes('No saved Study sessions yet')")
+    # Same title is retained for two actual quizzes; no title-based merge.
+    with sqlite3.connect(root/'results.db') as conn:
+        assert conn.execute('SELECT count(DISTINCT quiz_id) FROM study_sessions WHERE quiz_id IN (?,?)',(qid,other)).fetchone()[0]==2
+        assert conn.execute('SELECT count(*) FROM study_sessions').fetchone()[0]==58
+    browser.navigate(base+'/help/quizzes#browse-study-history')
+    for width in (1440,390):
+        browser.set_viewport(width,1000)
+        browser.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+        browser.wait_for("!document.getAnimations().some(a=>a.playState==='running' && a.effect.getTiming().iterations!==Infinity)")
+        browser.evaluate("document.getElementById('browse-study-history').scrollIntoView();true")
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        if output:
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'viewport'})
+            (Path(output)/f'history-help-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+    selector='a[href="/static/help_assets/study-history-row.webp"]'
+    browser.evaluate('document.querySelector('+json.dumps(selector)+').scrollIntoView({block:"center"});true')
+    browser.wait_for('document.querySelector('+json.dumps(selector+' img')+').naturalWidth>0')
+    browser.evaluate('document.querySelector('+json.dumps(selector)+').focus();true');browser.press_key('\ue007')
+    browser.wait_for('!document.querySelector(".help-lightbox").hidden && document.querySelector(".help-lightbox-image").complete')
+    browser.press_key('\ue00c');browser.wait_for('document.querySelector(".help-lightbox").hidden')
+
+
+@pytest.mark.parametrize('theme', ('light','dark','ethereal'))
+def test_plan_selected_breakdown_risk_and_included_coverage(browser_stack, theme):
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+    browser,base=browser_stack.browser,browser_stack.base_url
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    browser.navigate(base+'/settings/appearance');_set_theme(browser,theme)
+    regular,regular_html=_new_regular_study_quiz(browser_stack,4)
+    browser.click('.study-mode-btn');browser.wait_for('durableStudySession !== null')
+    for n in range(4):
+        browser.click("#choices .choice[data-index='0']");browser.wait_for('studyLearningEventSaves.size===0')
+        if n<3:browser.click('#nextBtn')
+    browser.click('#finishReviewBtn');browser.wait_for('durableStudySession.completed_at !== null')
+    source,_=_new_regular_study_quiz(browser_stack,4)
+    missing,missing_html=_new_regular_study_quiz(browser_stack,1)
+    root=browser_stack.data_root
+    registry_path=root/'config/quizzes.json'
+    registry=json.loads(registry_path.read_text())
+    registry=[r for r in registry if r['id'] in (regular,source,missing)]
+    for entry in registry:entry['folder']='Excluded' if entry['id']==regular else 'Unavailable' if entry['id']==missing else 'Uncategorized'
+    registry_path.write_text(json.dumps(registry))
+    with sqlite3.connect(root/'results.db') as conn:
+        conn.execute('PRAGMA foreign_keys=ON')
+        conn.execute('DELETE FROM quizzes WHERE id NOT IN (?,?,?)',(regular,source,missing))
+    portal=root/'config/portal.json';cfg=json.loads(portal.read_text());cfg['excluded_learning_folders']=['excluded'];portal.write_text(json.dumps(cfg))
+    artifact=root/'quizzes'/missing_html;moved=artifact.with_suffix('.fixture-unavailable');artifact.rename(moved)
+    try:
+        browser.navigate(base+'/exam-plans/new');browser.wait_for('window.dlmsCsrfToken')
+        exam=(datetime.now(ZoneInfo('America/Chicago')).date()+timedelta(days=1)).isoformat()
+        browser.evaluate("""document.querySelector('[name=name]').value='CISM — budget and material example';
+          document.querySelector('[name=exam_date]').value="""+json.dumps(exam)+""";
+          document.querySelector('[name=calendar_timezone]').value='America/Chicago';
+          document.querySelectorAll('[name=weekdays]').forEach(n=>n.checked=true);
+          document.querySelectorAll('[name=folders]').forEach(n=>n.checked=['uncategorized','excluded','unavailable'].includes(n.value));
+          document.querySelector('[name=minutes]').value=5;
+          document.querySelector('[name=use_dashboard]').checked=true;true""")
+        browser.click('#examPlanForm button[type=submit]');browser.wait_for("document.getElementById('planProgress') !== null")
+        path=browser.evaluate('location.pathname')
+        assert browser.evaluate("document.getElementById('planProgress').textContent.includes('0 / 5')")
+        assert browser.evaluate("document.getElementById('planEvidence').textContent.includes('9 questions — 5 included and 4 excluded')")
+        assert browser.evaluate("document.getElementById('planProgress').textContent.includes('1 included but unavailable')")
+        assert browser.evaluate("document.querySelector('.plan-breakdown').textContent.trim()")=='2 no recorded answer'
+        output=os.environ.get('DLMS_PRESENTATION_CAPTURE_DIR')
+        for width in (1440,390):
+            browser.set_viewport(width,1000);browser.navigate(base+'/')
+            browser.wait_for("document.getElementById('activeExamPlan')?.textContent.includes('CISM')")
+            browser.wait_for_page_ready()
+            assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+            assert browser.evaluate("document.querySelector('#activeExamPlan .plan-workload-warning').textContent.includes('about 5 minutes')")
+            assert browser.evaluate("document.querySelector('#activeExamPlan .plan-workload-warning a').getAttribute('href')") == path+'/edit'
+            assert browser.evaluate("document.querySelector('#activeExamPlan .plan-breakdown').textContent") == '2 with no saved answer'
+            assert browser.evaluate("[...document.querySelectorAll('#activeExamPlan .dashboard-material-warning')].filter(n=>n.textContent.includes('unavailable')).length") == 1
+            assert browser.evaluate("document.querySelector('#regularStudyContinuity a').classList.contains('daily-review-secondary')")
+            assert browser.evaluate("Boolean(document.getElementById('activeExamPlan').compareDocumentPosition(document.getElementById('regularStudyContinuity')) & Node.DOCUMENT_POSITION_FOLLOWING)")
+            assert browser.evaluate("document.querySelector('#regularStudyContinuity a').getAttribute('href')")=='/quizzes/'+regular_html
+            assert browser.evaluate("[...document.querySelectorAll('#activeExamPlan a')].filter(a=>a.pathname==='/learning-scope').length")==1
+            browser.activate();browser.wait_for('document.hasFocus()')
+            browser.evaluate("document.querySelector('#activeExamPlan [data-practice]').focus();true");browser.press_key('\ue004')
+            assert browser.evaluate("document.activeElement.matches(':focus-visible')")
+            if output:
+                folder=Path(output);folder.mkdir(parents=True,exist_ok=True)
+                shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+                (folder/f'planner-risk-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+                if theme=='light' and width==390:
+                    from tests.browser._help_screenshots import capture_control
+                    capture_control(browser,folder/'exam-plan-workload.webp','#activeExamPlan')
+        # Start the advertised selection through its real publisher, preserving count/lineage.
+        browser.click('#activeExamPlan [data-practice=suggested]')
+        browser.wait_for("location.pathname.startsWith('/quizzes/') && quizRecoveryReady")
+        assert browser.evaluate('quiz.length')==2
+        generated=int(browser.evaluate('window.QUIZ_ID'))
+        with sqlite3.connect(root/'results.db') as conn:
+            source_uid={r[0] for r in conn.execute('SELECT question_uid FROM questions WHERE quiz_id=?',(source,))}
+            lineage={r[0] for r in conn.execute('SELECT source_question_uid FROM questions WHERE quiz_id=?',(generated,))}
+            assert len(lineage)==2 and lineage<=source_uid
+        browser.navigate(base+path);browser.wait_for_page_ready()
+        # Generation alone earns no quota or coverage credit.
+        assert browser.evaluate("document.querySelector('.plan-breakdown').textContent.trim()")=='2 no recorded answer'
+        assert browser.evaluate("document.getElementById('planProgress').textContent.includes('0 / 5')")
+    finally: moved.rename(artifact)
+
+
+@pytest.mark.parametrize('theme', ('light','dark','ethereal'))
+def test_marked_questions_practice_export_and_compact_changes(browser_stack, theme):
+    from datetime import timedelta
+    from dlms.services import exam_plans as plans
+    from tests.browser._help_screenshots import capture_control
+    browser,base=browser_stack.browser,browser_stack.base_url
+    browser.context=browser.command('browsingContext.create', {'type':'tab'})['context']
+    browser.navigate(base+'/settings/appearance')
+    _set_theme(browser,theme)
+    browser.navigate(base+'/create_short_quiz?count=4')
+    browser.wait_for("document.querySelector('[name=question_4]') !== null && window.dlmsCsrfToken")
+    browser.evaluate("""document.querySelector('[name=quiz_title]').value='CISM — Information risk';
+      const questions=['What should guide an information security strategy?','Who should accept the remaining business risk?','When should a risk assessment be updated?','What is the purpose of a security metric?'];
+      const choices=[['Business objectives','The newest tool','Vendor preference','Available licenses'],['The accountable business owner','The firewall vendor','An external auditor','Any administrator'],['After a material business change','Only after an incident','Only once','Never'],['Support informed decisions','Count all alerts equally','Replace risk assessment','Guarantee exam readiness']];
+      for(let n=1;n<=4;n++){document.querySelector(`[name=question_${n}]`).value=questions[n-1];for(let i=0;i<4;i++)document.querySelector(`[name=choice_${n}_${'ABCD'[i]}]`).value=choices[n-1][i];document.querySelector(`[name=correct_${n}_A]`).checked=true;}true""")
+    browser.click('#create-short-quiz-form button[type=submit]');browser.wait_for("location.pathname.startsWith('/edit_quiz/')")
+    quiz_id=int(browser.evaluate("location.pathname.split('/').pop()"))
+    entry=next(e for e in json.loads((browser_stack.data_root/'config/quizzes.json').read_text()) if e['id']==quiz_id)
+    html=entry['html'];browser.navigate(base+'/quizzes/'+html);browser.wait_for('quizRecoveryReady')
+    browser.click('.study-mode-btn')
+    browser.wait_for('durableStudySession !== null && reviewMarkContext !== null')
+    browser.click('#studyAnkiBtn')
+    browser.wait_for('reviewMarkContext.indexes.includes(0) && reviewMarkPending === null')
+    assert browser.evaluate("document.getElementById('studyAnkiBtn').getAttribute('aria-pressed')")=='true'
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for('studyLearningEventSaves.size === 0')
+    output=os.environ.get('DLMS_PREBUILD_CAPTURE_DIR')
+    if output and theme=='light':
+        browser.set_viewport(780,1000)
+        capture_control(browser,Path(output)/'quiz_study_mode_incorrect.webp','#quiz')
+        browser.click("#choices .choice[data-index='0']");browser.wait_for('studyLearningEventSaves.size===0')
+        capture_control(browser,Path(output)/'quiz_study_mode_correct.webp','#quiz')
+    browser.click('#nextBtn');browser.click('#studyAnkiBtn')
+    browser.wait_for('reviewMarkContext.indexes.includes(1) && reviewMarkPending === null')
+    browser.click('#studyAnkiExportBtn')
+    browser.wait_for("location.pathname==='/marked-questions' && document.querySelectorAll('[data-mark-id]').length===2")
+    output=os.environ.get('DLMS_PREBUILD_CAPTURE_DIR')
+    for width in (1440,390):
+        browser.set_viewport(width,1000);browser.wait_for_page_ready()
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        browser.activate();browser.wait_for("document.hasFocus()")
+        browser.evaluate("document.getElementById('unmarkSelected').focus();true")
+        browser.press_key('\ue004')
+        browser.wait_for("document.activeElement.matches('[data-mark-id]')")
+        focus_before=browser.evaluate("({focused:document.hasFocus(),active:document.activeElement.outerHTML,visible:document.activeElement.matches(':focus-visible')})")
+        browser.press_key('\ue00d')
+        focus_after=browser.evaluate("({focused:document.hasFocus(),active:document.activeElement.outerHTML,visible:document.activeElement.matches(':focus-visible'),outline:getComputedStyle(document.activeElement).outline})")
+        assert focus_after['visible'], (focus_before,focus_after)
+        browser.wait_for("!document.getElementById('markEligibility').textContent.includes('Checking') && document.getElementById('retryMarkPreview').hidden")
+        if output:
+            path=Path(output);path.mkdir(exist_ok=True,parents=True)
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (path/f'marked-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+    browser.click('#eligibleMarkTools summary');browser.click('#clearMarkSelection');browser.click('[data-select-marks=practice]')
+    browser.wait_for("!document.getElementById('practiceMarks').disabled")
+    assert browser.evaluate("document.getElementById('markEligibility').textContent.includes('Practice: 2 included · 0 excluded.')")
+    if output and theme=='light':
+        browser.click('#eligibleMarkTools summary')
+        capture_control(browser,Path(output)/'marked-questions.webp','.dashboard-panel')
+    # Export the actual selected cards before practice, without clearing either mark.
+    assert browser.evaluate("""(async()=>{const r=await fetch('/api/review-marks/anki',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('[name=csrf-token]').content},body:JSON.stringify({generation:document.getElementById('markedQuestions').dataset.generation,revision:Number(document.getElementById('markedQuestions').dataset.revision),ids:[...document.querySelectorAll('[data-mark-id]:checked')].map(n=>n.dataset.markId)})});return {status:r.status,size:(await r.blob()).size};})()""")['status']==200
+    browser.evaluate("""window.markFetch=fetch.bind(window);window.dropMarkAck=true;window.fetch=async(...args)=>{const r=await markFetch(...args);if(String(args[0]).endsWith('/review-marks/generate')&&dropMarkAck&&r.ok){dropMarkAck=false;throw new Error('Simulated lost acknowledgement');}return r;};true""")
+    browser.click('#practiceMarks')
+    browser.wait_for("!document.getElementById('retryMarkAction').hidden")
+    browser.navigate(base+f'/marked-questions?quiz={quiz_id}')
+    browser.wait_for("!document.getElementById('retryMarkAction').hidden")
+    browser.click('#retryMarkAction');browser.wait_for("document.querySelector('#markPracticeResult a')!==null")
+    assert browser.evaluate("document.querySelectorAll('[data-mark-id]').length")==2
+    browser.click('#markPracticeResult a');browser.wait_for('quizRecoveryReady && quiz.length===2')
+    browser.click('.study-mode-btn');browser.wait_for('durableStudySession!==null')
+    assert browser.evaluate('durableStudySession.purpose')=='focused'
+    for i in range(2):
+        browser.click("#choices .choice[data-index='1']");browser.wait_for('studyLearningEventSaves.size===0')
+        if i==0:browser.click('#nextBtn')
+    browser.click('#finishReviewBtn');browser.wait_for('durableStudySession.completed_at!==null')
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        conn.row_factory=sqlite3.Row
+        assert conn.execute("SELECT count(*) FROM quizzes WHERE generation_kind='marked_practice'").fetchone()[0]==1
+        assert conn.execute('SELECT count(*) FROM review_marks WHERE marked=1').fetchone()[0]==2
+        assert conn.execute('SELECT completed_at FROM study_sessions WHERE quiz_id=?',(quiz_id,)).fetchone()[0] is None
+        config={**plans.DEFAULTS,'name':'CISM — study and review','exam_date':(datetime.now(timezone.utc).date()+timedelta(days=30)).isoformat(),'calendar_timezone':'America/Chicago','folders':['uncategorized']}
+        pid=plans.save(conn,config,generation=plans.state(conn.cursor())['generation'],known_folders=['uncategorized'],snapshot={})
+    browser.navigate(base+'/')
+    browser.wait_for("document.getElementById('recentActivity')?.getAttribute('aria-busy')==='false'")
+    assert browser.evaluate("document.body.textContent.includes('CISM — Information risk')")
+    browser.navigate(base+'/exam-plans/'+pid)
+    browser.wait_for("document.querySelector('#planChanges details')!==null")
+    for width in (1440,390):
+        browser.set_viewport(width,1000);browser.wait_for_page_ready()
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        summary='#planChanges details:last-of-type summary'
+        browser.evaluate('document.querySelector('+json.dumps(summary)+').focus();true');browser.press_key('\ue007')
+        assert browser.evaluate("document.activeElement.matches(':focus-visible')")
+        if output:
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (Path(output)/f'changes-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+            if theme=='light' and width==390:capture_control(browser,Path(output)/'exam-plan-changes.webp','#planChanges')
+    # Mark acknowledgement is presentation only; stored Study answers survive.
+    before=_database_value(browser_stack.data_root/'results.db','SELECT count(*) FROM study_responses')
+    browser.click('button[value=acknowledge]')
+    browser.wait_for("document.getElementById('planChanges').textContent.includes('No changes to study material')")
+    assert _database_value(browser_stack.data_root/'results.db','SELECT count(*) FROM study_responses')==before
+
+
+def test_review_marks_legacy_retry_and_separate_browser_profile(browser_server):
+    """Legacy transfer failures retain local state; durable marks cross profiles."""
+    launched=[]
+    def launch(label):
+        port=_free_loopback_port();root=browser_server.work_root/('review-marks-'+label);profile=root/'profile';profile.mkdir(parents=True)
+        log_path=root/'firefox.log';output=log_path.open('w')
+        process=subprocess.Popen(_firefox_command(browser_server.firefox,profile,port,browser_server.env),cwd=ROOT,env=browser_server.env,stdout=output,stderr=subprocess.STDOUT,**browser_server.process_options)
+        try: browser=_connect_firefox(port,process,log_path)
+        except Exception: _terminate_process_tree(process);output.close();raise
+        launched.append((browser,process,output));return browser
+    try:
+        first=launch('first')
+        stack=BrowserStack(first,browser_server.base_url,browser_server.data_root,browser_server.metadata)
+        qid,html=_new_four_question_study_quiz(stack)
+        first.click('.study-mode-btn');first.wait_for('durableStudySession!==null && reviewMarkContext!==null')
+        # Construct only the legacy browser selection, using the existing recovery writer.
+        first.evaluate('studyAnkiSelections=new Set([0,2]);checkpointQuizRecovery();true')
+        key=first.evaluate('quizRecoveryController.storageKey')
+        first.navigate(browser_server.base_url+'/quizzes/'+html)
+        first.wait_for("document.querySelector('.quiz-recovery-resume')!==null")
+        first.click('.quiz-recovery-resume');first.wait_for("document.getElementById('adoptLegacyMarks')!==null && reviewMarkContext!==null")
+        first.evaluate("""window.realMarkFetch=fetch.bind(window);window.failTransfer=true;window.fetch=(...args)=>failTransfer&&String(args[0])==='/api/review-marks/save'?Promise.resolve(new Response(JSON.stringify({error:'Simulated save failure'}),{status:503,headers:{'Content-Type':'application/json'}})):realMarkFetch(...args);true""")
+        first.click('#adoptLegacyMarks');first.wait_for("document.getElementById('reviewMarkStatus').textContent.includes('Simulated save failure')")
+        assert first.evaluate(f"JSON.parse(localStorage.getItem({json.dumps(key)})).view.ankiQuestionIndexes")==[0,2]
+        assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==0
+        first.evaluate('failTransfer=false;true');first.click('#adoptLegacyMarks')
+        first.wait_for('reviewMarkContext.indexes.length===2 && reviewMarkPending===null')
+        second=launch('second');second.navigate(browser_server.base_url+f'/marked-questions?quiz={qid}')
+        second.wait_for("document.querySelectorAll('[data-mark-id]').length===2")
+        assert second.evaluate("Object.keys(localStorage).filter(k=>k.includes('quiz-recovery')).length")==0
+        second.navigate(browser_server.base_url+'/marked-questions')
+        second.wait_for("document.querySelectorAll('[data-mark-id]').length===2")
+        second.evaluate('window.confirm=()=>true;true');second.click('[data-unmark]')
+        second.wait_for("document.querySelectorAll('[data-mark-id]').length===1")
+        first.navigate(browser_server.base_url+'/marked-questions');first.wait_for("document.querySelectorAll('[data-mark-id]').length===1")
+        assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM learning_events')==0
+    finally:
+        for browser,process,output in reversed(launched):
+            browser.close();_terminate_process_tree(process);output.close()
+
+
+def test_marked_selection_type_counts_and_preview_retry(browser_stack):
+    """Actual choice/matching/image/hotspot marks, before either independent action."""
+    browser,base=browser_stack.browser,_marked_http_base(browser_stack)
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    # Seed only the isolated server's profile via the normal publisher.
+    script="""import app,json
+choice={'number':1,'type':'choice','question':'Who accepts business risk?','choices':[{'label':'A','text':'Business owner','is_correct':True},{'label':'B','text':'Vendor','is_correct':False}]}
+matching={'number':2,'type':'matching','question':'Match each risk role','pairs':[{'left':'Owner','right':'Accept risk'},{'left':'Auditor','right':'Assess controls'}]}
+hotspot={'number':3,'type':'hotspot','question':'Locate the control','image_url':'/static/favicon.ico','image_alt':'Isolated test image','target':{'type':'circle','x':.5,'y':.5,'radius':.2},'target_label':'Control'}
+image={**choice,'number':4,'question':'Review the illustrated control','image_url':'/static/favicon.ico'}
+# Match the canonical surrogate used by _quiz_dataset_runtime for Image Study.
+# The runtime hotspot still owns its target; a zero-choice DB row is incomplete.
+db_hotspot={**hotspot,'type':'choice','question':hotspot['question']+' [Image hotspot]','choices':[{'label':'A','text':'Control','is_correct':True}]}
+qid,html=app._publish_quiz('CISM — Mark types',[choice,matching,hotspot,image],[choice,matching,db_hotspot,image],filename_prefix='mark_types')
+print(json.dumps({'id':qid,'html':html}))
+"""
+    seeded=subprocess.run([sys.executable,'-c',script],cwd=ROOT,env={**os.environ,'QUIZAPP_DATA_DIR':str(browser_stack.data_root),'DLMS_NO_BROWSER':'1','PYTHONDONTWRITEBYTECODE':'1'},capture_output=True,text=True,timeout=20)
+    assert seeded.returncode==0,seeded.stderr
+    entry=json.loads(seeded.stdout.splitlines()[-1])
+    browser.navigate(base+'/quizzes/'+entry['html']);browser.wait_for('quizRecoveryReady')
+    browser.click('.study-mode-btn');browser.wait_for('durableStudySession!==null && reviewMarkContext!==null')
+    for index in range(4):
+        # The new question's image loads after navigation; wait for its actual
+        # layout before scrolling to the controls below it.
+        browser.wait_for("[...document.querySelectorAll('#choices img')].every(img=>img.complete && img.naturalWidth>0)")
+        browser.click('#studyAnkiBtn');browser.wait_for(f'reviewMarkContext.indexes.includes({index}) && reviewMarkPending===null')
+        if index<3:browser.click('#nextBtn')
+    browser.click('#studyAnkiExportBtn');browser.wait_for("document.querySelectorAll('[data-mark-id]').length===4")
+    browser.set_viewport(390,1000)
+    browser.evaluate("window.realPreviewFetch=fetch.bind(window);window.failMarkPreview=true;window.fetch=(...args)=>failMarkPreview&&String(args[0]).endsWith('/review-marks/preview')?Promise.resolve(new Response(JSON.stringify({error:'Simulated selection check failure'}),{status:503,headers:{'Content-Type':'application/json'}})):realPreviewFetch(...args);true")
+    browser.click('#selectPageMarks')
+    browser.wait_for("!document.getElementById('retryMarkPreview').hidden")
+    assert browser.evaluate("document.getElementById('practiceMarks').disabled && document.getElementById('exportMarks').disabled")
+    browser.evaluate('failMarkPreview=false;true');browser.click('#retryMarkPreview')
+    browser.wait_for("document.getElementById('markEligibility').textContent.includes('Practice: 2 included · 2 excluded.')")
+    assert browser.evaluate("document.getElementById('markEligibility').textContent.includes('Anki: 1 included · 3 excluded.')")
+    assert browser.evaluate("document.getElementById('practiceMarks').disabled && document.getElementById('exportMarks').disabled")
+    assert browser.evaluate("document.querySelectorAll('.marked-question a').length")==4
+    browser.evaluate("document.querySelector('#markEligibility summary').focus();true");browser.press_key('\ue007')
+    assert browser.evaluate("document.querySelector('#markEligibility details').open")
+    assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+    output=os.environ.get('DLMS_PREBUILD_CAPTURE_DIR')
+    if output:
+        from tests.browser._help_screenshots import capture_control
+        capture_control(browser,Path(output)/'marked-type-boundaries.webp','#markedQuestions')
+    browser.click('#eligibleMarkTools summary');browser.click('#clearMarkSelection');browser.click('[data-select-marks=anki]')
+    browser.wait_for("!document.getElementById('exportMarks').disabled")
+    browser.click('#exportMarks');browser.wait_for("document.getElementById('markActionStatus').textContent.includes('Anki package exported')")
+    assert _database_value(browser_stack.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==4
+    browser.click('#clearMarkSelection');browser.click('[data-select-marks=practice]')
+    browser.wait_for("!document.getElementById('practiceMarks').disabled")
+    browser.click('#practiceMarks');browser.wait_for("document.querySelector('#markPracticeResult a')!==null")
+    browser.click('#markPracticeResult a');browser.wait_for('quizRecoveryReady && quiz.length===2')
+    assert browser.evaluate("quiz.map(q=>q.type||'choice').sort()") == ['choice','matching']
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        assert conn.execute('SELECT count(*) FROM review_marks WHERE marked=1').fetchone()[0]==4
+        assert conn.execute('SELECT count(*) FROM learning_events').fetchone()[0]==0
+        assert conn.execute("SELECT count(*) FROM study_sessions WHERE completed_at IS NOT NULL").fetchone()[0]==0
+
+
+def _marked_http_base(stack):
+    # Local DNS in the isolated Firefox profile resolves .test to loopback.
+    # An explicit LAN run uses the machine's actual address and a disposable
+    # server bound there; neither route changes secure-context browser policy.
+    return stack.base_url.replace('127.0.0.1', os.environ.get('DLMS_MARKS_TEST_ORIGIN_HOST', 'dlms-http.test'))
+
+
+def _trace_mark_actions(browser):
+    browser.evaluate("""window.markHttpTrace={errors:[],requests:[]};
+      addEventListener('error',e=>markHttpTrace.errors.push({message:e.message,stack:e.error?.stack}));
+      addEventListener('unhandledrejection',e=>markHttpTrace.errors.push({message:String(e.reason)}));
+      window.markHttpFetch=fetch.bind(window);window.fetch=async(...args)=>{
+        if(!String(args[0]).startsWith('/api/review-marks/'))return markHttpFetch(...args);
+        const row={url:String(args[0]),body:JSON.parse(args[1].body)};markHttpTrace.requests.push(row);
+        if(window.holdMarkRequest && row.url.endsWith('/generate'))await new Promise(resolve=>window.releaseMarkRequest=resolve);
+        const response=await markHttpFetch(...args);row.status=response.status;
+        row.contentType=response.headers.get('content-type');
+        if(row.contentType?.includes('json'))row.response=await response.clone().json();
+        if(window.loseMarkAck && row.url.endsWith('/generate') && response.ok){loseMarkAck=false;throw new Error('Lost acknowledgement after server saved the focused quiz');}
+        return response;
+      };true""")
+
+
+def _downloaded_anki_notes(browser_server):
+    deadline=time.monotonic()+6
+    last=None
+    while time.monotonic()<deadline:
+        files=list(browser_server.work_root.glob('firefox-session-*/downloads/*.apkg'))
+        for path in files:
+            try:
+                with zipfile.ZipFile(path) as package:
+                    assert package.testzip() is None
+                    database=browser_server.work_root/'downloaded-anki.db'
+                    database.write_bytes(package.read('collection.anki2'))
+                with sqlite3.connect(database) as conn:
+                    return path,[row[0] for row in conn.execute('SELECT flds FROM notes')]
+            except (OSError,zipfile.BadZipFile,sqlite3.Error) as exc:last=exc
+        time.sleep(.05)
+    raise AssertionError(f'No completed browser Anki download: {last}; files={files}')
+
+
+@pytest.mark.parametrize('count,view,theme', [(1,'current','light'),(2,'all','dark'),(4,'current','ethereal')])
+def test_marked_http_real_actions_and_download(browser_stack,browser_server,count,view,theme):
+    browser=browser_stack.browser;base=_marked_http_base(browser_stack)
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    stack=BrowserStack(browser,base,browser_stack.data_root,browser_stack.metadata)
+    browser.navigate(base+'/settings/appearance');_set_theme(browser,theme)
+    qid,html=_new_four_question_study_quiz(stack)
+    browser.click('.study-mode-btn');browser.wait_for('durableStudySession!==null && reviewMarkContext!==null')
+    # Marking itself is not progress. One real first miss establishes regular
+    # continuity so subsequent focused completion must preserve it.
+    browser.click("#choices .choice[data-index='1']");browser.wait_for('studyLearningEventSaves.size===0')
+    for index in range(4):
+        browser.click('#studyAnkiBtn');browser.wait_for(f'reviewMarkContext.indexes.includes({index}) && reviewMarkPending===null')
+        if index<3:browser.click('#nextBtn')
+    browser.click('#studyAnkiExportBtn');browser.wait_for("document.querySelectorAll('[data-mark-id]').length===4")
+    if view=='all':
+        browser.click('nav a[href="/marked-questions"]')
+        browser.wait_for_page_ready("document.getElementById('markedQuestions')?.dataset.scope==='all' && location.search===''")
+    assert browser.evaluate('isSecureContext') is False
+    assert browser.evaluate('typeof crypto.randomUUID')=='undefined'
+    assert browser.evaluate('typeof crypto.getRandomValues')=='function'
+    assert browser.evaluate('document.getElementById("practiceMarks").disabled && document.getElementById("exportMarks").disabled')
+    _trace_mark_actions(browser)
+    browser.click('#unmarkSelected')
+    assert browser.evaluate("document.getElementById('markActionStatus').textContent")=='Select at least one question.'
+    for index in range(count):
+        browser.click(f'.marked-question:nth-of-type({index+1}) input')
+        browser.wait_for(f"document.querySelector('.marked-question:nth-of-type({index+1}) input').checked && document.getElementById('markEligibility').textContent.includes('Practice: {index+1} included · 0 excluded.')")
+    browser.wait_for(f"document.getElementById('markEligibility').textContent.includes('Practice: {count} included · 0 excluded.') && !document.getElementById('exportMarks').disabled")
+    ids=browser.evaluate("[...document.querySelectorAll('[data-mark-id]:checked')].map(n=>n.dataset.markId)")
+    assert browser.evaluate("document.getElementById('markActionStatus').textContent")!='Select at least one question.'
+    output=os.environ.get('DLMS_PREBUILD_CAPTURE_DIR')
+    if output:
+        from tests.browser._help_screenshots import capture_control
+        path=Path(output);path.mkdir(parents=True,exist_ok=True)
+        for width in (1440,390):
+            browser.set_viewport(width,1000)
+            assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+            browser.activate();browser.wait_for('document.hasFocus()');browser.evaluate("document.getElementById('selectPageMarks').focus();true");browser.press_key('\ue004')
+            browser.wait_for("document.activeElement.id==='clearMarkSelection' && document.activeElement.matches(':focus-visible')")
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (path/f'http-marks-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+            if theme=='light' and width==390:capture_control(browser,path/'http-marked-questions.webp','.dashboard-panel')
+    browser.click('#exportMarks');browser.wait_for("document.querySelector('#markExportResult a')!==null")
+    package,notes=_downloaded_anki_notes(browser_server)
+    assert len(notes)==count
+    assert all(f'Completion question {number}?' in notes[number-1] for number in range(1,count+1))
+    assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==4
+    browser.evaluate('holdMarkRequest=true;loseMarkAck=true;true')
+    browser.click('#practiceMarks');browser.wait_for('typeof releaseMarkRequest===\'function\'')
+    browser.click('#practiceMarks')  # A real repeated click while the first runs.
+    assert browser.evaluate("markHttpTrace.requests.filter(r=>r.url.endsWith('/generate')).length")==1
+    browser.evaluate('holdMarkRequest=false;releaseMarkRequest();true')
+    browser.wait_for("!document.getElementById('retryMarkAction').hidden")
+    original=browser.evaluate("markHttpTrace.requests.find(r=>r.url.endsWith('/generate')).body")
+    assert original['ids']==ids
+    browser.click('#retryMarkAction');browser.wait_for("document.querySelector('#markPracticeResult a')!==null")
+    trace=browser.evaluate('markHttpTrace')
+    assert trace['errors']==[]
+    sends=[r for r in trace['requests'] if r['url'].endswith('/generate')]
+    assert len(sends)==2 and sends[0]['body']==sends[1]['body'] and all(r['status']==200 for r in sends)
+    assert next(r for r in trace['requests'] if r['url'].endswith('/anki'))['body']['ids']==ids
+    if output:
+        (Path(output)/f'http-actions-{count}-{view}.json').write_text(json.dumps(dict(origin=base,secure=False,user_agent=browser.evaluate('navigator.userAgent'),selected=ids,trace=trace,download_sha256=hashlib.sha256(package.read_bytes()).hexdigest(),notes=notes),indent=2))
+        shutil.copyfile(package,Path(output)/f'http-actual-download-{count}-{view}.apkg')
+    browser.click('#markPracticeResult a');browser.wait_for('quizRecoveryReady')
+    assert browser.evaluate('quiz.map(q=>q.question)')==[f'Completion question {n}?' for n in range(1,count+1)]
+    browser.click('.study-mode-btn');browser.wait_for('durableStudySession!==null')
+    assert browser.evaluate('durableStudySession.purpose')=='focused'
+    for index in range(count):
+        browser.click("#choices .choice[data-index='1']");browser.wait_for('studyLearningEventSaves.size===0')
+        if index<count-1:browser.click('#nextBtn')
+    browser.click('#finishReviewBtn');browser.wait_for('durableStudySession.completed_at!==null')
+    browser.navigate(base+'/');browser.wait_for("document.getElementById('regularStudyContinuity')!==null")
+    summary=browser.evaluate("fetch('/api/daily-review-plan').then(r=>r.json()).then(r=>r.regular_study)")
+    assert int(summary['quiz_id'])==qid
+    with sqlite3.connect(browser_server.data_root/'results.db') as conn:
+        assert conn.execute('SELECT count(*) FROM review_marks WHERE marked=1').fetchone()[0]==4
+        assert conn.execute("SELECT count(*) FROM quizzes WHERE generation_kind='marked_practice'").fetchone()[0]==1
+        assert conn.execute('SELECT completed_at FROM study_sessions WHERE quiz_id=?',(qid,)).fetchone()[0] is None
+        source={r[0] for r in conn.execute('SELECT question_uid FROM questions WHERE quiz_id=?',(qid,))}
+        lineage={r[0] for r in conn.execute("SELECT q.source_question_uid FROM questions q JOIN quizzes z ON z.id=q.quiz_id WHERE z.generation_kind='marked_practice'")}
+        assert len(lineage)==count and lineage<=source
+
+
+def _seed_marked_http_pages(browser_server):
+    """Publish and mark only synthetic questions in the isolated server profile."""
+    script="""import app,json,hashlib,uuid
+from pathlib import Path
+client=app.app.test_client();client.get('/');headers={'X-CSRFToken':client.get_cookie('dlms_csrf_token').value}
+result=[]
+for title,count in [('Risk',26),('Governance',2)]:
+ questions=[{'number':i+1,'type':'choice','question':title+' question '+str(i+1)+'?','choices':[{'label':'A','text':'Accountable owner','is_correct':True},{'label':'B','text':'Vendor','is_correct':False}]} for i in range(count)]
+ qid,html=app._publish_quiz(title,questions,filename_prefix='marked_http')
+ entry=next(e for e in app.load_registry() if e['id']==qid);_,name=app._quiz_artifact_names(entry);raw=Path(app.DATA_FOLDER,name).read_text()
+ identity='\\0'.join(('quiz-recovery-v1','1',str(qid),'/data/'+name,str(entry.get('exam_minutes') or 90),raw))
+ fingerprint='sha256:'+hashlib.sha256(identity.encode()).hexdigest()
+ context=client.post('/api/review-marks/context',json={'quiz_id':qid,'fingerprint':fingerprint},headers=headers);assert context.status_code==200,context.json
+ d=context.json
+ reply=client.post('/api/review-marks/save',json=dict(action='mark',request_id=uuid.uuid4().hex,quiz_id=qid,fingerprint=fingerprint,generation=d['generation'],revision=d['revision'],assessment_revision=d['assessment_revision'],indexes=list(range(count)),marked=True),headers=headers);assert reply.status_code==200,reply.json
+ result.append(dict(id=qid,html=html,title=title,count=count))
+print(json.dumps(result))
+"""
+    seeded=subprocess.run([sys.executable,'-c',script],cwd=ROOT,env={**os.environ,'QUIZAPP_DATA_DIR':str(browser_server.data_root),'DLMS_NO_BROWSER':'1','PYTHONDONTWRITEBYTECODE':'1'},capture_output=True,text=True,timeout=20)
+    assert seeded.returncode==0,seeded.stdout+seeded.stderr
+    return json.loads(seeded.stdout.splitlines()[-1])
+
+
+def test_marked_http_paging_selection_and_full_download(browser_stack,browser_server):
+    _seed_marked_http_pages(browser_server)
+    browser=browser_stack.browser;base=_marked_http_base(browser_stack)
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    browser.navigate(base+'/marked-questions');browser.wait_for("document.querySelectorAll('[data-mark-id]').length===25")
+    assert browser.evaluate('isSecureContext') is False
+    assert browser.evaluate("document.getElementById('selectPageMarks').textContent")=='Select all on this page (25)'
+    browser.click('#selectPageMarks');browser.wait_for("document.getElementById('markSelectionCount').textContent.startsWith('25 questions selected')")
+    first=browser.evaluate("[...document.querySelectorAll('[data-mark-id]:checked')].map(n=>n.dataset.markId)")
+    # Rows precede the script that restores the saved cross-page selection.
+    # Read the restored state only after the destination document has loaded.
+    browser.click('nav[aria-label="Marked question pages"] a');browser.wait_for_page_ready("document.querySelectorAll('[data-mark-id]').length===3")
+    assert browser.evaluate("document.getElementById('markSelectionCount').textContent")=='25 questions selected across pages · 0 on this page.'
+    browser.click('#selectPageMarks');browser.wait_for("document.getElementById('markEligibility').textContent.includes('Anki: 28 included · 0 excluded.')")
+    second=browser.evaluate("[...document.querySelectorAll('[data-mark-id]:checked')].map(n=>n.dataset.markId)")
+    _trace_mark_actions(browser);browser.click('#exportMarks');browser.wait_for("document.querySelector('#markExportResult a')!==null")
+    package,notes=_downloaded_anki_notes(browser_server)
+    assert len(notes)==28
+    expected={f'Risk question {n}?' for n in range(1,27)}|{f'Governance question {n}?' for n in range(1,3)}
+    assert {note.split('<br>')[0] for note in notes}==expected
+    sent=browser.evaluate("markHttpTrace.requests.find(r=>r.url.endsWith('/anki')).body.ids")
+    assert set(sent)==set(first+second) and len(sent)==28
+    browser.click('#clearMarkSelection');browser.wait_for("document.getElementById('markSelectionCount').textContent.startsWith('0 questions selected')")
+    browser.click('nav[aria-label="Marked question pages"] a');browser.wait_for_page_ready("document.querySelectorAll('[data-mark-id]').length===25")
+    assert browser.evaluate("document.querySelectorAll('[data-mark-id]:checked').length")==0
+    browser.click('nav[aria-label="Marked question pages"] a');browser.wait_for_page_ready("document.querySelectorAll('[data-mark-id]').length===3")
+    browser.click('#selectPageMarks');browser.wait_for("!document.getElementById('practiceMarks').disabled")
+    browser.click('#practiceMarks');browser.wait_for("document.querySelector('#markPracticeResult a')!==null")
+    browser.click('#markPracticeResult a');browser.wait_for('quizRecoveryReady')
+    assert set(browser.evaluate('quiz.map(q=>q.question)'))=={'Risk question 26?','Governance question 1?','Governance question 2?'}
+    assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==28
+    assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM learning_events')==0
+    output=os.environ.get('DLMS_PREBUILD_CAPTURE_DIR')
+    if output:
+        Path(output).mkdir(parents=True,exist_ok=True)
+        shutil.copyfile(package,Path(output)/'http-actual-download-28-across-pages.apkg')
+
+
+@pytest.mark.parametrize('browser_stack', [{'alwaysMatch':{'unhandledPromptBehavior':'ignore'}}], indirect=True)
+def test_marked_http_preparation_errors_cancel_and_server_retry(browser_stack,browser_server):
+    _seed_marked_http_pages(browser_server)
+    browser=browser_stack.browser;base=_marked_http_base(browser_stack)
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    browser.navigate(base+'/marked-questions');browser.wait_for("document.querySelectorAll('[data-mark-id]').length===25")
+    browser.click('.marked-question input');browser.wait_for("!document.getElementById('practiceMarks').disabled")
+    _trace_mark_actions(browser)
+    # No cryptographic API: visible preflight error and no request, not Math.random.
+    browser.evaluate("window.savedGetRandom=crypto.getRandomValues.bind(crypto);Object.defineProperty(crypto,'getRandomValues',{configurable:true,value:undefined});true")
+    browser.click('#practiceMarks');browser.wait_for("document.getElementById('markActionStatus').textContent.includes('No request was sent')")
+    assert browser.evaluate("markHttpTrace.requests.length")==0
+    browser.evaluate("Object.defineProperty(crypto,'getRandomValues',{configurable:true,value:savedGetRandom});window.savedStorageSet=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k.startsWith('dlms.markAction.'))throw new Error('Browser storage is unavailable');return savedStorageSet.call(this,k,v);};true")
+    browser.click('#exportMarks');browser.wait_for("document.getElementById('markActionStatus').textContent.includes('Browser storage is unavailable')")
+    assert browser.evaluate("markHttpTrace.requests.length")==0
+    browser.evaluate('Storage.prototype.setItem=savedStorageSet;true')
+    # This session leaves native prompts open so the actual dialog can be
+    # cancelled and accepted through Firefox, without replacing window.confirm.
+    prompts=browser.click_with_prompt('#unmarkSelected',accept=False)
+    assert len(prompts)==1 and prompts[0]['type']=='confirm' and 'Unmark exactly 1 selected question?' in prompts[0]['message']
+    assert browser.evaluate('markHttpTrace.requests.length')==0
+    assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==28
+    # A genuine server write failure retains marks and the exact pending request.
+    with sqlite3.connect(browser_server.data_root/'results.db') as conn:
+        conn.execute("CREATE TRIGGER fail_http_unmark BEFORE UPDATE ON review_marks BEGIN SELECT RAISE(ABORT,'isolated failed unmark'); END")
+    prompts=browser.click_with_prompt('#unmarkSelected',accept=True)
+    assert len(prompts)==1 and prompts[0]['type']=='confirm'
+    browser.wait_for("!document.getElementById('retryMarkAction').hidden")
+    first=browser.evaluate("markHttpTrace.requests.find(r=>r.url.endsWith('/save'))")
+    assert first['status']==503 and len(first['body']['ids'])==1
+    assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==28
+    with sqlite3.connect(browser_server.data_root/'results.db') as conn:conn.execute('DROP TRIGGER fail_http_unmark')
+    # Capture a server-acknowledged save before the UI reloads.
+    browser.evaluate("window.saveAckFetch=fetch.bind(window);window.fetch=async(...args)=>{const r=await saveAckFetch(...args);if(String(args[0]).endsWith('/save')&&r.ok){sessionStorage.setItem('unmark-ack-trace',JSON.stringify(markHttpTrace));}return r;};true")
+    browser.click('#retryMarkAction');browser.wait_for("document.querySelector('h2').textContent.includes('27 questions')")
+    trace=browser.evaluate("JSON.parse(sessionStorage.getItem('unmark-ack-trace'))")
+    saves=[r for r in trace['requests'] if r['url'].endswith('/save')]
+    assert len(saves)==2 and saves[0]['body']==saves[1]['body'] and saves[1]['status']==200
+    assert trace['errors']==[]
+    assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==27
+    browser.wait_for_page_ready();browser.click('.marked-question input');browser.wait_for("!document.getElementById('practiceMarks').disabled")
+    _trace_mark_actions(browser)
+    with sqlite3.connect(browser_server.data_root/'results.db') as conn:
+        conn.execute("CREATE TRIGGER fail_http_practice BEFORE INSERT ON quizzes WHEN NEW.generation_kind='marked_practice' BEGIN SELECT RAISE(ABORT,'isolated failed publication'); END")
+    browser.click('#practiceMarks');browser.wait_for("!document.getElementById('retryMarkAction').hidden")
+    failed=browser.evaluate("markHttpTrace.requests.find(r=>r.url.endsWith('/generate'))")
+    assert failed['status']==503
+    with sqlite3.connect(browser_server.data_root/'results.db') as conn:conn.execute('DROP TRIGGER fail_http_practice')
+    browser.click('#retryMarkAction');browser.wait_for("document.querySelector('#markPracticeResult a')!==null")
+    sends=browser.evaluate("markHttpTrace.requests.filter(r=>r.url.endsWith('/generate'))")
+    assert len(sends)==2 and sends[0]['body']==sends[1]['body'] and sends[1]['status']==200
+    assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==27
+
+
+def test_marked_http_existing_anki_workflow(browser_stack,browser_server):
+    entries=_seed_marked_http_pages(browser_server)
+    browser=browser_stack.browser;base=_marked_http_base(browser_stack)
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    browser.navigate(base+'/anki')
+    browser.wait_for("document.querySelector('form[action=\"/anki/export/quiz\"] select')!==null")
+    browser.evaluate("document.querySelector('form[action=\"/anki/export/quiz\"] select').value="+json.dumps(str(entries[0]['id']))+";true")
+    browser.click('form[action="/anki/export/quiz"] button[type=submit]')
+    package,notes=_downloaded_anki_notes(browser_server)
+    assert len(notes)==26
+    assert {note.split('<br>')[0] for note in notes}=={f'Risk question {n}?' for n in range(1,27)}
+    assert _database_value(browser_server.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==28
+    output=os.environ.get('DLMS_PREBUILD_CAPTURE_DIR')
+    if output:
+        Path(output).mkdir(parents=True,exist_ok=True)
+        shutil.copyfile(package,Path(output)/'http-legacy-quiz-anki-download.apkg')
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_calm_dashboard_identity_priority_empty_results_and_help(browser_stack, theme):
+    """Actual durable response + browser checkpoint, with no title-based merge."""
+    from datetime import timedelta
+    from tests.browser._help_screenshots import capture_control
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings/appearance'); _set_theme(browser, theme)
+    qid, html = _new_regular_study_quiz(browser_stack, 4)
+    browser.click('.study-mode-btn'); browser.wait_for('durableStudySession !== null')
+    browser.click("#choices .choice[data-index='1']")
+    browser.wait_for('studyLearningEventSaves.size===0')
+    title = 'CISM — Information Security Governance and Enterprise Risk Management: review of responsibilities'
+    registry_path = browser_stack.data_root / 'config/quizzes.json'
+    registry = json.loads(registry_path.read_text())
+    for item in registry:
+        if item['id'] == qid: item['title'] = title
+    registry_path.write_text(json.dumps(registry))
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as conn:
+        conn.execute('DELETE FROM attempts')
+        conn.execute('UPDATE quizzes SET title=? WHERE id=?', (title, qid))
+    browser.navigate(base + '/exam-plans/new')
+    browser.wait_for('window.dlmsCsrfToken && document.getElementById("examPlanForm")')
+    exam = (datetime.now(timezone.utc).date() + timedelta(days=21)).isoformat()
+    browser.evaluate("document.querySelector('[name=name]').value='CISM certification';document.querySelector('[name=exam_date]').value=" + json.dumps(exam) + ";document.querySelector('[name=calendar_timezone]').value='America/Chicago';document.querySelectorAll('[name=weekdays], [name=folders]').forEach(n=>n.checked=true);document.querySelector('[name=use_dashboard]').checked=true;true")
+    browser.click('#examPlanForm button[type=submit]'); browser.wait_for('document.getElementById("planSummary") !== null')
+    browser.navigate(base + '/')
+    browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…' && document.getElementById('overviewStatus').textContent.includes('No saved Exam or legacy Study results')")
+    assert browser.evaluate("document.querySelectorAll('#continueStudyPanel .daily-review-item').length") == 1
+    assert browser.evaluate("document.querySelector('#regularStudyContinuity').textContent.includes('1 / 4 reviewed')")
+    assert browser.evaluate("document.querySelectorAll('[data-dashboard-primary]').length") == 1
+    assert browser.evaluate("document.querySelector('[data-dashboard-primary]').textContent") == 'Start suggested work'
+    assert browser.evaluate("document.getElementById('overviewStats').hidden")
+    assert browser.evaluate("document.querySelectorAll('.dashboard-recent-attempt').length") == 0
+    assert browser.evaluate("[...document.querySelectorAll('.dashboard-history-grid a')].map(a=>a.pathname)") == ['/study-history', '/history']
+    assert browser.evaluate("""(async()=>{const p=await fetch('/api/daily-review-plan').then(r=>r.json());
+        const i=DLMSDailyReview.mergeBrowserSessions(p).items.find(n=>n.kind==='unfinished');
+        return DLMSDailyReview.matchingContinuation(p.regular_study,i) &&
+          [{mode:'Exam'},{quizId:'other'},{learningSessionId:'other'},{fingerprint:'other'}].every(change=>
+            !DLMSDailyReview.matchingContinuation(p.regular_study,{...i,recovery:{...i.recovery,...change}})) &&
+          !DLMSDailyReview.matchingContinuation({...p.regular_study,completed_at:'2026-01-01T00:00:00Z'},i) &&
+          !DLMSDailyReview.matchingContinuation({...p.regular_study,unchanged:false},i);})()""")
+    assert browser.evaluate("document.getElementById('reviewSuggestionsExplanation').hidden")
+    assert browser.evaluate("document.querySelectorAll('#studyNext details:not([hidden]) > summary').length") == 2
+    assert browser.evaluate("""(async()=>{const p=await fetch('/api/daily-review-plan').then(r=>r.json());
+        const bar=document.querySelector('.dashboard-plan-coverage progress');
+        return bar.value===p.exam_plan.stats.included_reviewed && bar.max===p.exam_plan.stats.included;})()""")
+    # Display-only rounding leaves the actual DTO, quota and generation inputs unchanged.
+    assert browser.evaluate("""(async()=>{
+        const p=await fetch('/api/daily-review-plan').then(r=>r.json()), original=JSON.stringify(p);
+        const display=structuredClone(p);display.exam_plan.estimated_batch=19.4;
+        DLMSDailyReview.renderDailyReview(DLMSDailyReview.mergeBrowserSessions(display));
+        const rounded=document.querySelector('.dashboard-batch-size').textContent.includes('about 19 minutes');
+        DLMSDailyReview.renderDailyReview(DLMSDailyReview.mergeBrowserSessions(p));
+        return rounded && JSON.stringify(p)===original &&
+          Number(document.querySelector('#planPractice [data-count]').dataset.count)===p.exam_plan.selected_count;
+    })()""")
+    assert browser.evaluate("""(() => {const ids=['studyNext','continueStudyPanel','recentActivity'];
+        const nodes=ids.map(id=>document.getElementById(id)).concat([
+          document.querySelector('.dashboard-history-grid'),document.querySelector('.dashboard-quick-tools'),
+          document.querySelector('.dashboard-overview-panel')]);
+        return nodes.every((n,i)=>!i || Boolean(nodes[i-1].compareDocumentPosition(n)&Node.DOCUMENT_POSITION_FOLLOWING));})()""")
+    output = os.environ.get('DLMS_PRESENTATION_CAPTURE_DIR')
+    for width in (1440, 1024, 390, 320):
+        browser.set_viewport(width, 1000)
+        browser.evaluate('document.fonts.ready.then(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))')
+        browser.wait_for("!document.getAnimations().some(a=>a.playState==='running' && a.effect.getTiming().iterations!==Infinity)")
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth'), (theme, width)
+        if width == 1440:
+            assert browser.evaluate("document.getElementById('studyNext').getBoundingClientRect().width > 1.5*document.getElementById('continueStudyPanel').getBoundingClientRect().width")
+            assert browser.evaluate("Math.abs(document.getElementById('studyNext').getBoundingClientRect().top-document.getElementById('continueStudyPanel').getBoundingClientRect().top)<2")
+        for role, value in _theme_contrast_snapshot(browser, {'next':'#studyNext h2','continue':'#continueStudyPanel p','action':'[data-dashboard-primary]'}, include_gradients=True).items():
+            assert value['contrast'] >= 4.5, (theme, width, role, value)
+        if output:
+            target=Path(output);target.mkdir(parents=True,exist_ok=True)
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (target/f'calm-populated-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+            if theme=='light' and width==390:
+                capture_control(browser,target/'exam-plan-dashboard.webp','#activeExamPlan')
+            if theme=='ethereal' and width==1440:
+                from tests.browser._help_screenshots import capture_viewport
+                capture_viewport(browser,target/'dashboard.webp')
+    browser.set_viewport(1024,1000)
+    browser.evaluate("document.documentElement.style.fontSize='200%';true")
+    assert browser.evaluate("document.documentElement.scrollWidth<=innerWidth && getComputedStyle(document.querySelector('.dashboard-study-layout')).gridTemplateColumns.split(' ').length===1")
+    if output:
+        shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+        (Path(output)/f'focus-text-200-{theme}.png').write_bytes(base64.b64decode(shot['data']))
+    browser.evaluate("document.documentElement.style.removeProperty('font-size');true")
+    browser.set_viewport(390,1000)
+    browser.activate(); browser.wait_for('document.hasFocus()')
+    browser.evaluate("document.querySelector('#studyNext details summary').focus();true")
+    browser.press_key('\ue007')
+    assert browser.evaluate("document.querySelector('#studyNext details').open && document.activeElement.matches(':focus-visible')")
+    _open_resume_management(browser, '#continueStudyPanel .daily-review-remove')
+    browser.click('#continueStudyPanel .daily-review-remove')
+    browser.click('#dailyReviewClearDialog button[value=clear]')
+    browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('Saved Study progress remains')")
+    assert title in browser.evaluate("document.getElementById('dailyReviewStatus').textContent")
+    assert browser.evaluate("document.querySelectorAll('#continueStudyPanel .daily-review-remove').length") == 0
+    assert browser.evaluate("document.querySelector('#regularStudyContinuity a').textContent") == 'Resume Study review'
+    # Results overview exposes a genuine failure and retries without false zeros.
+    browser.evaluate("window.overviewFetch=fetch;window.failOverview=true;window.fetch=(...args)=>failOverview && String(args[0]).includes('/api/attempts/overview') ? Promise.resolve(new Response('',{status:503})):overviewFetch(...args);loadDashboardData();true")
+    browser.wait_for("!document.getElementById('retryOverview').hidden")
+    assert browser.evaluate("document.getElementById('overviewStats').hidden")
+    browser.evaluate('window.failOverview=false;true');browser.click('#retryOverview')
+    browser.wait_for("document.getElementById('overviewStatus').textContent==='No saved Exam or legacy Study results yet. Finished Study reviews are recorded separately in Study History.'")
+    assert browser.evaluate("document.activeElement.id")=='overviewHeading'
+    browser.evaluate('window.fetch=overviewFetch;true')
+    # Actual Exam submission, with an explicitly legacy Study fixture alongside.
+    browser.navigate(base+'/quizzes/'+html);browser.wait_for('quizRecoveryReady')
+    browser.click('.exam-mode-btn');browser.click("#choices .choice[data-index='0']")
+    browser.evaluate('window.confirm=()=>true;true');browser.click('#submitBtn')
+    browser.wait_for("document.getElementById('result').textContent.includes('saved successfully')")
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        conn.execute("INSERT INTO attempts(id,quiz_id,score,total,percent,mode,completed_at) VALUES ('legacy-study-example',?,1,4,25,'Study','2026-09-30T12:00:00Z')", (qid,))
+    browser.navigate(base + '/history');browser.wait_for_page_ready()
+    browser.wait_for("document.body.textContent.includes('Study — legacy saved result')")
+    assert browser.evaluate("document.querySelector('h1').textContent.includes('Exam History')")
+    if output and theme=='light':
+        browser.set_viewport(1440,1000)
+        capture_control(browser,Path(output)/'history.webp','.dashboard-main')
+        # Trim only unused page space below the real results panel.
+        from PIL import Image
+        bottom = browser.evaluate("Math.ceil(document.querySelector('.history-table-panel').getBoundingClientRect().bottom-document.querySelector('.dashboard-main').getBoundingClientRect().top+16)")
+        with Image.open(Path(output)/'history.webp') as image:
+            image.crop((0,0,image.width,min(image.height,bottom))).save(Path(output)/'history.webp',format='WEBP',lossless=True)
+        browser.set_viewport(390,1000)
+    for route in ('/help/getting-started#dashboard','/help/history-analytics#history'):
+        browser.navigate(base+route);browser.wait_for_page_ready()
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        assert browser.evaluate("[...document.querySelectorAll('.help-doc a[href^=\"/static/help_assets/\"] img')].every(i=>!i.complete||i.naturalWidth>0)")
+    # Empty/no-plan and sparse combinations use only disposable fixtures/settings.
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        conn.execute('DELETE FROM study_responses');conn.execute('DELETE FROM study_sessions')
+        conn.execute('UPDATE exam_plan_state SET active_plan_id=NULL')
+    browser.navigate(base+'/settings/layout')
+    browser.evaluate("document.querySelectorAll('[name^=dashboard_card_]').forEach(n=>n.checked=['daily_review','overview','study_history','settings'].includes(n.name.replace('dashboard_card_','')));true")
+    browser.click('button[value=save]');browser.wait_for("location.search==='?saved=1'")
+    browser.navigate(base+'/');browser.wait_for("document.getElementById('dailyReviewCount').textContent!=='Loading…'")
+    assert browser.evaluate("document.getElementById('continueStudyPanel').hidden")
+    assert browser.evaluate("!performance.getEntriesByType('resource').some(e=>e.name.includes('/api/dashboard/quiz-activity'))")
+    if output:
+        shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+        (Path(output)/f'calm-sparse-{theme}-390.png').write_bytes(base64.b64decode(shot['data']))
+
+    # A genuinely empty profile has one short result state and no continuation.
+    registry_path.write_text('[]')
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        conn.execute('PRAGMA foreign_keys=ON')
+        conn.execute('DELETE FROM quizzes')
+        conn.execute('DELETE FROM learning_events')
+    browser.navigate(base+'/settings/layout');browser.click('button[value=dashboard_defaults]')
+    browser.wait_for("location.search==='?saved=1'")
+    browser.navigate(base+'/');browser.wait_for("document.getElementById('dailyReviewCount').textContent!=='Loading…' && document.getElementById('recentActivity').getAttribute('aria-busy')==='false'")
+    assert browser.evaluate("document.getElementById('continueStudyPanel').hidden && document.getElementById('overviewStats').hidden")
+    assert browser.evaluate("document.getElementById('overviewStatus').textContent")=='No saved Exam or legacy Study results yet. Finished Study reviews are recorded separately in Study History.'
+    for width in (1440,390):
+        browser.set_viewport(width,1000)
+        browser.wait_for("!document.getAnimations().some(a=>a.playState==='running' && a.effect.getTiming().iterations!==Infinity)")
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        if output:
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (Path(output)/f'calm-empty-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+
+
+@pytest.mark.parametrize('theme', ['light', 'dark', 'ethereal'])
+def test_dashboard_more_review_options_with_exam_plans(browser_stack, theme):
+    """Real canonical signals, saved plan states, and all three generation forms."""
+    from datetime import timedelta
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type':'tab'})['context']
+    browser.navigate(base + '/settings/appearance')
+    _set_theme(browser, theme)
+    qid, _ = _new_regular_study_quiz(browser_stack, 6)
+    root = browser_stack.data_root
+    database = root / 'results.db'
+    registry_path = root / 'config/quizzes.json'
+    registry = [r for r in json.loads(registry_path.read_text()) if r['id'] == qid]
+    registry_path.write_text(json.dumps(registry))
+    now = datetime.now(timezone.utc)
+    with sqlite3.connect(database) as conn:
+        conn.execute('PRAGMA foreign_keys=ON')
+        conn.execute('DELETE FROM quizzes WHERE id != ?', (qid,))
+        ids = [r[0] for r in conn.execute('SELECT id FROM questions WHERE quiz_id=? ORDER BY question_number', (qid,))]
+        concept = conn.execute("INSERT INTO concepts(name) VALUES ('Access decisions')").lastrowid
+        for question in ids[:3]:
+            conn.execute('INSERT INTO question_concepts(question_id,concept_id) VALUES (?,?)', (question, concept))
+        for index, question in enumerate(ids):
+            stamp = now if index < 3 else now - timedelta(days=10)
+            conn.execute("""INSERT INTO learning_events(event_type,quiz_id,question_id,attempt_id,mode,
+                was_correct,response_json,occurred_at) VALUES ('exam_answer',?,?,?,'Exam',0,'{}',?)""",
+                (qid, question, f'fixture-{index}', stamp.isoformat()))
+    browser.navigate(base + '/exam-plans/new')
+    browser.wait_for("document.getElementById('examPlanForm') && window.dlmsCsrfToken")
+    browser.evaluate("""document.querySelector('[name=name]').value='CISM certification preparation';
+      document.querySelector('[name=exam_date]').value=""" + json.dumps((now + timedelta(days=21)).date().isoformat()) + """;
+      document.querySelector('[name=calendar_timezone]').value='UTC';
+      document.querySelectorAll('[name=weekdays]').forEach(n=>n.checked=true);
+      document.querySelectorAll('[name=folders]').forEach(n=>n.checked=true);
+      document.querySelector('[name=use_dashboard]').checked=true;true""")
+    browser.click('#examPlanForm button[type=submit]')
+    browser.wait_for("document.getElementById('planSummary') !== null")
+    pid = browser.evaluate("location.pathname.split('/').pop()")
+    with sqlite3.connect(database) as conn:
+        config = json.loads(conn.execute('SELECT config_json FROM exam_plans WHERE id=?', (pid,)).fetchone()[0])
+
+    output = os.environ.get('DLMS_PRESENTATION_CAPTURE_DIR')
+    evidence = []
+    def dashboard(state, changes, expected):
+        with sqlite3.connect(database) as conn:
+            conn.execute('UPDATE exam_plans SET config_json=?,revision=revision+1 WHERE id=?',
+                         (json.dumps({**config, **changes}), pid))
+            conn.execute('UPDATE exam_plan_state SET active_plan_id=?', (None if state == 'absent' else pid,))
+        browser.navigate(base + '/')
+        browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+        payload = browser.evaluate("fetch('/api/daily-review-plan').then(r=>r.json())")
+        evidence.append({'state': state, 'response': payload})
+        assert payload['summary']['adaptive_candidates'] == 6
+        assert [item['kind'] for item in payload['items']] == expected
+        return payload
+
+    for state, changes in [('active', {}), ('paused', {'paused':True}),
+                           ('exhausted', {'exam_date':now.date().isoformat()}), ('absent', {})]:
+        payload = dashboard(state, changes, ['native_due', 'weak_concept'])
+        assert payload['summary']['due_questions'] == 3
+        assert payload['summary']['weak_or_developing_concepts'] == 1
+        assert browser.evaluate("document.querySelector('.dashboard-other-options summary').textContent") == 'More review options'
+        if state != 'absent':
+            assert browser.evaluate("document.querySelectorAll('#dailyReviewList > .daily-review-item').length") == 0
+        if state in ('paused', 'exhausted'):
+            assert payload['exam_plan']['selected_count'] == 0
+        if state == 'active':
+            assert browser.evaluate("document.querySelector('[data-dashboard-primary]').dataset.practice") == 'suggested'
+        browser.activate()
+        browser.wait_for("document.hasFocus()")
+        browser.evaluate("document.querySelector('.dashboard-other-options summary').focus();true")
+        browser.press_key('\ue007')
+        assert browser.evaluate("document.querySelector('.dashboard-other-options').open")
+        assert browser.evaluate("[...document.querySelectorAll('#dailyReviewList form')].every(f=>f.querySelector('[name=csrf_token]'))")
+        if state == 'active':
+            for width in (1440, 390):
+                browser.set_viewport(width, 1000)
+                browser.wait_for("innerWidth > 900 || document.getElementById('dashboardSidebar').getBoundingClientRect().right <= 0")
+                browser.evaluate('document.fonts.ready.then(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))')
+                assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth')
+                if output:
+                    shot = browser.command('browsingContext.captureScreenshot', {'context':browser.context,'origin':'document'})
+                    (Path(output) / f'expanded-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+                    browser.click('.dashboard-other-options summary')
+                    shot = browser.command('browsingContext.captureScreenshot', {'context':browser.context,'origin':'document'})
+                    (Path(output) / f'after-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+                    browser.click('.dashboard-other-options summary')
+
+    # Use each actual POST action. Merely generating does not create Study evidence.
+    for kind, generation in [('native_due','native_spaced_review'), ('weak_concept','concept_review'), ('adaptive','adaptive_study')]:
+        if kind == 'adaptive':
+            with sqlite3.connect(database) as conn:
+                conn.execute('DELETE FROM learning_events')  # Disposable baseline-only fixture.
+        expected = ['adaptive'] if kind == 'adaptive' else ['native_due','weak_concept']
+        dashboard('active', {}, expected)
+        assert browser.evaluate("document.querySelector('.dashboard-other-options summary').textContent") == 'More review options'
+        browser.click('.dashboard-other-options summary')
+        browser.click(f'.daily-review-{kind} button')
+        browser.wait_for("location.pathname.startsWith('/quizzes/') && typeof quizRecoveryReady !== 'undefined' && quizRecoveryReady")
+        with sqlite3.connect(database) as conn:
+            generated = conn.execute('SELECT id FROM quizzes WHERE generation_kind=? ORDER BY id DESC LIMIT 1', (generation,)).fetchone()
+            assert generated is not None
+            copies = conn.execute('SELECT source_question_uid,is_generated_copy FROM questions WHERE quiz_id=?', generated).fetchall()
+            source_uids = {r[0] for r in conn.execute('SELECT question_uid FROM questions WHERE quiz_id=?', (qid,))}
+            expected_uids = {r[0] for r in conn.execute('SELECT question_uid FROM questions WHERE id IN (' + ','.join('?'*len(ids)) + ')', ids)}
+            if kind != 'adaptive':
+                subset = ids[3:] if kind == 'native_due' else ids[:3]
+                expected_uids = {r[0] for r in conn.execute('SELECT question_uid FROM questions WHERE id IN (?,?,?)', subset)}
+            assert {r[0] for r in copies} == expected_uids
+            assert all(uid in source_uids and generated_copy == 1 for uid, generated_copy in copies)
+            assert conn.execute('SELECT count(*) FROM study_sessions WHERE quiz_id=?', generated).fetchone()[0] == 0
+        browser.click('.study-mode-btn')
+        browser.wait_for('durableStudySession !== null')
+        assert browser.evaluate('durableStudySession.purpose') == 'focused'
+        # Clear only this test's unanswered browser checkpoint through its normal UI.
+        browser.navigate(base + '/')
+        browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+        assert not browser.evaluate("!document.getElementById('regularStudyContinuity').hidden")
+        # A local generated checkpoint never consumes a shared recommendation.
+        assert browser.evaluate(f"document.querySelector('.daily-review-{kind} button') !== null")
+        button = f'[data-clear-recovery^="unfinished-{generated[0]}-"]'
+        _open_resume_management(browser, button)
+        browser.click(button); browser.wait_for("document.getElementById('dailyReviewClearDialog').open")
+        browser.click('#dailyReviewClearDialog button[value=clear]')
+        browser.wait_for("document.getElementById('dailyReviewStatus').textContent.includes('resume point cleared')")
+        # Sessions opened here remain unfinished; generation does not finish source work.
+        with sqlite3.connect(database) as conn:
+            assert conn.execute('SELECT count(*) FROM study_sessions WHERE completed_at IS NOT NULL').fetchone()[0] == 0
+    # Exclusion leaves no eligible ordinary action: no dead disclosure, and the
+    # plan's own specific no-material explanation stays visible.
+    portal = root / 'config/portal.json'
+    settings = json.loads(portal.read_text())
+    settings['excluded_learning_folders'] = ['uncategorized']
+    portal.write_text(json.dumps(settings))
+    browser.navigate(base + '/')
+    browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+    empty = browser.evaluate("fetch('/api/daily-review-plan').then(r=>r.json())")
+    assert empty['items'] == []
+    assert not browser.evaluate("!!document.querySelector('.dashboard-other-options')")
+    assert browser.evaluate("document.getElementById('dailyReviewList').textContent.includes('No additional review suggestions')")
+    assert browser.evaluate("document.getElementById('activeExamPlan').textContent.includes('excluded by Learning Scope')")
+    evidence.append({'state':'excluded', 'response':empty})
+    if output: (Path(output) / f'api-{theme}.json').write_text(json.dumps(evidence, indent=2))
+
+
+def test_review_options_shared_eligibility_with_local_generated_resume(browser_stack, browser_server):
+    """One server, two isolated Firefox profiles, one real generated checkpoint."""
+    from datetime import timedelta
+    first, base = browser_stack.browser, browser_stack.base_url
+    root = browser_stack.data_root
+    _new_regular_study_quiz(browser_stack, 4)
+    with sqlite3.connect(root/'results.db') as conn:
+        source = conn.execute("INSERT INTO quizzes(title,source_file) VALUES ('Shared overdue source','shared-overdue-source.html')").lastrowid
+        for n in range(104):
+            q = conn.execute("INSERT INTO questions(quiz_id,question_number,question_text,question_type,explanation,media_json) VALUES (?, ?, ?, 'choice', 'Fixture explanation', '{}')", (source,n+1,f'Shared due question {n+1}?')).lastrowid
+            conn.executemany('INSERT INTO choices(question_id,label,text,is_correct) VALUES (?,?,?,?)',[(q,'A','Expected',1),(q,'B','Alternative',0)])
+            conn.execute("INSERT INTO learning_events(event_type,quiz_id,question_id,attempt_id,mode,was_correct,response_json,occurred_at) VALUES ('exam_answer',?,?,?,'Exam',0,'{}','2020-01-01T00:00:00+00:00')",(source,q,f'shared-overdue-{n}'))
+    first.navigate(base+'/exam-plans/new')
+    first.wait_for("document.getElementById('examPlanForm') && window.dlmsCsrfToken")
+    first.evaluate("""document.querySelector('[name=name]').value='CISM';
+      document.querySelector('[name=exam_date]').value="""+json.dumps((datetime.now(timezone.utc)+timedelta(days=21)).date().isoformat())+""";
+      document.querySelector('[name=calendar_timezone]').value='UTC';
+      document.querySelectorAll('[name=weekdays]').forEach(n=>n.checked=true);
+      document.querySelectorAll('[name=folders]').forEach(n=>n.checked=true);
+      document.querySelector('[name=use_dashboard]').checked=true;true""")
+    first.click('#examPlanForm button[type=submit]')
+    first.wait_for("document.getElementById('planSummary') !== null")
+    first.navigate(base+'/')
+    first.wait_for("document.querySelector('.daily-review-native_due button')")
+    first.click('.dashboard-other-options summary')
+    first.click('.daily-review-native_due button')
+    first.wait_for("location.pathname.startsWith('/quizzes/spaced_review_native_') && typeof quizRecoveryReady !== 'undefined' && quizRecoveryReady")
+    generated_url = first.evaluate('location.pathname')
+    assert first.evaluate('quiz.length') == 20
+    first.click('.study-mode-btn')
+    first.wait_for('durableStudySession !== null')
+    key = first.evaluate('quizRecoveryController.storageKey')
+    # Capture after the quiz's normal pagehide checkpoint write.
+    first.navigate(base+'/')
+    first.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+    record = first.evaluate('localStorage.getItem('+json.dumps(key)+')')
+    assert record is not None
+
+    env = dict(browser_server.env, TZ='Asia/Tokyo')
+    profile = browser_server.work_root/'comparison-profile'
+    profile.mkdir()
+    port = _free_loopback_port()
+    process = None
+    second = None
+    evidence = []
+    output = os.environ.get('DLMS_PRESENTATION_CAPTURE_DIR')
+    try:
+        with (browser_server.work_root/'comparison-firefox.log').open('w') as log:
+            process = subprocess.Popen(_firefox_command(browser_server.firefox,profile,port,env),cwd=ROOT,env=env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
+            second = _connect_firefox(port,process,browser_server.work_root/'comparison-firefox.log')
+            for label,browser in [('with-resume',first),('without-resume',second)]:
+                browser.navigate(base+'/')
+                browser.wait_for("document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+                result = browser.evaluate("""(async()=>{const r=await fetch('/api/daily-review-plan',{cache:'no-store'});const p=await r.json();
+                  const merged=DLMSDailyReview.mergeBrowserSessions(p);
+                  const asset=await fetch('/static/daily-review.js',{cache:'no-store'});
+                  const bytes=await asset.arrayBuffer();const hash=await crypto.subtle.digest('SHA-256',bytes);
+                  return {status:r.status,cache:r.headers.get('cache-control'),url:r.url,plan:p,
+                    mergedKinds:merged.items.map(i=>i.kind),timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    assetHash:[...new Uint8Array(hash)].map(x=>x.toString(16).padStart(2,'0')).join(''),
+                    due:document.querySelector('.daily-review-native_due')?.textContent||'',
+                    resume:document.querySelectorAll('.daily-review-unfinished').length,
+                    empty:document.getElementById('dailyReviewList').textContent};})()""")
+                evidence.append({'profile':label,**result})
+                assert result['status'] == 200 and result['cache'] == 'no-store'
+                assert result['plan']['summary']['due_questions'] == 104
+                assert result['plan']['summary']['overdue_questions'] == 104
+                assert result['plan']['items'][0]['action']['fields']['question_count'] == '20'
+                if label == 'with-resume':
+                    assert result['resume'] == 1
+                    assert browser.evaluate('localStorage.getItem('+json.dumps(key)+')') == record
+                else:
+                    assert result['resume'] == 0
+                    assert browser.evaluate('localStorage.getItem('+json.dumps(key)+')') is None
+                assert '104 source questions are due now. 104 are overdue.' in result['due']
+                assert 'up to 20 questions' in result['due']
+                browser.click('.dashboard-other-options summary')
+                if output:
+                    shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+                    (Path(output)/f'comparison-{label}.png').write_bytes(base64.b64decode(shot['data']))
+            assert evidence[0]['plan']['items'] == evidence[1]['plan']['items']
+            assert evidence[0]['plan']['summary'] == evidence[1]['plan']['summary']
+            assert evidence[0]['plan']['exam_plan']['stats'] == evidence[1]['plan']['exam_plan']['stats']
+            assert evidence[0]['assetHash'] == evidence[1]['assetHash']
+            # Opening another browser did not discard the first browser's checkpoint.
+            assert first.evaluate('localStorage.getItem('+json.dumps(key)+')') == record
+            first.click('.daily-review-unfinished a')
+            first.wait_for("document.querySelector('.quiz-recovery-resume') !== null")
+            assert first.evaluate('location.pathname') == generated_url
+    finally:
+        if output: (Path(output)/'comparison.json').write_text(json.dumps(evidence,indent=2))
+        if second:
+            try: second.close()
+            except Exception: pass
+        _terminate_process_tree(process)
+
+
+@pytest.mark.parametrize('fault', ['http', 'malformed', 'stale_success', 'stale_failure'])
+def test_daily_review_request_failures_and_ordering(browser_stack, fault):
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.navigate(base+'/')
+    browser.wait_for("window.DLMSDailyReview && document.getElementById('dailyReviewCount').textContent !== 'Loading…'")
+    browser.evaluate("""(async()=>{window.actualReviewFetch=window.fetch.bind(window);
+      window.reviewFixture=await (await actualReviewFetch('/api/daily-review-plan')).json();
+      window.reviewFetches=[];window.fetch=(url,options)=>String(url)==='/api/daily-review-plan'
+        ?new Promise((resolve,reject)=>reviewFetches.push({resolve,reject})):actualReviewFetch(url,options);return true;})()""")
+    assert browser.evaluate('reviewFixture.items.length') > 0
+    browser.evaluate('window.olderReview=DLMSDailyReview.loadDailyReview();true')
+    browser.wait_for('reviewFetches.length===1')
+    if fault in ('http', 'malformed'):
+        response = "new Response('{}',{status:503})" if fault == 'http' else "new Response(JSON.stringify({...reviewFixture,items:null}),{status:200})"
+        browser.evaluate('reviewFetches[0].resolve('+response+');true')
+        browser.evaluate('olderReview')
+        assert browser.evaluate("document.getElementById('dailyReviewCount').textContent") == 'Unavailable'
+        assert browser.evaluate("document.getElementById('dailyReviewEmpty').textContent.includes('Study next could not be loaded')")
+        assert browser.evaluate("document.getElementById('dailyReviewList').hidden")
+        browser.evaluate('window.fetch=actualReviewFetch;true')
+        browser.click('#dailyReviewEmpty button')
+        browser.wait_for("document.getElementById('dailyReviewCount').textContent === '' && !document.getElementById('dailyReviewList').hidden")
+    else:
+        browser.evaluate('window.newerReview=DLMSDailyReview.loadDailyReview();true')
+        browser.wait_for('reviewFetches.length===2')
+        browser.evaluate("reviewFetches[1].resolve(new Response(JSON.stringify({...reviewFixture,items:reviewFixture.items.map(i=>({...i,title:'Current recommendation'}))}),{status:200}));true")
+        browser.evaluate('newerReview')
+        if fault == 'stale_failure':
+            browser.evaluate("reviewFetches[0].reject(new Error('Earlier request failed'));true")
+        else:
+            browser.evaluate("reviewFetches[0].resolve(new Response(JSON.stringify({...reviewFixture,items:reviewFixture.items.map(i=>({...i,title:'Older recommendation'}))}),{status:200}));true")
+        browser.evaluate('olderReview')
+        assert browser.evaluate("document.getElementById('dailyReviewCount').textContent") == ''
+        assert browser.evaluate("document.querySelector('#dailyReviewList h3').textContent") == 'Current recommendation'
+        assert not browser.evaluate("document.getElementById('dailyReviewList').hidden")
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_dashboard_and_study_history_action_controls(browser_stack, theme):
+    """Scoped icon controls preserve native navigation and lazy disclosures."""
+    from datetime import timedelta
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base+'/settings/appearance'); _set_theme(browser, theme)
+    qid, html = _new_regular_study_quiz(browser_stack, 4)
+    browser.click('.study-mode-btn'); browser.wait_for('durableStudySession !== null')
+    browser.click("#choices .choice[data-index='1']"); browser.wait_for('studyLearningEventSaves.size===0')
+    for position in range(4):
+        browser.click("#choices .choice[data-index='0']"); browser.wait_for('studyLearningEventSaves.size===0')
+        if position < 3: browser.click('#nextBtn')
+    browser.click('#finishReviewBtn'); browser.wait_for('durableStudySession.completed_at !== null')
+    _new_regular_study_quiz(browser_stack, 1)
+    browser.navigate(base+'/exam-plans/new')
+    browser.wait_for('window.dlmsCsrfToken && document.getElementById("examPlanForm")')
+    exam=(datetime.now(timezone.utc)+timedelta(days=21)).date().isoformat()
+    browser.evaluate("document.querySelector('[name=name]').value='CISM — Information Security Governance and Risk Management';document.querySelector('[name=exam_date]').value="+json.dumps(exam)+";document.querySelector('[name=calendar_timezone]').value='UTC';document.querySelectorAll('[name=weekdays],[name=folders]').forEach(n=>n.checked=true);document.querySelector('[name=use_dashboard]').checked=true;true")
+    browser.click('#examPlanForm button[type=submit]'); browser.wait_for('document.getElementById("planSummary")!==null')
+    browser.navigate(base+'/')
+    browser.wait_for("document.querySelector('.dashboard-plan-actions > a.dlms-action-control') && document.querySelector('.dashboard-sequence-link.dlms-action-control')")
+    view='.dashboard-plan-actions > a'
+    assert browser.evaluate("document.querySelector('[data-dashboard-primary]').textContent") == 'Start suggested work'
+    assert browser.evaluate("getComputedStyle(document.querySelector('#retryPlanPractice')).display") == 'none'
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn: before=list(conn.iterdump())
+    routes=browser.evaluate("[...document.querySelectorAll('[data-home-dashboard] .dlms-action-control')].map(n=>({label:n.textContent,tag:n.tagName,href:n.getAttribute('href'),action:n.closest('form')?.getAttribute('action')}))")
+    output=os.environ.get('DLMS_ACTION_CAPTURE_DIR')
+    def capture(name):
+        if output:
+            shot=browser.command('browsingContext.captureScreenshot', {'context':browser.context,'origin':'document'})
+            (Path(output)/(name+'-'+theme+'.png')).write_bytes(base64.b64decode(shot['data']))
+    for width in (1440,390,320):
+        browser.set_viewport(width,1000)
+        browser.activate(); browser.wait_for('document.hasFocus()')
+        browser.evaluate("document.querySelector("+json.dumps(view)+").focus();true")
+        browser.press_key('\ue004')  # Focus ring after real keyboard input.
+        browser.evaluate("document.querySelector("+json.dumps(view)+").focus();true")
+        browser.wait_for("[...document.querySelectorAll('[role=tooltip]')].some(n=>!n.hidden)")
+        assert browser.evaluate("document.activeElement.matches(':focus-visible') && getComputedStyle(document.activeElement).outlineStyle==='solid'")
+        assert browser.evaluate("(()=>{const n=document.querySelector('[role=tooltip]:not([hidden])'), r=n.getBoundingClientRect();return r.left>=0 && r.right<=innerWidth && r.top>=0 && r.bottom<=innerHeight && document.activeElement.getAttribute('aria-describedby').split(' ').includes(n.id)})()")
+        assert browser.evaluate("(()=>{const r=document.querySelector('[role=tooltip]:not([hidden])').getBoundingClientRect();return [...document.querySelectorAll('[data-home-dashboard] .dlms-action-control')].filter(n=>n!==document.activeElement).every(n=>{const b=n.getBoundingClientRect();return !b.width || !b.height || b.right<=r.left || b.left>=r.right || b.bottom<=r.top || b.top>=r.bottom})})()")
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        for role,value in _theme_contrast_snapshot(browser, {'primary':'[data-dashboard-primary]', 'secondary':view, 'tooltip':'[role=tooltip]:not([hidden])'},include_gradients=True).items():
+            assert value['contrast']>=4.5,(theme,width,role,value)
+        capture('dashboard-focus-'+str(width))
+        browser.press_key('\ue00c')
+        assert browser.evaluate("[...document.querySelectorAll('[role=tooltip]')].every(n=>n.hidden)")
+        # The unchanged native disclosure opens with Enter and closes with Space.
+        browser.evaluate("document.querySelector('.dashboard-plan-explanation summary').focus();true")
+        browser.press_key('\ue007'); assert browser.evaluate("document.querySelector('.dashboard-plan-explanation').open")
+        browser.press_key(' '); assert not browser.evaluate("document.querySelector('.dashboard-plan-explanation').open")
+    browser.set_viewport(1440,1000)
+    browser.evaluate("document.activeElement.blur();document.querySelector("+json.dumps(view)+").scrollIntoView({block:'center'});true")
+    point=browser.evaluate("(()=>{const r=document.querySelector("+json.dumps(view)+").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()")
+    browser.command('input.performActions', {'context':browser.context,'actions':[{'type':'pointer','id':'mouse','parameters':{'pointerType':'mouse'},'actions':[{'type':'pointerMove','x':round(point['x']),'y':round(point['y'])}]}]})
+    browser.wait_for("document.querySelector('[role=tooltip]:not([hidden])')")
+    capture('dashboard-hover')
+    tooltip=browser.evaluate("(()=>{const r=document.querySelector('[role=tooltip]:not([hidden])').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()")
+    browser.command('input.performActions', {'context':browser.context,'actions':[{'type':'pointer','id':'mouse','parameters':{'pointerType':'mouse'},'actions':[{'type':'pointerMove','x':round(tooltip['x']),'y':round(tooltip['y'])}]}]})
+    assert browser.evaluate("document.querySelector('[role=tooltip]:not([hidden])').matches(':hover')")
+    browser.press_key('\ue00c'); assert not browser.evaluate("document.querySelector('[role=tooltip]:not([hidden])')")
+    # A widget may rerender after a dismissed tooltip's leave event. Its timer
+    # must tolerate removal without a console error or stale body tooltip.
+    assert browser.evaluate("""(async()=>{
+      const errors=[], listener=e=>errors.push(e.message);
+      window.addEventListener('error',listener);
+      const node=document.querySelector('.dashboard-plan-actions > a');
+      node.blur(); node.focus();
+      document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+      node.dispatchEvent(new PointerEvent('pointerleave'));
+      node.remove();
+      await new Promise(resolve=>setTimeout(resolve,200)); // Observe the 150ms leave timer.
+      window.removeEventListener('error',listener);
+      const plan=await fetch('/api/daily-review-plan').then(r=>r.json());
+      DLMSDailyReview.renderDailyReview(DLMSDailyReview.mergeBrowserSessions(plan));
+      await new Promise(resolve=>requestAnimationFrame(resolve));
+      return {errors,stale:[...document.querySelectorAll('[role=tooltip]')].some(t=>![...document.querySelectorAll('[aria-describedby]')].some(n=>n.getAttribute('aria-describedby').split(' ').includes(t.id)))};
+    })()""") == {'errors':[], 'stale':False}
+    browser.wait_for("document.querySelector('.dashboard-plan-actions > a.dlms-action-control')")
+    # Native real link activation; presentation does not award evidence.
+    destination=browser.evaluate('document.querySelector('+json.dumps(view)+').getAttribute("href")')
+    browser.evaluate('document.querySelector('+json.dumps(view)+').focus();true'); browser.press_key('\ue007')
+    browser.wait_for('location.pathname==='+json.dumps(destination))
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn: assert list(conn.iterdump())==before
+    browser.navigate(base+'/study-history'); browser.wait_for("document.querySelectorAll('[aria-label=\"History navigation\"] .dlms-action-control').length===4")
+    assert browser.evaluate("[...document.querySelectorAll('[aria-label=\"History navigation\"] a')].map(n=>[n.textContent,n.getAttribute('href')])") == [['Dashboard','/'],['Exam History','/history'],['Quiz Library','/library'],['Study Help','/help/quizzes#study-history']]
+    assert not browser.evaluate("performance.getEntriesByType('resource').some(e=>e.name.includes('/study-history/session/'))")
+    for width in (1440,390,320):
+        browser.set_viewport(width,1000)
+        browser.evaluate("document.querySelector('.study-history-row summary').focus();true")
+        browser.press_key('\ue007'); browser.wait_for("document.querySelector('.study-history-detail').textContent.includes('A later correct answer was saved')")
+        assert browser.evaluate("document.activeElement.matches(':focus-visible')")
+        capture('history-expanded-'+str(width))
+        browser.press_key(' '); assert not browser.evaluate("document.querySelector('.study-history-row details').open")
+        capture('history-'+str(width))
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+    browser.click('.study-history-row summary'); browser.wait_for("document.querySelector('.study-history-row details').open")
+    browser.navigate(base+'/study-history'); browser.wait_for("document.querySelector('.study-history-row details').open && document.querySelector('.study-history-detail').textContent.includes('A later correct answer was saved')")
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn: assert list(conn.iterdump())==before
+    if output: (Path(output)/('action-inventory-'+theme+'.json')).write_text(json.dumps(routes,indent=2))
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_exam_plan_and_profile_action_controls(browser_stack, theme):
+    """Native links/forms, status badges and snapshot acknowledgement survive styling."""
+    from datetime import timedelta
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings/appearance'); _set_theme(browser, theme)
+    browser.navigate(base + '/exam-plans')
+    browser.wait_for("document.querySelector('[aria-label=\"Exam Plan navigation\"] .dlms-action-control')")
+    assert 'No exam plans yet' in browser.evaluate('document.querySelector("main").textContent')
+    quiz_id, _ = _new_regular_study_quiz(browser_stack, 30)
+    browser.navigate(base + '/exam-plans/new'); browser.wait_for('window.dlmsCsrfToken')
+    browser.evaluate("document.querySelector('[name=name]').value='CISM — Information Security Governance and Risk Management';document.querySelector('[name=exam_date]').value=" + json.dumps((datetime.now(timezone.utc) + timedelta(days=30)).date().isoformat()) + ";document.querySelector('[name=calendar_timezone]').value='America/Chicago';document.querySelectorAll('[name=folders],[name=weekdays]').forEach(n=>n.checked=true);document.querySelector('[name=use_dashboard]').checked=true;true")
+    browser.click('#examPlanForm button[type=submit]'); browser.wait_for('document.getElementById("planSummary")')
+    path = browser.evaluate('location.pathname'); plan_id = path.split('/')[-1]
+    # Disposable change snapshot: all current questions need acknowledgement.
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as conn:
+        conn.execute('UPDATE exam_plans SET scope_json=? WHERE id=?', ('{}', plan_id))
+    def facts():
+        with sqlite3.connect(browser_stack.data_root / 'results.db') as conn:
+            return {table: conn.execute('SELECT count(*) FROM ' + table).fetchone()[0] for table in ('study_sessions', 'study_responses', 'learning_events')}
+    initial_facts = facts()
+    for width in (1440, 390, 320):
+        browser.set_viewport(width, 1000); browser.navigate(base + path)
+        browser.wait_for("document.querySelector('[data-practice=suggested].dlms-action-primary')")
+        assert browser.evaluate("[...document.querySelectorAll('[aria-label=\"Exam Plan navigation\"] a')].map(n=>[n.textContent,n.getAttribute('href')])") == [['All plans', '/exam-plans'], ['New exam plan', '/exam-plans/new'], ['Exam Plan Help', '/help/learning-intelligence#exam-plans']]
+        assert browser.evaluate("[...document.querySelectorAll('.plan-badge')].every(n=>n.tagName==='SPAN' && !n.matches('.dlms-action-control,[tabindex],[role=button]'))")
+        browser.activate(); browser.wait_for('document.hasFocus()')
+        browser.evaluate("document.querySelector('#planPlacement summary').focus();true"); browser.press_key('\ue007')
+        assert browser.evaluate("document.querySelector('#planPlacement').open && document.activeElement.matches(':focus-visible')")
+        assert browser.evaluate("document.querySelector('button[value=delete]').matches('.dlms-action-destructive') && document.querySelector('button[value=delete] svg use').getAttribute('href')==='/static/icons.svg#trash'")
+        assert browser.evaluate("document.querySelector('button[value=acknowledge]').closest('form').querySelector('[name=snapshot_token]')!==null")
+        assert browser.evaluate("[...document.querySelectorAll('.dlms-action-control')].every(n=>n.querySelector('svg[aria-hidden=true][focusable=false]'))")
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        for role, value in _theme_contrast_snapshot(browser, {'primary':'[data-practice=suggested]', 'delete':'button[value=delete]', 'secondary':'button[value=hide]', 'summary':'#planPlacement summary'}, include_gradients=True).items():
+            assert value['contrast'] >= 4.5, (theme, width, role, value)
+        browser.evaluate("document.querySelector('button[value=hide]').focus();true")
+        browser.wait_for("document.querySelector('[role=tooltip]:not([hidden])')")
+        assert browser.evaluate("(()=>{const r=document.querySelector('[role=tooltip]:not([hidden])').getBoundingClientRect();return r.left>=0 && r.right<=innerWidth && r.top>=0 && r.bottom<=innerHeight})()")
+        browser.press_key('\ue00c'); assert not browser.evaluate("document.querySelector('[role=tooltip]:not([hidden])')")
+        browser.evaluate("document.querySelector('#planPlacement summary').focus();true"); browser.press_key(' ')
+        assert not browser.evaluate("document.querySelector('#planPlacement').open")
+    # Pagination is a real link, preserving question IDs and earning no credit.
+    more = '#planChanges a[href*="change_quiz=' + str(quiz_id) + '"]'
+    browser.evaluate("document.querySelector(" + json.dumps(more) + ").closest('details').open=true;document.querySelector(" + json.dumps(more) + ").focus();true")
+    browser.press_key('\ue007'); browser.wait_for("location.search.includes('question_page=2')")
+    assert browser.evaluate("document.querySelector('#planChanges details[open] nav').textContent.includes('Page 2 of 2')")
+    assert facts() == initial_facts
+    # Styled acknowledgement still rejects a newer question added after this page.
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as conn:
+        conn.execute('UPDATE questions SET question_text=question_text || ? WHERE quiz_id=?', (' changed', quiz_id))
+    browser.click('button[value=acknowledge]')
+    browser.wait_for("document.querySelector('[role=alert]')!==null")
+    assert 'changed' in browser.evaluate("document.querySelector('[role=alert]').textContent").lower()
+    assert facts() == initial_facts
+    browser.navigate(base + path); browser.click('button[value=acknowledge]')
+    browser.wait_for("document.querySelector('#planChanges').textContent.includes('No changes to study material')")
+    assert facts() == initial_facts
+    # Profile controls retain both context-specific schedule destinations.
+    browser.navigate(base + '/learning-profile')
+    browser.wait_for("document.querySelector('#lpSmartReview.dlms-action-primary') && document.getElementById('lpRecommendationTitle').textContent!=='Loading…'")
+    assert browser.evaluate("[...document.querySelectorAll('.learning-profile-actions a,.learning-profile-retention-head > a')].map(n=>[n.textContent,n.getAttribute('href')])") == [['View Topic Details', '/learning-intelligence'], ['Open Review Schedule', '/review-schedule'], ['Open Review Schedule', '/review-schedule']]
+    assert browser.evaluate("document.querySelector('.study-evidence-note a').matches(':not(.dlms-action-control)')")
+    assert browser.evaluate("document.querySelector('#lpSmartReview').tagName==='BUTTON' && document.querySelector('#lpPrimaryReviewForm').method==='post'")
+    for width in (1440, 390, 320):
+        browser.set_viewport(width,1000); browser.wait_for_page_ready()
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        browser.evaluate("document.querySelector('.learning-profile-actions a').focus();true"); browser.press_key('\ue004')
+        assert browser.evaluate('document.activeElement.matches(":focus-visible")')
+        browser.press_key('\ue00c')
+    assert facts() == initial_facts
+    # An unsupported plan stays reachable; delete remains explicit and styled.
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as conn:
+        conn.execute('UPDATE exam_plans SET config_json=? WHERE id=?', ('{}', plan_id))
+    browser.navigate(base + '/exam-plans')
+    browser.wait_for("document.querySelector('.plan-list-card > .dlms-action-control')")
+    assert 'Unavailable saved plan' in browser.evaluate('document.querySelector("main").textContent')
+    browser.click('.plan-list-card > a'); browser.wait_for('document.querySelector("[role=alert]")')
+    assert browser.evaluate("document.querySelector('button[value=delete]').matches('.dlms-action-destructive')")
+    assert facts() == initial_facts
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_learning_profile_primary_control_generates_native_review(browser_stack, theme):
+    """Actual first-response evidence enables the existing native review form."""
+    browser, base = browser_stack.browser, browser_stack.base_url
+    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
+    browser.navigate(base + '/settings/appearance'); _set_theme(browser, theme)
+    quiz_id, _ = _new_regular_study_quiz(browser_stack, 3)
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as conn:
+        concept = conn.execute('INSERT INTO concepts(name) VALUES(?)', ('Information security governance',)).lastrowid
+        conn.execute('INSERT INTO question_concepts(question_id,concept_id) SELECT id,? FROM questions WHERE quiz_id=?', (concept, quiz_id))
+    browser.click('.study-mode-btn'); browser.wait_for('durableStudySession !== null')
+    for index in range(3):
+        browser.click("#choices .choice[data-index='1']"); browser.wait_for('studyLearningEventSaves.size===0')
+        if index < 2: browser.click('#nextBtn')
+    browser.click('#finishReviewBtn'); browser.wait_for('durableStudySession.completed_at !== null')
+    browser.navigate(base + '/learning-profile')
+    browser.wait_for("document.querySelector('#lpSmartReview.dlms-action-primary') && !document.querySelector('#lpSmartReview').disabled")
+    assert browser.evaluate('document.querySelector("#lpPrimaryReviewForm").getAttribute("action")') == '/smart-review/generate'
+    for width in (1440,390):
+        browser.set_viewport(width,1000); browser.wait_for_page_ready()
+        value = _theme_contrast_snapshot(browser, {'primary':'#lpSmartReview'},include_gradients=True)['primary']
+        assert value['contrast'] >= 4.5, (theme,width,value)
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        output = os.environ.get('DLMS_PLAN_PROFILE_CAPTURE_DIR')
+        if output:
+            browser.activate(); browser.wait_for('document.hasFocus()')
+            browser.evaluate("document.querySelector('.learning-profile-actions a').focus();true")
+            browser.press_key('\ue004'); browser.evaluate("document.querySelector('.learning-profile-actions a').focus();true")
+            browser.wait_for("document.querySelector('[role=tooltip]:not([hidden])')")
+            shot = browser.command('browsingContext.captureScreenshot', {'context': browser.context, 'origin': 'document'})
+            (Path(output) / f'profile-populated-focus-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+            browser.press_key('\ue00c')
+    browser.click('#lpSmartReview')
+    browser.wait_for("location.pathname.startsWith('/quizzes/') && quizRecoveryReady")
+    assert not browser.evaluate("document.querySelector('link[href=\"/static/action-controls.css\"]')")
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as conn:
+        assert conn.execute('SELECT count(*) FROM study_responses r JOIN study_sessions s ON s.id=r.session_id WHERE s.quiz_id=?',(quiz_id,)).fetchone()[0] == 3
+        assert conn.execute('SELECT count(*) FROM study_sessions WHERE quiz_id=? AND completed_at IS NOT NULL',(quiz_id,)).fetchone()[0] == 1
+
+
+@pytest.mark.parametrize('theme', sorted(THEME_IDS))
+def test_certification_trophy_and_workspace_themes(browser_stack, theme):
+    """Native forms, isolated evidence, ordinary LAN HTTP and all theme choices."""
+    from PIL import Image
+    from pypdf import PdfWriter
+    from tests.browser._help_screenshots import capture_control
+    browser,root=browser_stack.browser,browser_stack.data_root
+    browser.context=browser.command('browsingContext.create', {'type':'tab'})['context']
+    base=browser_stack.base_url.replace('127.0.0.1','dlms-http.test')
+    browser.navigate(base+'/settings/appearance');_set_theme(browser,theme)
+    browser.navigate(base+'/certifications')
+    browser.wait_for_page_ready()
+    assert browser.evaluate('isSecureContext') is False
+    assert browser.evaluate("document.querySelector('main').textContent.includes('No certifications recorded yet')")
+    browser.navigate(base+'/certifications/new')
+    browser.wait_for("document.querySelector('[name=field_name]') && window.dlmsCsrfToken")
+    badge=root/'test-badge.png'
+    from PIL import ImageDraw
+    image=Image.new('RGB',(100,100),'#dceafa');draw=ImageDraw.Draw(image);draw.ellipse((8,8,92,92),fill='#184a70');draw.text((25,43),'SAMPLE',fill='white');image.save(badge)
+    evidence=root/'test-certificate.pdf';writer=PdfWriter();writer.add_blank_page(width=100,height=100)
+    with evidence.open('wb') as f:writer.write(f)
+    browser.evaluate("document.querySelector('[name=field_name]').value='Security governance — earned sample credential with a long, readable name';document.querySelector('[name=field_issuer]').value='Example issuer';document.querySelector('[name=field_earned]').value='2025-06-01';document.querySelector('[name=field_expiration]').value='2028-06-01';true")
+    browser.set_files('[name=badge]',[str(badge)])
+    browser.set_files('[name=certificate]',[str(evidence)])
+    browser.click('.cert-form [type=submit]')
+    browser.wait_for("document.querySelector('.cert-hero') && !document.querySelector('.cert-form')")
+    path=browser.evaluate('location.pathname');cid=path.split('/')[-1]
+    browser.click('a[href$="/edit"]')
+    # Current-period corrections are one Edit certification operation.
+    browser.wait_for("document.querySelector('[name=kind]').value==='certification'")
+    assert browser.evaluate("document.querySelector('[name=field_expiration]').value") == '2028-06-01'
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT count(*) FROM certification_cycles WHERE certification_id=?',(cid,)).fetchone()[0] == 1
+    browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-hero') && !document.querySelector('.cert-form')")
+    browser.click('a[href$="/goal"]');browser.wait_for("document.querySelector('[name=field_required]')")
+    browser.evaluate("document.querySelector('[name=field_required]').value='20';document.querySelector('[name=field_unit]').value='credits';document.querySelector('[name=field_planning_deadline]').value='2028-06-01';true")
+    browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-cycle') && !document.querySelector('.cert-form')")
+    browser.navigate(base+'/certifications/training/new')
+    browser.wait_for("document.querySelector('[name=duration_hours]')")
+    browser.evaluate("document.querySelector('[name=field_name]').value='Security learning workshop';document.querySelector('[name=field_provider]').value='Example provider';document.querySelector('[name=field_completed]').value='2026-09-01';document.querySelector('[name=duration_hours]').value='8';document.querySelector('[name=field_notes]').value='PRIVATE TRAINING NOTE';true")
+    browser.click('.cert-form [type=submit]');browser.wait_for("location.pathname.endsWith('/renewals') && document.querySelector('.cert-use-form')")
+    browser.navigate(base+path);browser.click('a[href$="/allocate"]')
+    browser.wait_for("document.querySelector('[name=training_id]')")
+    browser.evaluate("document.querySelector('[name=training_id]').selectedIndex=1;document.querySelector('[name=duration_hours]').value='6';document.querySelector('[name=field_submitted]').value='5';document.querySelector('[name=field_accepted]').value='3';true")
+    browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-metrics').textContent.includes('3 credits')")
+    with sqlite3.connect(root/'results.db') as c:
+        first=list(c.execute('SELECT * FROM certification_allocations'))
+        learning=list(c.execute('SELECT * FROM learning_events'));sessions=list(c.execute('SELECT * FROM study_sessions'))
+    browser.navigate(base+path+'/ai')
+    browser.wait_for("document.querySelector('[name=question]')")
+    browser.evaluate("document.querySelector('[name=include_certification]').checked=true;document.querySelector('[name=include_cycle]').checked=true;document.querySelector('[name=training]').checked=true;document.querySelector('[name=question]').value='Could this workshop qualify under current official rules?';true")
+    browser.click('button[type=submit]');browser.wait_for("document.querySelector('#certPrompt')")
+    assert not browser.evaluate("document.querySelector('#certPrompt').value.includes('PRIVATE TRAINING NOTE')")
+    assert browser.evaluate("document.querySelector('#certPrompt').value.includes('Security learning workshop')")
+    assert browser.evaluate("document.querySelector('#certAIPreview a[target=_blank]').search === ''")
+    browser.click('[data-cert-copy]')
+    assert 'Prompt' in browser.evaluate("document.querySelector('#certCopyStatus').textContent")
+    if theme == 'light':
+        # Check the actual clipboard after editing the preview, not just the
+        # success label. No clipboard permission or security preference override.
+        browser.evaluate("document.querySelector('#certPrompt').value += '\\nUser-edited question: café — exact preview';true")
+        expected_prompt = browser.evaluate("document.querySelector('#certPrompt').value")
+        browser.click('[data-cert-copy]')
+        browser.evaluate("const sink=document.createElement('textarea');sink.id='clipboardCheck';sink.setAttribute('aria-label','Disposable clipboard verification');document.querySelector('main').append(sink);sink.focus();true")
+        browser.command('input.performActions', {'context':browser.context,'actions':[{'type':'key','id':'clipboard-keys','actions':[
+            {'type':'keyDown','value':'\ue009'},{'type':'keyDown','value':'v'},
+            {'type':'keyUp','value':'v'},{'type':'keyUp','value':'\ue009'}]}]})
+        browser.wait_for("document.querySelector('#clipboardCheck').value.length > 0")
+        assert browser.evaluate("document.querySelector('#clipboardCheck').value") == expected_prompt
+        assert browser.evaluate("performance.getEntriesByType('resource').every(r=>new URL(r.name).origin===location.origin)")
+        browser.evaluate("document.querySelector('#clipboardCheck').remove();true")
+    for number in range(2,5):
+        browser.navigate(base+'/certifications/new');browser.wait_for("document.querySelector('[name=field_name]')")
+        browser.evaluate("document.querySelector('[name=field_name]').value="+json.dumps('Earned sample '+str(number))+";document.querySelector('[name=field_issuer]').value='Example issuer';document.querySelector('[name=field_earned]').value='2024-06-01';true")
+        browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-hero') && !document.querySelector('.cert-form')")
+    portal=root/'config/portal.json'
+    cfg=json.loads(portal.read_text());cfg['dashboard_card_visibility']['library']=False;cfg['dashboard_card_visibility']['build']=False
+    cfg['dashboard_card_visibility']['study_packs']=False;cfg['dashboard_card_visibility']['it']=False;cfg['dashboard_card_visibility']['law']=False;cfg['dashboard_card_visibility']['medical']=False;cfg['dashboard_card_visibility']['analytics']=False;cfg['dashboard_card_visibility']['settings']=False
+    portal.write_text(json.dumps(cfg))
+    output=os.environ.get('DLMS_CERTIFICATION_CAPTURE_DIR')
+    for route,name in [('/','trophy-quick-hidden'),(path,'detail'),('/certifications','list'),('/help/certifications','help')]:
+        for width in (1440,390):
+            browser.set_viewport(width,1000);browser.navigate(base+route);browser.wait_for_page_ready()
+            browser.wait_for("document.querySelector('#dlmsQuickTheme')?.options.length === 26")
+            if name.startswith('trophy'):
+                assert browser.evaluate("document.querySelector('#myCertifications .cert-card').getAttribute('href')") == path
+                assert browser.evaluate("document.querySelectorAll('#myCertifications .cert-card').length") == 3
+                assert browser.evaluate("document.querySelector('#myCertifications').textContent.includes('View all (4)')")
+                assert browser.evaluate("!document.querySelector('.dashboard-quick-tools')")
+                assert browser.evaluate("document.querySelector('#myCertifications > a[href=\"/settings/layout#certifications-visibility\"]').getBoundingClientRect().top-document.querySelector('#myCertifications .cert-grid').getBoundingClientRect().bottom") >= 19.5
+            if name.startswith('trophy') or name=='list':
+                browser.evaluate("document.querySelector('.cert-card img').scrollIntoView();true")
+                browser.wait_for("document.querySelector('.cert-card img').complete && document.querySelector('.cert-card img').naturalWidth>0")
+                assert browser.evaluate("getComputedStyle(document.querySelector('.cert-card img + span')).display==='none'")
+                # A missing image exposes the fallback without changing the record.
+                browser.evaluate("window.certBadgeSource=document.querySelector('.cert-card img').src;document.querySelector('.cert-card img').src='/certifications/attachments/'+'0'.repeat(32);true")
+                browser.wait_for("document.querySelector('.cert-card img').hidden && !document.querySelector('.cert-card img + span').hidden")
+                assert browser.evaluate("getComputedStyle(document.querySelector('.cert-card img + span')).display!=='none'")
+                browser.evaluate("const img=document.querySelector('.cert-card img');img.hidden=false;img.nextElementSibling.hidden=true;img.src=window.certBadgeSource;true")
+                browser.wait_for("document.querySelector('.cert-card img').complete && document.querySelector('.cert-card img').naturalWidth>0")
+                browser.evaluate("window.scrollTo(0,0);true")
+            assert browser.evaluate('document.documentElement.scrollWidth <= innerWidth'),(theme,width,name)
+            browser.activate();browser.evaluate("document.querySelector('main a').focus();true");browser.press_key('\ue004')
+            assert browser.evaluate('document.activeElement.matches(":focus-visible")')
+            if name=='detail':
+                browser.evaluate("document.querySelector('.cert-cycle summary').focus();true");browser.press_key(' ')
+                assert not browser.evaluate("document.querySelector('.cert-cycle').open")
+                browser.press_key(' ');assert browser.evaluate("document.querySelector('.cert-cycle').open")
+            if output and theme in ('light','dark','ethereal'):
+                shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+                (Path(output)/f'{name}-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+                if theme=='light' and width==1440 and name in ('custom-form','matches'):
+                    capture_control(b,Path(output)/('certifications-form.webp' if name=='custom-form' else 'certifications-matches.webp'),'.cert-form' if name=='custom-form' else 'main > .dashboard-panel')
+                if theme=='ethereal' and width==390 and name in ('detail','trophy-quick-hidden'):
+                    capture_control(browser,Path(output)/('certifications-cycle.webp' if name=='detail' else 'certifications-trophy.webp'),'.cert-cycle' if name=='detail' else '#myCertifications')
+    cfg['dashboard_card_visibility']['library']=True;portal.write_text(json.dumps(cfg))
+    browser.navigate(base+'/');browser.wait_for_page_ready()
+    assert browser.evaluate("document.getElementById('myCertifications').compareDocumentPosition(document.querySelector('.dashboard-overview-panel')) & Node.DOCUMENT_POSITION_FOLLOWING")
+    browser.click('#myCertifications a[href="/settings/layout#certifications-visibility"]');browser.wait_for("document.querySelector('[name=certification_count_mode]')");browser.evaluate("document.querySelector('[name=certification_count_mode]').value='all';true")
+    browser.click('button[value=save]');browser.wait_for("location.pathname==='/settings/layout' && location.search.includes('saved=1')")
+    assert json.loads(portal.read_text())['certification_display_count']=='all'
+    if output and theme in ('light','dark','ethereal'):
+        browser.set_viewport(1440,1000);browser.navigate(base+'/');browser.wait_for_page_ready()
+        shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+        (Path(output)/f'trophy-quick-shown-{theme}-1440.png').write_bytes(base64.b64decode(shot['data']))
+    browser.navigate(base+'/certifications/remove/certifications/'+cid);browser.wait_for_page_ready()
+    browser.click('main a[href="/certifications"]');browser.wait_for("location.pathname==='/certifications'")
+    with sqlite3.connect(root/'results.db') as c:
+        assert list(c.execute('SELECT * FROM certification_allocations'))==first
+        assert list(c.execute('SELECT * FROM learning_events'))==learning
+        assert list(c.execute('SELECT * FROM study_sessions'))==sessions
+        assert c.execute('SELECT count(*) FROM certifications').fetchone()[0]==4
+
+
+@pytest.fixture(autouse=True)
+def certification_native_zoom_profile(request, monkeypatch):
+    """Firefox's native 200% content zoom, configured in this disposable profile only."""
+    if not request.node.name.startswith(('test_certification_native_zoom', 'test_portable_native_zoom', 'test_study_mistakes_native_zoom')):
+        return
+    original = _firefox_command
+    def command(firefox, profile, port, env):
+        assert profile.name == 'profile' and profile.parent.name.startswith('firefox-session-')
+        import tempfile
+        assert profile.is_relative_to(Path(tempfile.gettempdir()))
+        with sqlite3.connect(profile/'content-prefs.sqlite') as conn:
+            conn.executescript('''CREATE TABLE groups(id INTEGER PRIMARY KEY,name TEXT NOT NULL);
+                CREATE TABLE settings(id INTEGER PRIMARY KEY,name TEXT NOT NULL);
+                CREATE TABLE prefs(id INTEGER PRIMARY KEY,groupID INTEGER REFERENCES groups(id),settingID INTEGER NOT NULL REFERENCES settings(id),value BLOB,timestamp INTEGER NOT NULL DEFAULT 0);
+                CREATE INDEX groups_idx ON groups(name);CREATE INDEX settings_idx ON settings(name);
+                CREATE INDEX prefs_idx ON prefs(timestamp,groupID,settingID);
+                INSERT INTO settings(id,name) VALUES(1,'browser.content.full-zoom');
+                INSERT INTO prefs(groupID,settingID,value) VALUES(NULL,1,2.0);PRAGMA user_version=6;''')
+        return original(firefox,profile,port,env)
+    monkeypatch.setattr(sys.modules[__name__], '_firefox_command', command)
+
+
+@pytest.mark.parametrize('theme', ('light','dark','ethereal'))
+def test_certification_native_zoom(browser_stack, theme):
+    browser,base=browser_stack.browser,browser_stack.base_url
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    browser.command('browsingContext.setViewport',{'context':browser.context,'viewport':None,'devicePixelRatio':None})
+    browser.navigate(base+'/settings/appearance');_set_theme(browser,theme)
+    browser.navigate(base+'/certifications/new');browser.wait_for("document.querySelector('[name=field_name]')")
+    browser.evaluate("document.querySelector('[name=field_name]').value='Earned sample — long certification title for practical renewal records';document.querySelector('[name=field_issuer]').value='Example issuer';document.querySelector('[name=field_earned]').value='2025-06-01';true")
+    browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-hero')")
+    path=browser.evaluate('location.pathname')
+    goal=browser.evaluate("document.querySelector('a[href$=\"/goal\"]').getAttribute('href')")
+    requirements=browser.evaluate("document.querySelector('a[href$=\"/requirements\"]').getAttribute('href')")
+    output=os.environ.get('DLMS_CERTIFICATION_CAPTURE_DIR')
+    for route,name in [(goal,'goal'),(requirements,'requirements'),('/settings/layout#certifications-visibility','display-settings'),('/settings/ai#portfolioPromptSettings','ai-settings'),('/','dashboard'),(path,'detail'),(path+'/edit','form'),('/certifications/training/new','training-form'),('/certifications/matches','matches'),(path+'/relationships','relationships'),('/help/certifications','help')]:
+        browser.navigate(base+route);browser.wait_for('devicePixelRatio===2 && document.querySelector("#dlmsQuickTheme")?.options.length===26')
+        browser.wait_for_page_ready()
+        if name=='goal':
+            browser.click('.cert-additional > summary')
+            assert browser.evaluate("document.querySelector('[name=field_annual_goal]').getBoundingClientRect().width<=192")
+        metrics=browser.evaluate('({inner:innerWidth,outer:outerWidth,dpr:devicePixelRatio,font:getComputedStyle(document.documentElement).fontSize})')
+        physical=next(w['width'] for w in browser.command('browser.getClientWindows',{})['clientWindows'] if w['active'])
+        assert abs(metrics['inner']*metrics['dpr']-physical)<=2
+        assert metrics['font']=='16px'
+        assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth'),(theme,name)
+        browser.activate();browser.evaluate("Array.from(document.querySelectorAll('main input:not([type=hidden]),main button,main a,main summary')).find(e=>e.getClientRects().length).focus();true");browser.press_key('\ue004')
+        assert browser.evaluate('document.activeElement.matches(":focus-visible")')
+        if output:
+            shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+            (Path(output)/f'native200-{name}-{theme}.png').write_bytes(base64.b64decode(shot['data']))
+            (Path(output)/f'native200-{name}-{theme}.json').write_text(json.dumps(metrics))
+        if name=='ai-settings':
+            browser.evaluate("document.querySelector('#portfolioPromptTemplate').focus();true");browser.press_key('\ue004')
+            browser.wait_for("document.activeElement.matches(':focus-visible')")
+            assert browser.evaluate("document.activeElement.getBoundingClientRect().bottom <= document.querySelector('.ai-settings-actions').getBoundingClientRect().top")
+            if output:(Path(output)/f'native200-ai-settings-focus-{theme}.png').write_bytes(base64.b64decode(browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'viewport'})['data']))
+        if name=='training-form':
+            browser.evaluate("document.querySelector('[name=field_name]').value='Nine-hour workshop';document.querySelector('[name=field_completed]').value='2026-10-01';document.querySelector('[name=duration_hours]').value='9';document.querySelector('[name=duration_minutes]').value='22';true")
+            browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-use-form')")
+            assert browser.evaluate('devicePixelRatio===2 && document.documentElement.scrollWidth<=innerWidth')
+            browser.click('[name=certifications]');browser.press_key('\ue004');browser.press_key('\ue004')
+            assert browser.evaluate("document.activeElement.matches('.cert-use-form summary:focus-visible')")
+            browser.press_key('\ue007');browser.wait_for("document.querySelector('.cert-use-form details').open")
+            assert browser.evaluate("document.querySelector('.cert-use-form details').open && document.activeElement.matches(':focus-visible')")
+            if output:
+                shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+                (Path(output)/f'native200-use-training-{theme}.png').write_bytes(base64.b64decode(shot['data']))
+        if name=='form':
+            browser.evaluate("document.querySelectorAll('.cert-additional').forEach(d=>d.open=true);true")
+            assert browser.evaluate('document.documentElement.scrollWidth<=innerWidth')
+            if output:
+                shot=browser.command('browsingContext.captureScreenshot',{'context':browser.context,'origin':'document'})
+                (Path(output)/f'native200-expanded-rules-{theme}.png').write_bytes(base64.b64decode(shot['data']))
+
+
+def test_certification_stale_tabs_failed_upload_and_retry_identity(browser_stack):
+    """Real native error/recovery pages keep records unchanged across competing tabs."""
+    browser,root=browser_stack.browser,browser_stack.data_root
+    base=browser_stack.base_url.replace('127.0.0.1','dlms-http.test')
+    browser.context=browser.command('browsingContext.create',{'type':'tab'})['context']
+    browser.navigate(base+'/certifications/new');browser.wait_for("document.querySelector('[name=field_name]')")
+    browser.evaluate("document.querySelector('[name=field_name]').value='Actual earned sample';document.querySelector('[name=field_issuer]').value='Example issuer';document.querySelector('[name=field_earned]').value='2025-01-01';true")
+    invalid=root/'invalid-certificate.svg';invalid.write_text('<svg onload="alert(1)"/>')
+    browser.set_files('[name=badge]',[str(invalid)])
+    browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('[role=alert]')")
+    assert browser.evaluate("document.querySelector('[name=field_name]').value")=='Actual earned sample'
+    assert 'PNG' in browser.evaluate("document.querySelector('[role=alert]').textContent")
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT count(*) FROM certifications').fetchone()[0]==0
+        assert c.execute('SELECT count(*) FROM certification_attachments').fetchone()[0]==0
+    browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('.cert-hero')")
+    path=browser.evaluate('location.pathname');cid=path.split('/')[-1]
+    # Two edit pages share the same profile guard; a saved newer form wins.
+    browser.navigate(base+path+'/edit');browser.wait_for("document.querySelector('[name=field_name]')")
+    first=browser.context
+    second=browser.command('browsingContext.create',{'type':'tab'})['context']
+    try:
+        browser.context=second;browser.navigate(base+path+'/edit');browser.wait_for("document.querySelector('[name=field_name]')")
+        browser.evaluate("document.querySelector('[name=field_name]').value='Newer saved title';true")
+        browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('main h1').textContent.includes('Newer saved title')")
+        browser.context=first
+        browser.evaluate("document.querySelector('[name=field_name]').value='Stale title';true")
+        browser.click('.cert-form [type=submit]');browser.wait_for("document.querySelector('[role=alert]')")
+        assert 'another tab' in browser.evaluate("document.querySelector('[role=alert]').textContent")
+        assert browser.evaluate("document.querySelector('[name=field_name]').value")=='Stale title'
+        with sqlite3.connect(root/'results.db') as c:
+            assert json.loads(c.execute('SELECT data_json FROM certifications WHERE id=?',(cid,)).fetchone()[0])['name']=='Newer saved title'
+        # Stale edits and cancelled removal must not create another credential.
+        browser.navigate(base+'/certifications')
+        assert browser.evaluate("document.querySelectorAll('.cert-card').length")==1
+        browser.navigate(base+'/certifications/remove/certifications/'+cid);browser.wait_for("document.querySelector('[name=confirm]')")
+        browser.click('main a[href="/certifications"]');browser.wait_for("location.pathname==='/certifications'")
+        assert browser.evaluate("document.querySelectorAll('.cert-card').length")==1
+    finally:
+        browser.context=first
+        browser.command('browsingContext.close',{'context':second})
+
+@pytest.mark.parametrize('theme', ('light','dark','ethereal'))
+def test_certification_custom_portfolio_journey(browser_stack, theme):
+    """Any issuer: current edits, shared training, manual AI, early renewal and hiding."""
+    from PIL import Image
+    from pypdf import PdfWriter
+    from tests.browser._help_screenshots import capture_control
+    b,root=browser_stack.browser,browser_stack.data_root
+    base=browser_stack.base_url.replace('127.0.0.1','dlms-http.test')
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    b.navigate(base+'/settings/appearance');_set_theme(b,theme)
+    badge=root/'custom-logo.png';Image.new('RGB',(80,80),'navy').save(badge)
+    pdf=root/'custom-official.pdf';writer=PdfWriter();writer.add_blank_page(width=100,height=100)
+    with pdf.open('wb') as f:writer.write(f)
+    def fill(values):
+        b.evaluate('(()=>{const values='+json.dumps(values)+';for(const [name,value] of Object.entries(values)){document.querySelector(`[name="${name}"]`).value=value;}return true;})()')
+    def save():
+        b.click('.cert-form [type=submit]');b.wait_for("!document.querySelector('.cert-form') && document.querySelector('main')")
+    b.navigate(base+'/certifications/new');b.wait_for("document.querySelector('[name=field_name]')")
+    fill(dict(field_name='River stewardship — custom earned credential',field_issuer='Independent Watershed Guild',field_version='Field standard 9',field_earned='2025-01-01',field_expiration='2028-01-01',field_notes='PRIVATE CERTIFICATION NOTE'))
+    b.set_files('[name=badge]',[str(badge)]);b.set_files('[name=certificate]',[str(pdf)]);save()
+    path=b.evaluate('location.pathname');cid=path.split('/')[-1]
+    assert b.evaluate("document.querySelector('main').textContent.includes('Set renewal goal')")
+    certificate=b.evaluate("Array.from(document.querySelectorAll('.cert-hero a')).find(a=>a.textContent==='View certificate').getAttribute('href')")
+    logo=b.evaluate("document.querySelector('.cert-hero img').getAttribute('src')")
+    assert certificate!=logo
+    b.navigate(base+path+'/edit');b.wait_for("document.querySelector('[name=field_expiration]')")
+    fill(dict(field_expiration='2028-06-30'));save()
+    b.click('a[href$="/requirements"]');b.wait_for("document.querySelector('[name=track_annual_kind]')")
+    fill(dict(field_required='30',track_annual_kind='minimum',track_annual_amount='10',track_year_basis='anniversary',track_year_anchor='2025-07-01',track_reporting_start='2025-07-01',track_reporting_end='2028-06-30',track_conditions='Membership and issuer confirmation required',field_policy='https://example.org/custom-rules'))
+    # Native disclosure activates from the keyboard; focus remains visible.
+    b.activate();b.evaluate("document.querySelector('[name=track_annual_kind]').focus();true");b.press_key('\ue004')
+    assert b.evaluate('document.activeElement.matches(":focus-visible")')
+    save()
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT COUNT(*) FROM certification_cycles WHERE certification_id=?',(cid,)).fetchone()[0]==1
+    # A planning edit must not redefine this recorded mandatory annual rule.
+    b.click('a[href$="/goal"]');b.wait_for("document.querySelector('[name=edit_scope]').value==='goal'")
+    assert not b.evaluate("!!document.querySelector('[name=field_annual_goal]')")
+    assert 'minimum is 10 credits' in b.evaluate("document.querySelector('.cert-form').textContent")
+    fill(dict(field_required='30'));save()
+    with sqlite3.connect(root/'results.db') as c:
+        rules=json.loads(c.execute('SELECT data_json FROM certification_cycles WHERE certification_id=?',(cid,)).fetchone()[0])['tracking']
+        assert rules['annual_kind']=='minimum' and rules['annual_amount']==10
+    # Record a second, custom credential; no preset is needed for either.
+    b.navigate(base+'/certifications/new');b.wait_for("document.querySelector('[name=field_name]')")
+    fill(dict(field_name='Community field educator',field_issuer='Local Education Cooperative',field_earned='2025-01-01',field_expiration='2027-01-01'));save()
+    target=b.evaluate('location.pathname').split('/')[-1]
+    b.navigate(base+'/certifications/training/new');b.wait_for("document.querySelector('[name=duration_hours]')")
+    fill(dict(field_name='Water sampling workshop',field_provider='Community learning center',field_completed='2026-08-01',duration_hours='8',field_course_url='https://example.org/workshop',field_topics='Public sampling methods',field_notes='PRIVATE TRAINING NOTE'));save()
+    for cert_id in (cid,target):
+        b.navigate(base+'/certifications/training');b.wait_for("document.querySelector('.cert-log-row')")
+        assert b.evaluate("document.querySelector('main').textContent.includes('1 saved course.')")
+        b.click('main a[href$="/renewals"]');b.wait_for("document.querySelector('.cert-use-form')")
+        with sqlite3.connect(root/'results.db') as c:period=c.execute('SELECT id FROM certification_cycles WHERE certification_id=?',(cert_id,)).fetchone()[0]
+        b.click('[name=certifications][value="'+cert_id+'"]')
+        fill({'estimate_'+cert_id:'5'})
+        b.click('.cert-use-form button[type=submit]');b.wait_for("location.pathname==='/certifications/training'")
+        with sqlite3.connect(root/'results.db') as c:aid=c.execute('SELECT id FROM certification_allocations WHERE cycle_id=?',(period,)).fetchone()[0]
+        b.navigate(base+'/certifications/'+cert_id+'/allocations/'+aid+'/edit');b.wait_for("document.querySelector('[name=field_proposed]')")
+        fill(dict(duration_hours='6',field_proposed='5',field_reviewed='yes',field_submitted='4',field_accepted='2',field_rationale='Verified relevant workshop; partial acceptance',field_source='https://example.org/custom-rules'));save()
+    b.navigate(base+'/certifications/matches');b.wait_for("document.querySelector('[name=credentials]')")
+    b.evaluate("document.querySelector('[name=training]').checked=true;true");b.click('main button[type=submit]');b.wait_for("document.querySelector('#certPrompt')")
+    prompt=b.evaluate("document.querySelector('#certPrompt').value")
+    assert 'Independent Watershed Guild' in prompt and 'Local Education Cooperative' in prompt
+    assert 'Public sampling methods' in prompt and 'Unknown' in prompt
+    assert 'PRIVATE' not in prompt and cid not in prompt and target not in prompt
+    # Observe the real copy event without replacing clipboard behavior. The
+    # selected text must be the exact editable preview, including a user's edit.
+    b.evaluate("document.querySelector('#certPrompt').value+='\\nMy reviewed question';document.addEventListener('copy',()=>{const e=document.activeElement;window.certCopiedSelection=e.value.slice(e.selectionStart,e.selectionEnd);},{once:true});true")
+    b.click('[data-cert-copy]');assert 'Prompt' in b.evaluate("document.querySelector('#certCopyStatus').textContent")
+    assert b.evaluate('window.certCopiedSelection') == prompt+'\nMy reviewed question'
+    assert b.evaluate("performance.getEntriesByType('resource').every(r=>new URL(r.name).origin===location.origin)")
+    # Explicit relationship; no automatic target mutation.
+    b.navigate(base+path+'/relationships');b.wait_for("document.querySelector('[name=target]')")
+    fill(dict(target=target,trigger='renewing',rule='https://example.org/related-renewal',conditions='Manual issuer-confirmed renewal only'))
+    b.click('main button[type=submit]');b.wait_for("location.search.includes('saved=1')")
+    b.click('main a[href*="/cycles/new?from="]');b.wait_for("document.querySelector('[name=confirm_relationship]')")
+    fill(dict(field_expiration='2030-01-01',field_renewed='2026-10-07'))
+    b.click('[name=confirm_relationship]');save()
+    assert b.evaluate("Array.from(document.querySelectorAll('.cert-hero a')).some(a=>a.textContent==='Add certificate')")
+    b.navigate(base+path+'/cycles/new');b.wait_for("document.querySelector('[name=field_expiration]')")
+    fill(dict(field_expiration='2031-06-30',field_renewed='2026-10-07'));save()
+    assert b.evaluate("document.querySelectorAll('.cert-cycle').length")==2
+    assert b.evaluate("Array.from(document.querySelectorAll('.cert-hero a')).every(a=>a.textContent!=='View certificate')")
+    assert b.evaluate('!!document.querySelector(' + json.dumps('main a[href="'+certificate+'"]') + ')')
+    # Snapshot all facts; hiding and re-enabling must preserve them and the separate count.
+    with sqlite3.connect(root/'results.db') as c:
+        before={t:list(c.execute('SELECT * FROM '+t)) for t in ('certifications','certification_cycles','certification_training','certification_allocations','certification_attachments','learning_events','study_sessions')}
+    b.navigate(base+'/settings/layout');b.wait_for("document.querySelector('[name=show_certifications]')")
+    b.click('[name=show_certifications]');b.click('button[value=save]');b.wait_for("location.search.includes('saved')")
+    b.navigate(base+'/');b.wait_for_page_ready()
+    assert not b.evaluate("!!document.querySelector('#myCertifications')")
+    b.wait_for("window.dlmsPortalConfig || document.querySelector('#dlmsQuickTheme')")
+    assert b.evaluate("Array.from(document.querySelectorAll('aside a[href^=\"/certifications\"]')).every(a=>a.getClientRects().length===0)")
+    b.navigate(base+'/settings/layout');b.wait_for("document.querySelector('[name=show_certifications]')")
+    assert not b.evaluate("document.querySelector('[name=show_certifications]').checked")
+    b.click('[name=show_certifications]');b.click('button[value=save]');b.wait_for("location.search.includes('saved')")
+    output=os.environ.get('DLMS_CERTIFICATION_CAPTURE_DIR')
+    for width in (1440,390):
+        b.command('browsingContext.setViewport',{'context':b.context,'viewport':{'width':width,'height':900}})
+        for route,name in [(path,'custom-detail'),(path+'/edit','custom-form'),('/certifications/training','library'),('/certifications/matches','matches'),(path+'/relationships','relationships')]:
+            b.navigate(base+route);b.wait_for_page_ready()
+            assert b.evaluate('document.documentElement.scrollWidth<=innerWidth'),(theme,width,name)
+            if output:
+                shot=b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'document'})
+                (Path(output)/f'{name}-{theme}-{width}.png').write_bytes(base64.b64decode(shot['data']))
+                if theme=='light' and width==1440 and name in ('custom-form','matches'):
+                    capture_control(b,Path(output)/('certifications-form.webp' if name=='custom-form' else 'certifications-matches.webp'),'.cert-form' if name=='custom-form' else 'main > .dashboard-panel')
+    with sqlite3.connect(root/'results.db') as c:
+        assert before=={t:list(c.execute('SELECT * FROM '+t)) for t in before}
+        assert c.execute('SELECT COUNT(*) FROM certification_training').fetchone()[0]==1
+        assert c.execute('SELECT COUNT(*) FROM certification_allocations').fetchone()[0]==2
+
+
+def test_certification_optional_presets_only_fill_unsaved_rules(browser_stack):
+    b=browser_stack.browser;base=browser_stack.base_url
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    b.navigate(base+'/certifications/new');b.wait_for("document.querySelector('[name=field_name]')")
+    b.evaluate("document.querySelector('[name=field_name]').value='My custom credential';document.querySelector('[name=field_issuer]').value='Independent organization';document.querySelector('[name=field_earned]').value='2025-01-01';document.querySelector('[name=field_expiration]').value='2028-01-01';true")
+    b.click('.cert-form [type=submit]');b.wait_for("document.querySelector('.cert-hero')")
+    with sqlite3.connect(browser_stack.data_root/'results.db') as c:
+        before={t:list(c.execute('SELECT * FROM '+t)) for t in ('certifications','certification_cycles')}
+    b.click('a[href$="/requirements"]');b.wait_for_page_ready("document.querySelector('#applyCertPreset')")
+    assert b.evaluate("document.querySelectorAll('[data-category-row]').length")==0
+    assert b.evaluate("document.querySelector('#applyCertPreset').disabled")
+    for key,required,annual in [('lpic-membership','60','unknown'),('lpic-exams','','none'),('cism-2026','120','minimum'),('cissp-v7','120','pacing'),('peoplecert-custom','','unknown')]:
+        original=b.evaluate("document.querySelector('[name=field_required]').value")
+        b.evaluate("document.querySelector('#certRulePreset').value="+json.dumps(key)+";document.querySelector('#certRulePreset').dispatchEvent(new Event('change',{bubbles:true}));true")
+        assert not b.evaluate("document.querySelector('#applyCertPreset').disabled")
+        b.click('#applyCertPreset')
+        assert b.evaluate("document.querySelector('[name=field_required]').value")==original
+        b.click('#cancelCertPreset')
+        assert b.evaluate("document.querySelector('[name=field_required]').value")==original
+        b.click('#applyCertPreset');b.click('#confirmCertPreset')
+        assert b.evaluate("document.querySelector('[name=field_required]').value")==required
+        assert b.evaluate("document.querySelector('[name=track_annual_kind]').value")==annual
+        assert b.evaluate("document.querySelector('[name=track_verification]').value")=='unverified'
+    b.evaluate("document.querySelector('#certRulePreset').value='';document.querySelector('#certRulePreset').dispatchEvent(new Event('change',{bubbles:true}));true")
+    assert b.evaluate("document.querySelector('#applyCertPreset').disabled")
+    with sqlite3.connect(browser_stack.data_root/'results.db') as c:
+        assert before=={t:list(c.execute('SELECT * FROM '+t)) for t in before}
+
+
+@pytest.mark.parametrize('browser_stack', [{'alwaysMatch': {'unhandledPromptBehavior': 'ignore'}}], indirect=True)
+@pytest.mark.parametrize('round_size,direction', [(2, 'term_to_definition'), (2, 'definition_to_term'), (5, 'random')])
+def test_matching_exam_round_identity_resume_and_lost_acknowledgement(browser_stack, round_size, direction):
+    stack, b = browser_stack, browser_stack.browser
+    base = stack.base_url.replace('127.0.0.1', 'dlms-http.test')
+    b.navigate(base + '/matching_bank_import')
+    b.evaluate("document.querySelector('[name=quiz_title]').value='Validated matching bank';document.querySelector('[name=round_size]').value=" + json.dumps(str(round_size)) + ";document.querySelector('[name=direction]').value=" + json.dumps(direction) + ";const input=document.querySelector('[name=csv_file]'),files=new DataTransfer();files.items.add(new File(['term,definition\\nAlpha,First\\nBeta,Second\\nGamma,Third\\nDelta,Fourth\\nEpsilon,Fifth\\n'],'matching.csv',{type:'text/csv'}));input.files=files.files;true")
+    b.click('form button[type=submit]')
+    b.wait_for_page_ready("location.pathname.startsWith('/edit_quiz/')")
+    registry = json.loads((stack.data_root / 'config/quizzes.json').read_text())
+    entries = registry.values() if isinstance(registry, dict) else registry
+    entry = next(item for item in entries if item.get('title') == 'Validated matching bank')
+    url = base + '/quizzes/' + entry['html']
+    b.navigate(url)
+    _wait_for_quiz_mode_controls(b, count=1)
+    assert not b.evaluate('isSecureContext')
+    b.click('.exam-mode-btn')
+    b.wait_for(f"document.querySelectorAll('.matching-drop-target').length==={round_size}")
+    variant = b.evaluate('quiz[0]._matching_variant')
+    b.click('[data-match-answer="0"]')
+    b.click('[data-match-target="0"]')
+    preload=b.command('script.addPreloadScript', {'contexts':[b.context], 'functionDeclaration':
+        "() => {const original=window.fetch;let first=true;window.fetch=(...args)=>{"
+        "if(first&&String(args[0]).startsWith('/api/study/quiz/')){first=false;return new Promise(resolve=>{window.releaseInitialReadiness=()=>resolve(original(...args));});}"
+        "return original(...args);};}"})['script']
+    try:
+        b.navigate(url)
+        b.wait_for("typeof window.releaseInitialReadiness === 'function'")
+        assert not b.evaluate("Boolean(document.querySelector('.quiz-recovery-resume'))")
+        assert b.evaluate('quizRecoveryReady') is False
+        b.evaluate('window.releaseInitialReadiness();true')
+        b.wait_for("document.querySelector('.quiz-recovery-panel')")
+    finally:
+        b.command('script.removePreloadScript',{'script':preload})
+    b.click('.quiz-recovery-resume')
+    b.wait_for(f"document.querySelectorAll('.matching-drop-target').length==={round_size}")
+    assert b.evaluate('quiz[0]._matching_variant') == variant
+    for index in range(1, round_size):
+        b.click(f'[data-match-answer="{index}"]')
+        b.click(f'[data-match-target="{index}"]')
+    b.evaluate("window.matchingSaveTrace=[];const original=window.fetch;let lose=true;window.fetch=async function(input,options){const response=await original.call(this,input,options);if(String(input).includes('/record_attempt')){window.matchingSaveTrace.push({status:response.status,body:JSON.parse(options.body),response:await response.clone().json()});if(lose){lose=false;throw new TypeError('Acknowledgement interrupted');}}return response;};true")
+    assert b.click_with_prompt('#submitBtn', accept=True)
+    b.wait_for("window.matchingSaveTrace.length===1 && document.querySelector('#result [role=alert]')")
+    assert b.evaluate('window.matchingSaveTrace[0].status') == 200
+    assert b.evaluate('window.matchingSaveTrace[0].body.percent') == 100
+    b.click('#result button[onclick="retryExamAttemptSave()"]')
+    b.wait_for("window.matchingSaveTrace.length===2 && document.querySelector('#result').textContent.includes('saved successfully')")
+    trace = b.evaluate('window.matchingSaveTrace')
+    assert trace[0]['body'] == trace[1]['body']
+    assert trace[1]['status'] == 200
+    with sqlite3.connect(stack.data_root / 'results.db') as conn:
+        assert conn.execute('SELECT score,total,percent FROM attempts WHERE quiz_id=?', (entry['id'],)).fetchall() == [(1, 1, 100)]
+        response = json.loads(conn.execute("SELECT response_json FROM learning_events WHERE quiz_id=? AND event_type='exam_answer'", (entry['id'],)).fetchone()[0])
+        assert response['matching_variant'] == variant
+    output = os.environ.get('DLMS_REMEDIATION_CAPTURE_DIR')
+    if output:
+        target = Path(output); target.mkdir(parents=True, exist_ok=True)
+        (target / f'matching-saved-{round_size}-{direction}.png').write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot', {'context': b.context, 'origin': 'document'})['data']))
+        (target / f'matching-trace-{round_size}-{direction}.json').write_text(json.dumps(trace, indent=2))
+
+
+def test_certification_presets_wait_for_deferred_script(browser_stack):
+    """Reproduce DOM-ready/event-handler-not-ready without sleeps or timeouts."""
+    b = browser_stack.browser
+    b.navigate(browser_stack.base_url + '/certifications/new')
+    b.evaluate("document.querySelector('[name=field_name]').value='Deferred custom';document.querySelector('[name=field_issuer]').value='Independent';true")
+    b.click('.cert-form [type=submit]')
+    b.wait_for_page_ready("document.querySelector('.cert-hero')")
+    b.command('session.subscribe', {'events': ['network.beforeRequestSent'], 'contexts': [b.context]})
+    interception = b.command('network.addIntercept', {
+        'phases': ['beforeRequestSent'], 'contexts': [b.context],
+        'urlPatterns': [{'type': 'string', 'pattern': browser_stack.base_url + '/static/certifications.js'}],
+    })['intercept']
+    b.command('network.setCacheBehavior', {'cacheBehavior': 'bypass', 'contexts': [b.context]})
+    blocked = []
+    receive = b._receive_text
+    def record():
+        raw = receive()
+        event = json.loads(raw)
+        if event.get('method') == 'network.beforeRequestSent' and event['params'].get('isBlocked'):
+            blocked.append(event['params']['request']['request'])
+        return raw
+    b._receive_text = record
+    try:
+        b.click('a[href$="/requirements"]')
+        b.wait_for("document.querySelector('#applyCertPreset')")
+        assert blocked
+        assert b.evaluate("document.readyState") != 'complete'
+        b.evaluate("document.querySelector('#certRulePreset').value='cism-2026';document.querySelector('#certRulePreset').dispatchEvent(new Event('change',{bubbles:true}));true")
+        # The old DOM-only wait reached this state and its enabled assertion
+        # failed before the deferred listener existed.
+        assert b.evaluate("document.querySelector('#applyCertPreset').disabled")
+        b.command('network.continueRequest', {'request': blocked.pop()})
+        b.wait_for_page_ready("document.querySelector('#applyCertPreset')")
+        b.evaluate("document.querySelector('#certRulePreset').dispatchEvent(new Event('change',{bubbles:true}));true")
+        assert not b.evaluate("document.querySelector('#applyCertPreset').disabled")
+        b.click('#applyCertPreset')
+        b.click('#confirmCertPreset')
+        assert b.evaluate("document.querySelector('[name=field_required]').value") == '120'
+    finally:
+        for request in blocked:
+            b.command('network.continueRequest', {'request': request})
+        b._receive_text = receive
+        b.command('network.removeIntercept', {'intercept': interception})
+
+def test_library_post_move_waits_for_document_and_search_listener(browser_stack):
+    """The actual lifecycle test must survive deferred post-submit scripts."""
+    b = browser_stack.browser
+    evaluate, ready, receive = b.evaluate, b.wait_for_page_ready, b._receive_text
+    state = {'interception': None, 'pending': False, 'observed': False}
+    blocked = []
+    moved_selector = (
+        '.library-folder[data-folder-name="Browser Hidden Folder"] [data-id='
+        + json.dumps(browser_stack.metadata['critical_html']) + ']'
+    )
+
+    def record():
+        raw = receive()
+        event = json.loads(raw)
+        if event.get('method') == 'network.beforeRequestSent' and event['params'].get('isBlocked'):
+            blocked.append(event['params']['request']['request'])
+        return raw
+
+    def submit(expression):
+        if "const form = card.querySelector('.move-quiz-form')" in expression and 'form.requestSubmit()' in expression:
+            b.command('session.subscribe', {'events': ['network.beforeRequestSent'], 'contexts': [b.context]})
+            state['interception'] = b.command('network.addIntercept', {
+                'phases': ['beforeRequestSent'], 'contexts': [b.context],
+                'urlPatterns': [{'type': 'string', 'pattern': browser_stack.base_url + '/static/local-time.js'}],
+            })['intercept']
+            b.command('network.setCacheBehavior', {'cacheBehavior': 'bypass', 'contexts': [b.context]})
+            b._receive_text = record
+            state['pending'] = True
+        return evaluate(expression)
+
+    def after_navigation(expression='true', timeout=6.0):
+        if state['pending']:
+            # Prove we reached the moved quiz's new document while the
+            # DOMContentLoaded search listener is still unable to initialize.
+            b.wait_for(f'Boolean(document.querySelector({json.dumps(moved_selector)}))')
+            assert blocked
+            assert evaluate('document.readyState') != 'complete'
+            state['observed'] = True
+            while blocked:
+                b.command('network.continueRequest', {'request': blocked.pop()})
+            b.command('network.removeIntercept', {'intercept': state['interception']})
+            state.update(interception=None, pending=False)
+        return ready(expression, timeout)
+
+    b.evaluate, b.wait_for_page_ready = submit, after_navigation
+    try:
+        # Reuse every existing visibility, search, reorder and persistence
+        # assertion. The pre-fix CSS-only wait times out at its search check.
+        test_library_hidden_folder_lifecycle_search_and_order_in_real_browser(browser_stack)
+        assert state['observed']
+    finally:
+        while blocked:
+            b.command('network.continueRequest', {'request': blocked.pop()})
+        if state['interception']:
+            b.command('network.removeIntercept', {'intercept': state['interception']})
+        b.evaluate, b.wait_for_page_ready, b._receive_text = evaluate, ready, receive
+
+
+@pytest.mark.parametrize('theme', ('light','dark','ethereal'))
+def test_certification_simple_minutes_multi_renewal_and_ai_launch(browser_stack, theme):
+    """Actual LAN HTTP, exact duration, deliberate estimates and truthful launch fallback."""
+    b,root=browser_stack.browser,browser_stack.data_root
+    base=browser_stack.base_url.replace('127.0.0.1','dlms-http.test')
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    b.navigate(base+'/settings/appearance');_set_theme(b,theme)
+    def fill(values):
+        b.evaluate('(()=>{for(const [k,v] of Object.entries('+json.dumps(values)+'))document.querySelector(`[name="${k}"]`).value=v;return true;})()')
+    def save():
+        b.click('.cert-form [type=submit]');b.wait_for("!document.querySelector('.cert-form') && document.querySelector('main')")
+    ids=[]
+    for name,unit,goal in [('Professional renewal','hours','20'),('Custom field credential','credits','30'),('Unknown dates','credits','')]:
+        b.navigate(base+'/certifications/new');b.wait_for("document.querySelector('[name=field_name]')")
+        fill(dict(field_name=name,field_issuer='Independent learning guild',field_expiration='' if name=='Unknown dates' else '2029-10-01'));save()
+        b.click('a[href$="/goal"]');b.wait_for("document.querySelector('[name=field_required]')")
+        fill(dict(field_required=goal,field_unit=unit));save()
+        ids.append(b.evaluate('location.pathname').split('/')[-1])
+    b.navigate(base+'/certifications/training/new');b.wait_for("document.querySelector('[name=duration_minutes]')")
+    fill(dict(field_name='Practical security — complete course with a readable long title',field_provider='Independent provider',field_completed='2026-10-01',duration_hours='9',duration_minutes='22',field_topics='Public course topics',field_notes='PRIVATE TRAINING NOTE'))
+    assert b.evaluate("document.querySelector('[name=field_name]').getBoundingClientRect().width > document.querySelector('[name=field_provider]').getBoundingClientRect().width")
+    output=os.environ.get('DLMS_CERTIFICATION_CAPTURE_DIR')
+    def shot(name):
+        if output:
+            (Path(output)/(name+'-'+theme+'.png')).write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'document'})['data']))
+    shot('simple-add-training-desktop')
+    if output and theme=='light':
+        from tests.browser._help_screenshots import capture_control
+        capture_control(b,Path(output)/'certifications-training.webp','.cert-form')
+    save()
+    b.wait_for("document.querySelector('.cert-use-form')")
+    tid=b.evaluate('location.pathname').split('/')[-2]
+    assert b.evaluate('isSecureContext') is False
+    assert b.evaluate("document.querySelectorAll('[name=certifications]:checked').length")==0
+    assert b.evaluate("document.querySelector('main').textContent.includes('9 h 22 min')")
+    assert b.evaluate("document.querySelector('[name=estimate_"+ids[0]+"]').value")=='9.37'
+    assert b.evaluate("document.querySelector('[name=estimate_"+ids[1]+"]').value")==''
+    for cid in ids[:2]:b.click('[name=certifications][value="'+cid+'"]')
+    fill({'estimate_'+ids[1]:'5'})
+    shot('simple-use-renewal-desktop')
+    b.click('.cert-use-form button[type=submit]');b.wait_for("location.pathname==='/certifications/training' && document.querySelector('.cert-log-row')")
+    assert b.evaluate("document.querySelector('main').textContent.includes('Estimated 9.37 / 20 hours')")
+    assert b.evaluate("document.querySelector('main').textContent.includes('Estimated 5.0 / 30 credits')")
+    with sqlite3.connect(root/'results.db') as c:
+        course=json.loads(c.execute('SELECT data_json FROM certification_training WHERE id=?',(tid,)).fetchone()[0])
+        assert course['duration_minutes']==562
+        allocations=[json.loads(r[0]) for r in c.execute('SELECT data_json FROM certification_allocations')]
+        assert len(allocations)==2 and all(a['accepted']==0 and a['submitted']==0 for a in allocations)
+    b.navigate(base+'/certifications/training/'+tid+'/edit');b.wait_for("document.querySelector('[name=duration_minutes]')")
+    assert b.evaluate("document.querySelector('[name=duration_hours]').value")=='9'
+    assert b.evaluate("document.querySelector('[name=duration_minutes]').value")=='22'
+    save()
+    b.navigate(base+'/certifications/matches');b.wait_for("document.querySelector('[name=credentials]')")
+    selected=b.evaluate("Array.from(document.querySelectorAll('[name=credentials]:checked')).map(e=>e.value)")
+    assert set(selected)==set(ids[:2])
+    b.click('[name=training]');b.click('main button[type=submit]');b.wait_for("document.querySelector('#certPrompt')")
+    prompt=b.evaluate("document.querySelector('#certPrompt').value")
+    assert '9 h 22 min' in prompt and '562' in prompt and 'PRIVATE' not in prompt and 'Unknown dates' not in prompt
+    # Substitute only external opening, to observe URL/options without contacting AI.
+    b.evaluate("window.launchCalls=[];window.originalOpen=window.open;window.open=(...args)=>{window.launchCalls.push(args);return null;};document.querySelector('#certPrompt').value+='\\nReviewed exact text';true")
+    exact=b.evaluate("document.querySelector('#certPrompt').value")
+    b.click('[data-cert-launch]')
+    assert b.evaluate('window.launchCalls')==[['https://chatgpt.com/','_blank','noopener,noreferrer']]
+    assert 'Prompt copied.' in b.evaluate("document.querySelector('#certCopyStatus').textContent")
+    assert 'Open AI manually' in b.evaluate("document.querySelector('#certCopyStatus').textContent")
+    b.evaluate("const sink=document.createElement('textarea');sink.id='clipboardCheck';sink.setAttribute('aria-label','Disposable clipboard verification');document.querySelector('main').append(sink);sink.focus();true")
+    b.command('input.performActions',{'context':b.context,'actions':[{'type':'key','id':'clipboard','actions':[{'type':'keyDown','value':'\ue009'},{'type':'keyDown','value':'v'},{'type':'keyUp','value':'v'},{'type':'keyUp','value':'\ue009'}]}]})
+    b.wait_for("document.querySelector('#clipboardCheck').value.length>0")
+    assert b.evaluate("document.querySelector('#clipboardCheck').value")==exact
+    b.evaluate("document.querySelector('#clipboardCheck').remove();window.originalExecCommand=document.execCommand;document.execCommand=()=>false;true")
+    b.click('[data-cert-launch]')
+    assert 'Copy failed.' in b.evaluate("document.querySelector('#certCopyStatus').textContent")
+    assert 'Prompt copied' not in b.evaluate("document.querySelector('#certCopyStatus').textContent")
+    assert b.evaluate("document.querySelector('#certProviderLink').getAttribute('href')")=='https://chatgpt.com/'
+    b.click('[data-cert-copy]');b.wait_for("document.querySelector('#certCopyStatus').textContent.includes('Copy failed')")
+    b.evaluate("document.execCommand=window.originalExecCommand;window.open=window.originalOpen;true")
+    assert b.evaluate("performance.getEntriesByType('resource').every(r=>new URL(r.name).origin===location.origin)")
+    for width in (1440,390):
+        b.set_viewport(width,1000)
+        for url,name in [('/certifications/training','simple-library'),('/certifications/training/'+tid+'/renewals','simple-use'),('/certifications/'+ids[0],'simple-progress')]:
+            b.navigate(base+url);b.wait_for_page_ready()
+            assert b.evaluate('document.documentElement.scrollWidth<=innerWidth'),(theme,width,name)
+            b.evaluate("document.querySelector('main a').focus();true");b.press_key('\ue004')
+            assert b.evaluate('document.activeElement.matches(":focus-visible")')
+            shot(name+'-'+str(width))
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT COUNT(*) FROM certification_allocations').fetchone()[0]==2
+        assert all(json.loads(r[0])['accepted']==0 for r in c.execute('SELECT data_json FROM certification_allocations'))
+        assert c.execute('SELECT COUNT(*) FROM learning_events').fetchone()[0]==0
+
+@pytest.mark.parametrize('theme', ('light','dark','ethereal'))
+def test_certification_guided_nine_credentials(browser_stack, theme):
+    """Owner-equivalent disposable data: simple goals, unchanged facts, narrow controls."""
+    import uuid
+    from dlms.services import certifications as service
+    from PIL import Image, ImageDraw
+    from pypdf import PdfWriter
+    from io import BytesIO
+    from tests.browser._help_screenshots import capture_control
+    b,root=browser_stack.browser,browser_stack.data_root
+    base=browser_stack.base_url.replace('127.0.0.1','dlms-http.test')
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    b.navigate(base+'/settings/appearance');_set_theme(b,theme)
+    image=Image.new('RGB',(140,140),'#e6eff8');draw=ImageDraw.Draw(image);draw.ellipse((15,15,125,125),fill='#204465');draw.text((40,65),'SAMPLE',fill='white')
+    logo=BytesIO();image.save(logo,'PNG');pdf=BytesIO();w=PdfWriter();w.add_blank_page(width=100,height=100);w.write(pdf)
+    with sqlite3.connect(root/'results.db') as c:
+        c.row_factory=sqlite3.Row
+        def apply(action,data,**kw):return service.apply(c,dict(action=action,data=data,request_id=uuid.uuid4().hex,**service.state(c.cursor()),**kw))['id']
+        ids=[apply('certification',dict(name=name,issuer='Disposable learning guild',earned='2025-01-01',expiration='2029-10-01')) for name in ['CySA+','Security governance','Network practitioner','Cloud operations','Privacy specialist','Risk management','Audit fundamentals','Service management','Custom field credential']]
+        period=service.detail(c.cursor(),ids[0])['cycles'][0]['id']
+        cert=service.get(c.cursor(),'certifications',ids[0])
+        service.apply(c,dict(action='certification',id=ids[0],data=cert['data'],edit_scope='identity',edit_current=True,cycle_id=period,request_id=uuid.uuid4().hex,**service.state(c.cursor())),{'badge':logo.getvalue(),'certificate':pdf.getvalue()})
+        tid=apply('training',dict(name='Practical security course — reviewed sample',provider='Independent provider',completed='2026-10-01',duration_minutes=562,hours=9.37,topics='Public course description',notes='PRIVATE NOTES'))
+        aid=apply('allocation',dict(hours=9,submitted=9,accepted=9),cycle_id=period,training_id=tid)
+        original=service.get(c.cursor(),'certification_allocations',aid)['data']
+    path='/certifications/'+ids[0]
+    def fill(values):b.evaluate('(()=>{for(const [k,v] of Object.entries('+json.dumps(values)+'))document.querySelector(`[name="${k}"]`).value=v;return true;})()')
+    def save():b.click('.cert-form [type=submit]');b.wait_for("document.querySelector('.cert-hero') && !document.querySelector('.cert-form')")
+    b.navigate(base+path);b.wait_for("document.querySelector('.cert-hero')")
+    b.click('a[href$="/goal"]');b.wait_for("document.querySelector('[name=edit_scope]').value==='goal'")
+    assert not b.evaluate("!!document.querySelector('[name=field_expiration]')")
+    assert b.evaluate("document.querySelector('.cert-form [type=submit]').textContent.trim()")=='Save goal'
+    assert 'CySA+ · Period 1' in b.evaluate("document.querySelector('.cert-task-context').textContent")
+    fill(dict(field_required='40',field_unit='credits',field_planning_deadline='2029-09-01'));save()
+    b.navigate(base+path);b.wait_for("document.querySelector('.cert-cycle')")
+    assert 'Estimated 9.0 / 40 credits' in b.evaluate("document.querySelector('.cert-cycle').textContent")
+    # Saving identity without a replacement upload retains both independent files.
+    b.click('a[href$="/edit"]');b.wait_for("document.querySelector('[name=field_name]')")
+    assert 'Replace badge' in b.evaluate("document.querySelector('.cert-form').textContent")
+    assert 'Replace certificate' in b.evaluate("document.querySelector('.cert-form').textContent")
+    save()
+    b.navigate(base+'/certifications/training/'+tid+'/renewals');b.wait_for("document.querySelector('.cert-use-form')")
+    assert b.evaluate("document.querySelectorAll('[name=certifications]:checked').length")==0
+    assert b.evaluate("document.querySelector('[data-renewal-submit]').disabled")
+    assert '0 certifications selected' in b.evaluate("document.querySelector('#renewalSelectionCount').textContent")
+    assert 'keeps its saved 9 h 0 min association' in b.evaluate("document.querySelector('.cert-use-form').textContent")
+    row='[data-renewal-choice]:has([value="'+ids[0]+'"])'
+    assert 'Already linked' in b.evaluate('document.querySelector('+json.dumps(row)+').textContent')
+    assert b.evaluate('document.querySelector('+json.dumps(row)+').querySelector("[data-renewal-edit]").hidden')
+    for cid in ids[1:3]:b.click('[name=certifications][value="'+cid+'"]')
+    assert not b.evaluate("document.querySelector('[data-renewal-submit]').disabled")
+    assert '2 certifications selected' in b.evaluate("document.querySelector('#renewalSelectionCount').textContent")
+    fill({'estimate_'+ids[1]:'5','estimate_'+ids[2]:'6'})
+    b.click('.cert-use-form [type=submit]');b.wait_for("location.pathname==='/certifications/training'")
+    assert 'Used toward: CySA+' in b.evaluate("document.querySelector('main').textContent")
+    with sqlite3.connect(root/'results.db') as c:
+        assert json.loads(c.execute('SELECT data_json FROM certification_allocations WHERE id=?',(aid,)).fetchone()[0])==original
+        assert c.execute('SELECT COUNT(*) FROM certification_allocations').fetchone()[0]==3
+    b.navigate(base+'/certifications/matches');b.wait_for("document.querySelector('#certMatchCount')?.textContent.includes('9 certifications')")
+    assert b.evaluate("document.querySelectorAll('[name=credentials]:checked').length")==9
+    b.click('[name=training]');b.click('main [type=submit]');b.wait_for("document.querySelector('#certPrompt')")
+    assert '9 certifications · 1 course' in b.evaluate("document.querySelector('#certAIPreview').textContent")
+    assert not b.evaluate("document.querySelector('#certPreviewDetails').open")
+    assert b.evaluate("document.querySelector('[data-cert-launch]').textContent")=='Copy & open AI'
+    assert '9 h 22 min' in b.evaluate("document.querySelector('#certPrompt').value")
+    assert 'PRIVATE NOTES' not in b.evaluate("document.querySelector('#certPrompt').value")
+    output=os.environ.get('DLMS_CERTIFICATION_CAPTURE_DIR')
+    def shot(name,selector=None):
+        if output:
+            (Path(output)/(name+'-'+theme+'.png')).write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'document'})['data']))
+            if selector and theme=='light':capture_control(b,Path(output)/(name+'.webp'),selector)
+    shot('guided-ai','.dashboard-panel#certAIPreview')
+    b.click('[data-match-selection] summary');b.click('[name=credentials]')
+    assert b.evaluate("document.querySelector('[data-cert-launch]').disabled && document.querySelector('[data-cert-copy]').disabled")
+    assert 'Prepare prompt again' in b.evaluate("document.querySelector('#certCopyStatus').textContent")
+    b.click('main [type=submit]');b.wait_for("document.querySelector('#certAIPreview')?.textContent.includes('8 certifications · 1 course')")
+    assert not b.evaluate("document.querySelector('[data-cert-launch]').disabled")
+    b.navigate(base+'/settings/layout#certifications-visibility');b.wait_for("document.querySelector('[name=certification_count_mode]')")
+    b.evaluate("const mode=document.querySelector('[name=certification_count_mode]');mode.value='custom';mode.dispatchEvent(new Event('change'));true")
+    fill(dict(certification_display_count='4',certification_sort='name'))
+    # Restore cannot discard an edited form without confirmation.
+    b.evaluate("window.restorePrompts=[];window.confirm=message=>{restorePrompts.push(message);return false;};true")
+    b.click('[value=dashboard_defaults]')
+    assert b.evaluate('restorePrompts.length')==1
+    assert b.evaluate("document.querySelector('[name=certification_display_count]').value")=='4'
+    b.click('[value=save]');b.wait_for("location.search.includes('saved')")
+    b.navigate(base+'/');b.wait_for("document.querySelector('#myCertifications .cert-card')")
+    assert b.evaluate("document.querySelectorAll('#myCertifications .cert-card').length")==4
+    assert 'View all (9)' in b.evaluate("document.querySelector('#myCertifications').textContent")
+    # The URL fragment arrives before layout-settings.js wires the count selector.
+    b.click('#myCertifications a[href*="certifications-visibility"]');b.wait_for_page_ready("location.pathname==='/settings/layout' && location.hash==='#certifications-visibility'")
+    assert b.evaluate("document.querySelector('[name=certification_display_count]').value")=='4'
+    b.evaluate("const mode=document.querySelector('[name=certification_count_mode]');mode.value='all';mode.dispatchEvent(new Event('change'));true")
+    assert b.evaluate("document.querySelector('[data-custom-certification-count]').hidden")
+    # Do not save this inspection-only change.
+    for width in (1440,390):
+        b.set_viewport(width,1000)
+        for route,name,selector in [(path,'guided-detail','.cert-cycle'),(path+'/edit','guided-identity','.cert-form'),(path+'/cycles/'+period+'/goal','guided-goal','.cert-form'),(path+'/cycles/'+period+'/requirements','guided-requirements','.cert-form'),('/certifications/training','guided-library','main > section'),('/certifications/training/'+tid+'/renewals','guided-use','main > section'),('/settings/layout#certifications-visibility','guided-settings','#certifications-visibility')]:
+            b.navigate(base+route);b.wait_for_page_ready()
+            assert b.evaluate('document.documentElement.scrollWidth<=innerWidth'),(theme,width,name)
+            if name=='guided-requirements':assert b.evaluate("document.querySelector('#applyCertPreset').disabled")
+            if name=='guided-use':b.click('[name=certifications][value="'+ids[0]+'"]')
+            b.activate();b.evaluate("Array.from(document.querySelectorAll('main input:not([type=hidden]),main a,main button,main summary')).find(e=>e.getClientRects().length).focus();true");b.press_key('\ue004')
+            assert b.evaluate('document.activeElement.matches(":focus-visible")')
+            shot(name+'-'+str(width),selector if width==1440 else None)
+    with sqlite3.connect(root/'results.db') as c:
+        c.row_factory=sqlite3.Row
+        assert service.get(c.cursor(),'certification_allocations',aid)['data']==original
+        assert service.get(c.cursor(),'certification_training',tid)['data']['duration_minutes']==562
+        assert len(service.detail(c.cursor(),ids[0])['cycles'])==1
+        assert service.detail(c.cursor(),ids[0])['cycles'][0]['data']['expiration']=='2029-10-01'
+        assert c.execute('SELECT COUNT(*) FROM certification_attachments').fetchone()[0]==2
+        assert c.execute('SELECT COUNT(*) FROM learning_events').fetchone()[0]==0
+
+@pytest.mark.parametrize('theme', ('light','dark','ethereal'))
+def test_ai_settings_coherent_save_cancel_and_focus(browser_stack, theme):
+    b=browser_stack.browser;base=browser_stack.base_url.replace('127.0.0.1','dlms-http.test')
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    b.navigate(base+'/settings/appearance');_set_theme(b,theme)
+    b.navigate(base+'/settings/ai');b.wait_for("document.querySelector('#aiSettingsForm') && window.dlmsCsrfToken")
+    assert b.evaluate("[...document.querySelector('#aiSettingsForm').children].filter(e=>!e.matches('input[type=hidden]')).at(-1).matches('.ai-settings-actions')")
+    before=b.evaluate("document.querySelector('#portfolioPromptTemplate').value")
+    b.evaluate("document.querySelector('#portfolioPromptTemplate').value='EDITED {{portfolio_context}}';document.querySelector('#portfolioPromptTemplate').dispatchEvent(new Event('input',{bubbles:true}));true")
+    assert 'Unsaved changes' in b.evaluate("document.querySelector('#aiSettingsStatus').textContent")
+    b.evaluate("window.confirm=()=>false;true");b.click('#cancelAISettings')
+    assert b.evaluate("document.querySelector('#portfolioPromptTemplate').value")=='EDITED {{portfolio_context}}'
+    b.evaluate("window.confirm=()=>true;true");b.click('#cancelAISettings')
+    b.wait_for("document.querySelector('#portfolioPromptTemplate').value!== 'EDITED {{portfolio_context}}'")
+    assert b.evaluate("document.querySelector('#portfolioPromptTemplate').value")==before
+    b.click('#resetPortfolioPrompt')
+    # Programmatic default reset also announces the form's dirty state when changed.
+    b.evaluate("document.querySelector('#portfolioPromptTemplate').value='PORTFOLIO {{portfolio_context}}';document.querySelector('#certificationPromptTemplate').value='SINGLE {{certification_context}}';document.querySelector('#aiProvider').value='claude';document.querySelector('#aiProvider').dispatchEvent(new Event('change',{bubbles:true}));true")
+    b.click('#aiSettingsForm [type=submit]');b.wait_for("location.search==='?saved=1'")
+    assert 'saved' in b.evaluate("document.querySelector('.settings-success-banner').textContent")
+    b.navigate(base+'/settings/ai')
+    assert b.evaluate("document.querySelector('#portfolioPromptTemplate').value")=='PORTFOLIO {{portfolio_context}}'
+    assert b.evaluate("document.querySelector('#certificationPromptTemplate').value")=='SINGLE {{certification_context}}'
+    assert b.evaluate("document.querySelector('#aiProvider').value")=='claude'
+    # Validation returns every editor, not a dead-end text error or a partial write.
+    b.evaluate("document.querySelector('#aiCustomUrl').value='javascript:invalid';document.querySelector('#portfolioPromptTemplate').value='RETAINED {{portfolio_context}}';true")
+    b.click('#aiSettingsForm [type=submit]');b.wait_for("document.querySelector('[role=alert]')")
+    assert b.evaluate("document.querySelector('#portfolioPromptTemplate').value")=='RETAINED {{portfolio_context}}'
+    b.evaluate("window.confirm=()=>true;true");b.click('#cancelAISettings')
+    b.wait_for("document.querySelector('#portfolioPromptTemplate')?.value==='PORTFOLIO {{portfolio_context}}'")
+    output=os.environ.get('DLMS_CERTIFICATION_CAPTURE_DIR')
+    for width in (1440,390):
+        b.set_viewport(width,1000);b.navigate(base+'/settings/ai');b.wait_for_page_ready();b.evaluate("document.querySelector('#portfolioPromptSettings').scrollIntoView();true")
+        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        assert b.evaluate("document.querySelector('#portfolioPromptTemplate').getBoundingClientRect().width>document.querySelector('#portfolioPromptSettings').getBoundingClientRect().width*.9")
+        b.activate();b.evaluate("document.querySelector('#portfolioPromptTemplate').focus();true");b.press_key('\ue004')
+        b.wait_for("document.hasFocus() && document.activeElement.matches(':focus-visible')")
+        b.wait_for("document.querySelector('.ai-settings-actions').getBoundingClientRect().bottom<=innerHeight+1")
+        assert not b.evaluate("getComputedStyle(document.querySelector('.ai-settings-actions')).backgroundColor").startswith('rgba')
+        assert b.evaluate("(()=>{const r=document.activeElement.getBoundingClientRect(),a=document.querySelector('.ai-settings-actions').getBoundingClientRect();return r.bottom<=a.top || document.querySelector('.ai-settings-actions').contains(document.activeElement);})()")
+        if output:
+            (Path(output)/f'ai-settings-{width}-{theme}.png').write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'document'})['data']))
+            (Path(output)/f'ai-settings-focused-{width}-{theme}.png').write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'viewport'})['data']))
+
+
+def test_shared_provider_settings_drive_study_and_certification_launch(browser_stack):
+    b=browser_stack.browser;base=browser_stack.base_url.replace('127.0.0.1','dlms-http.test')
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    # Log a real disposable credential/course; AI selection does not allocate it.
+    b.navigate(base+'/certifications/new');b.wait_for("document.querySelector('[name=field_name]')")
+    b.evaluate("document.querySelector('[name=field_name]').value='Manual planning';document.querySelector('[name=field_issuer]').value='Custom guild';document.querySelector('[name=field_expiration]').value='2029-10-01';true")
+    b.click('.cert-form [type=submit]');b.wait_for("document.querySelector('.cert-hero')")
+    b.navigate(base+'/certifications/training/new');b.wait_for("document.querySelector('[name=duration_hours]')")
+    b.evaluate("document.querySelector('[name=field_name]').value='Selected course';document.querySelector('[name=field_completed]').value='2026-10-01';document.querySelector('[name=duration_hours]').value=9;document.querySelector('[name=duration_minutes]').value=22;true")
+    b.click('.cert-form [type=submit]');b.wait_for("document.querySelector('.cert-use-form')")
+    for provider,url in [('claude','https://claude.ai/'),('local','https://example.org/manual-ai')]:
+        b.navigate(base+'/settings/ai');b.wait_for("document.querySelector('#aiProvider')")
+        b.evaluate("document.querySelector('[name=ai_helper_enabled]').checked=true;document.querySelector('#aiProvider').value="+json.dumps(provider)+";document.querySelector('#aiCustomUrl').value="+json.dumps(url if provider=='local' else '')+";document.querySelector('#portfolioPromptTemplate').value='PORTFOLIO {{portfolio_context}}';document.querySelector('#certificationPromptTemplate').value='SINGLE {{certification_context}}';true")
+        b.click('#aiSettingsForm [type=submit]');b.wait_for("location.search==='?saved=1'")
+        b.navigate(base+'/certifications/matches');b.wait_for("document.querySelector('[name=training]')")
+        b.click('[name=training]');b.click('main [type=submit]');b.wait_for("document.querySelector('#certPrompt')")
+        payload=b.evaluate("document.querySelector('#certPrompt').value")
+        assert payload.startswith('PORTFOLIO ') and '9 h 22 min' in payload
+        assert '562' in payload or '9 h 22 min' in payload
+        assert b.evaluate("document.querySelector('[data-cert-launch]').textContent")=='Copy & open AI'
+        # Capture the real copy event while preventing external navigation.
+        b.evaluate("window.copied=[];window.opened=[];document.addEventListener('copy',()=>copied.push(document.activeElement.value));window.open=(url)=>{opened.push(url);return null;};document.querySelector('#certPrompt').value+='\\nREVIEWED EDIT';true")
+        b.click('[data-cert-launch]')
+        assert b.evaluate('copied.at(-1)')==payload+'\nREVIEWED EDIT'
+        assert b.evaluate('opened')==[url]
+        assert b.evaluate('isSecureContext') is False
+        _,html=_new_regular_study_quiz(browser_stack,2)
+        b.navigate(base+'/quizzes/'+html)
+        b.wait_for("quizRecoveryReady && studyAIConfig && studyAIConfig.ai_provider==="+json.dumps(provider))
+        b.click('.study-mode-btn');b.wait_for('durableStudySession !== null && document.querySelector("#choices .choice")')
+        b.evaluate("window.opened=[];window.open=url=>{opened.push(url);return null;};true")
+        b.click('button[onclick*=reviewCurrentQuestionWithAI]')
+        assert b.evaluate('opened')==[url]
+        b.wait_for('studyLearningEventSaves.size===0')
+    with sqlite3.connect(browser_stack.data_root/'results.db') as c:
+        assert c.execute('SELECT COUNT(*) FROM certification_allocations').fetchone()[0]==0
+
+
+def _check_certification_deadline_dates(browser_stack, theme, native_zoom=False):
+    """Real date forms over ordinary HTTP; targets never rewrite expiry or credits."""
+    import uuid
+    from dlms.services import certifications as service
+    from tests.browser._help_screenshots import capture_control
+    b=browser_stack.browser;root=browser_stack.data_root
+    base=browser_stack.base_url.replace('127.0.0.1','dlms-http.test')
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    if native_zoom:b.command('browsingContext.setViewport',{'context':b.context,'viewport':None,'devicePixelRatio':None})
+    b.navigate(base+'/settings/appearance');_set_theme(b,theme)
+    with sqlite3.connect(root/'results.db') as c:
+        c.row_factory=sqlite3.Row
+        def apply(action,data,**kw):return service.apply(c,dict(action=action,data=data,request_id=uuid.uuid4().hex,**service.state(c.cursor()),**kw))['id']
+        cid=apply('certification',dict(name='Independent credential — three separate dates',issuer='Sample learning association',earned='2025-01-01',start='2025-01-01',expiration='2029-11-01',planning_deadline='2029-03-11',renewal_deadline='2029-10-01',required=40,unit='credits'))
+        period=service.detail(c.cursor(),cid)['cycles'][0];pid=period['id']
+        tid=apply('training',dict(name='Practical course',completed='2026-10-01',duration_minutes=562))
+        aid=apply('allocation',dict(hours=9,proposed=10,submitted=9,accepted=9),cycle_id=pid,training_id=tid)
+        facts=list(c.execute('SELECT * FROM certification_allocations'))
+        data={**period['data'],'legacy_deadline':dict(value='2028-09-01',source='cycle.data.renewal',source_schema=9,classification='unresolved')}
+        c.execute('UPDATE certification_cycles SET data_json=? WHERE id=?',(json.dumps(data),pid));c.commit()
+    path='/certifications/'+cid
+    def open_page(route):b.navigate(base+route);b.wait_for_page_ready()
+    def fill(name,value):b.evaluate('document.querySelector('+json.dumps('[name='+name+']')+').value='+json.dumps(value)+';true')
+    def save():b.click('.cert-form [type=submit]');b.wait_for("document.querySelector('.cert-hero') && !document.querySelector('.cert-form')")
+    open_page(path+'/cycles/'+pid+'/goal')
+    assert not b.evaluate("!!document.querySelector('[name=field_renewal_deadline]')")
+    fill('field_planning_deadline','2029-03-12');save()
+    assert 'Planning deadline: 2029-03-12' in b.evaluate("document.querySelector('.cert-cycle').textContent")
+    assert '2029-03-12' not in b.evaluate("document.querySelector('.cert-cycle > summary').textContent")
+    assert 'Expires 2029-11-01' in b.evaluate("document.querySelector('.cert-cycle > summary').textContent")
+    assert 'Unclassified — not used as a deadline' in b.evaluate("document.querySelector('.cert-warning').textContent")
+    open_page(path+'/cycles/'+pid+'/goal');fill('field_planning_deadline','');save()
+    assert 'Renewal deadline (user recorded): 2029-10-01' in b.evaluate("document.querySelector('.cert-cycle').textContent")
+    open_page(path+'/cycles/'+pid+'/requirements');fill('field_renewal_deadline','');save()
+    assert 'Expires: 2029-11-01' in b.evaluate("document.querySelector('.cert-cycle').textContent")
+    open_page(path+'/cycles/'+pid+'/goal');fill('field_planning_deadline','2029-03-12');save()
+    open_page(path+'/cycles/'+pid+'/requirements');fill('field_renewal_deadline','2029-10-01');save()
+    output=os.environ.get('DLMS_CERTIFICATION_CAPTURE_DIR')
+    widths=(None,) if native_zoom else (1440,390)
+    for width in widths:
+        if width:b.set_viewport(width,1000)
+        for route,name,selector in [(path,'summary','.cert-cycle'),(path+'/cycles/'+pid+'/goal','goal','.cert-form'),(path+'/cycles/'+pid+'/requirements','requirements','.cert-form')]:
+            open_page(route)
+            if name=='summary':
+                b.evaluate("Array.from(document.querySelectorAll('summary')).find(e=>e.textContent==='Details — period information').parentElement.open=true;true")
+            assert b.evaluate('document.documentElement.scrollWidth<=innerWidth'),(theme,width,name)
+            if native_zoom:assert b.evaluate('devicePixelRatio')==2
+            b.activate();b.evaluate("Array.from(document.querySelectorAll('main a,main input:not([type=hidden]),main summary')).find(e=>e.getClientRects().length).focus();true");b.press_key('\ue004')
+            assert b.evaluate('document.activeElement.matches(":focus-visible")')
+            if output:
+                prefix='dates-'+name+'-'+str(width or 'native200')+'-'+theme
+                (Path(output)/(prefix+'.png')).write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'document'})['data']))
+                if theme=='light' and width==1440:capture_control(b,Path(output)/(prefix+'.webp'),selector)
+    open_page(path+'/ai')
+    b.click('[name=include_cycle]');fill('question','Explain these separate dates');b.click('main button[type=submit]');b.wait_for("document.querySelector('#certPrompt')")
+    prompt=b.evaluate("document.querySelector('#certPrompt').value")
+    for label in ('Planning deadline','Renewal deadline (user recorded; not issuer verified)','Expires','unresolved'):assert label in prompt
+    with sqlite3.connect(root/'results.db') as c:
+        c.row_factory=sqlite3.Row;current=service.detail(c.cursor(),cid)['cycles'][0]
+        assert current['data']['expiration']=='2029-11-01'
+        assert current['data']['planning_deadline']=='2029-03-12'
+        assert current['data']['renewal_deadline']=='2029-10-01'
+        assert list(c.execute('SELECT * FROM certification_allocations'))==facts
+        assert service.get(c.cursor(),'certification_training',tid)['data']['duration_minutes']==562
+        assert current['totals']['accepted']==9
+
+
+@pytest.mark.parametrize('browser_stack',['America/New_York','Pacific/Auckland'],indirect=True)
+@pytest.mark.parametrize('theme',('light','dark','ethereal'))
+def test_certification_deadline_dates(browser_stack,theme):
+    _check_certification_deadline_dates(browser_stack,theme)
+
+
+@pytest.mark.parametrize('theme',('light','dark','ethereal'))
+def test_certification_native_zoom_deadlines(browser_stack,theme):
+    _check_certification_deadline_dates(browser_stack,theme,True)
+
+
+@pytest.mark.parametrize('classification',('planning_deadline','renewal_deadline'))
+def test_certification_legacy_date_classification_error_retry(browser_stack,classification):
+    import uuid
+    from dlms.services import certifications as service
+    b=browser_stack.browser;root=browser_stack.data_root
+    base=browser_stack.base_url.replace('127.0.0.1','dlms-http.test')
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    b.set_viewport(390,1000)
+    with sqlite3.connect(root/'results.db') as c:
+        c.row_factory=sqlite3.Row
+        out=service.apply(c,dict(action='certification',data=dict(name='Classification retry sample',issuer='Custom issuer',expiration='2029-11-01',required=20),request_id=uuid.uuid4().hex,**service.state(c.cursor())))
+        cid=out['id'];period=service.detail(c.cursor(),cid)['cycles'][0];pid=period['id']
+        initial={**period['data'],'legacy_deadline':dict(value='2029-09-01',source='cycle.data.renewal',source_schema=9,classification='unresolved')}
+        c.execute('UPDATE certification_cycles SET data_json=? WHERE id=?',(json.dumps(initial),pid));c.commit()
+    b.navigate(base+'/certifications/'+cid+'/cycles/'+pid+'/requirements');b.wait_for_page_ready()
+    options=b.evaluate("Array.from(document.querySelector('[name=field_classify_legacy_deadline]').options).map(o=>o.value)")
+    assert options==['','planning_deadline','renewal_deadline']
+    b.evaluate("document.querySelector('[name=field_classify_legacy_deadline]').value="+json.dumps(classification)+";document.querySelector('[name=track_reporting_start]').value='2029-01-01';document.querySelector('[name=track_reporting_end]').value='2028-01-01';true")
+    identity=b.evaluate("({request:document.querySelector('[name=request_id]').value,generation:document.querySelector('[name=generation]').value,revision:document.querySelector('[name=revision]').value})")
+    b.click('.cert-form [type=submit]');b.wait_for("document.querySelector('[role=alert]')?.textContent.includes('Reporting end cannot precede')")
+    assert b.evaluate("document.querySelector('[name=field_classify_legacy_deadline]')?.value")==classification
+    assert '2029-09-01' in b.evaluate("document.querySelector('#legacyDeadline').textContent")
+    assert b.evaluate("({request:document.querySelector('[name=request_id]').value,generation:document.querySelector('[name=generation]').value,revision:document.querySelector('[name=revision]').value})")==identity
+    with sqlite3.connect(root/'results.db') as c:assert json.loads(c.execute('SELECT data_json FROM certification_cycles WHERE id=?',(pid,)).fetchone()[0])==initial
+    assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+    b.activate();b.evaluate("document.querySelector('[name=field_classify_legacy_deadline]').focus();true");b.press_key('\ue004')
+    assert b.evaluate('document.activeElement.matches(":focus-visible")')
+    output=os.environ.get('DLMS_CERTIFICATION_CAPTURE_DIR')
+    if output:(Path(output)/('classification-error-'+classification+'.png')).write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'document'})['data']))
+    b.evaluate("document.querySelector('[name=track_reporting_end]').value='2030-01-01';true")
+    b.click('.cert-form [type=submit]');b.wait_for("document.querySelector('.cert-hero') && !document.querySelector('.cert-form')")
+    with sqlite3.connect(root/'results.db') as c:
+        saved=json.loads(c.execute('SELECT data_json FROM certification_cycles WHERE id=?',(pid,)).fetchone()[0])
+        assert saved[classification]=='2029-09-01'
+        assert saved['renewal_deadline' if classification=='planning_deadline' else 'planning_deadline']==''
+        assert saved['expiration']=='2029-11-01'
+        assert saved['legacy_deadline']=={**initial['legacy_deadline'],'classification':classification}
+        assert c.execute('SELECT COUNT(*) FROM certification_actions WHERE request_id=?',(identity['request'],)).fetchone()[0]==1
+    b.navigate(base+'/certifications/'+cid);b.wait_for_page_ready()
+    assert 'Classified by you as '+classification.replace('_',' ') in b.evaluate("document.querySelector('.cert-warning').textContent")
+
+
+def _check_certification_control_spacing(browser_stack, theme, native_zoom=False):
+    """Two control layouts, with actual sorting and keyboard training navigation."""
+    import uuid
+    from dlms.services import certifications as service
+    from tests.browser._help_screenshots import capture_control
+    b,root=browser_stack.browser,browser_stack.data_root
+    base=browser_stack.base_url.replace('127.0.0.1','dlms-http.test')
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    if native_zoom:b.command('browsingContext.setViewport',{'context':b.context,'viewport':None,'devicePixelRatio':None})
+    b.navigate(base+'/settings/appearance');_set_theme(b,theme)
+    with sqlite3.connect(root/'results.db') as conn:
+        conn.row_factory=sqlite3.Row
+        def add(action,data,**parents):
+            return service.apply(conn,dict(action=action,data=data,request_id=uuid.uuid4().hex,**service.state(conn.cursor()),**parents))['id']
+        cid=add('certification',dict(name='Zulu security credential',issuer='Sample training association',earned='2025-01-01',expiration='2029-11-01',required=40))
+        alpha=add('certification',dict(name='Alpha architecture credential',issuer='Sample training association',earned='2026-01-01',expiration='2030-11-01'))
+        pid=service.detail(conn.cursor(),cid)['cycles'][0]['id']
+        tid=add('training',dict(name='Practical security course',provider='Sample provider',completed='2026-10-01',duration_minutes=562))
+        add('allocation',dict(hours=9,proposed=10,submitted=9,accepted=9),cycle_id=pid,training_id=tid)
+        facts={table:list(conn.execute('SELECT * FROM '+table)) for table in ('certification_cycles','certification_allocations','learning_events','study_sessions')}
+    output=os.environ.get('DLMS_CERT_CONTROL_CAPTURE_DIR')
+    layouts=[]
+    for width in ((None,) if native_zoom else (1440,390)):
+        if width:b.set_viewport(width,1000)
+        variant=str(width or 'native200')+'-'+theme
+        b.navigate(base+'/certifications');b.wait_for_page_ready()
+        b.evaluate("document.querySelector('[name=sort]').value='name';true")
+        b.click('form[action="/certifications/display"] button')
+        b.wait_for_page_ready("location.pathname==='/certifications' && document.querySelector('[name=sort]')?.value==='name'")
+        b.navigate(base+'/certifications')
+        b.wait_for_page_ready("document.querySelector('[name=sort]')?.value==='name'")
+        assert b.evaluate("[...document.querySelectorAll('.cert-card')].map(n=>n.getAttribute('href'))")==['/certifications/'+alpha,'/certifications/'+cid]
+        assert json.loads((root/'config/portal.json').read_text())['certification_sort']=='name'
+        b.activate();b.evaluate("document.querySelector('[name=sort]').focus();true");b.press_key('\ue004')
+        assert b.evaluate("document.activeElement.matches('form[action=\"/certifications/display\"] button:focus-visible')")
+        sort=b.evaluate("""(()=>{const f=document.querySelector('form[action="/certifications/display"]'),s=f.querySelector('select').getBoundingClientRect(),b=f.querySelector('button').getBoundingClientRect();return {select:{left:s.left,right:s.right,top:s.top,bottom:s.bottom},button:{left:b.left,right:b.right,top:b.top,bottom:b.bottom},overflow:document.documentElement.scrollWidth>innerWidth};})()""")
+        if output:
+            capture_control(b,Path(output)/('sort-'+variant+'.webp'),'form[action="/certifications/display"]')
+            (Path(output)/('list-'+variant+'.png')).write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'document'})['data']))
+        b.navigate(base+'/certifications/'+cid);b.wait_for_page_ready()
+        b.activate();b.evaluate("document.querySelector('.cert-period-content > section > details:last-of-type > summary').focus();true");b.press_key('\ue004')
+        assert b.evaluate("document.activeElement.matches('[data-use-training]:focus-visible')")
+        detail=b.evaluate("""(()=>{const b=document.querySelector('[data-use-training]'),r=b.getBoundingClientRect(),a=document.querySelector('.cert-cycle .cert-log-row').getBoundingClientRect();return {gap:a.top-r.bottom,margin:getComputedStyle(b).marginBottom,overflow:document.documentElement.scrollWidth>innerWidth,href:b.getAttribute('href')};})()""")
+        assert detail['href']=='/certifications/'+cid+'/cycles/'+pid+'/allocate'
+        if native_zoom:
+            assert b.evaluate('devicePixelRatio===2 && getComputedStyle(document.documentElement).fontSize==="16px"')
+            physical=next(w['width'] for w in b.command('browser.getClientWindows',{})['clientWindows'] if w['active'])
+            assert abs(b.evaluate('innerWidth*devicePixelRatio')-physical)<=2
+        if output:
+            capture_control(b,Path(output)/('training-'+variant+'.webp'),'.cert-cycle')
+            (Path(output)/('detail-'+variant+'.png')).write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'document'})['data']))
+            (Path(output)/('metrics-'+variant+'.json')).write_text(json.dumps(dict(sort=sort,detail=detail),indent=2))
+        b.press_key('\ue007')
+        b.wait_for_page_ready("document.querySelector('[name=kind]')?.value==='allocation'")
+        assert b.evaluate("document.querySelector('[name=cycle_id]').value")==pid
+        layouts.append((variant,sort,detail))
+    with sqlite3.connect(root/'results.db') as conn:
+        conn.row_factory=sqlite3.Row
+        for table,rows in facts.items():assert list(conn.execute('SELECT * FROM '+table))==rows
+    for variant,sort,detail in layouts:
+        assert not sort['overflow'] and not detail['overflow'],variant
+        if sort['button']['left']>=sort['select']['right']:
+            assert abs(sort['button']['bottom']-sort['select']['bottom'])<=1,(variant,sort)
+        else:
+            assert sort['button']['top']-sort['select']['bottom']>=8,(variant,sort)
+        assert detail['gap']>=12,(variant,detail)
+
+
+@pytest.mark.parametrize('theme',('light','dark'))
+def test_certification_control_spacing(browser_stack,theme):
+    _check_certification_control_spacing(browser_stack,theme)
+
+
+@pytest.mark.parametrize('theme',('light','dark'))
+def test_certification_native_zoom_control_spacing(browser_stack,theme):
+    _check_certification_control_spacing(browser_stack,theme,True)
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_documentation_refresh_help_and_safety_navigation(browser_stack, theme):
+    """Current task guidance, real images and safe navigation, with disposable data."""
+    b, base = browser_stack.browser, browser_stack.base_url
+    b.context = b.command('browsingContext.create', {'type': 'tab'})['context']
+    b.navigate(base + '/settings/appearance')
+    _set_theme(b, theme)
+    output = os.environ.get('DLMS_HELP_CAPTURE_DIR')
+    pages = ('getting-started', 'quizzes', 'history-analytics', 'learning-intelligence', 'certifications', 'maintenance')
+    for width in (1440, 390):
+        b.set_viewport(width, 1000)
+        for topic in pages:
+            b.navigate(base + '/help/' + topic)
+            b.wait_for_page_ready()
+            # Help intentionally lazy-loads instructional images below the fold.
+            for index in range(b.evaluate("document.querySelectorAll('.help-shot img').length")):
+                selector = f"document.querySelectorAll('.help-shot img')[{index}]"
+                b.evaluate(selector + ".scrollIntoView({block:'center'});true")
+                b.wait_for(selector + ".complete && " + selector + ".naturalWidth>0")
+            assert b.evaluate('document.documentElement.scrollWidth <= innerWidth'), (topic, theme, width)
+            assert b.evaluate("Array.from(document.querySelectorAll('.help-shot img')).every(i=>i.alt.trim() && i.naturalWidth===Number(i.getAttribute('width')) && i.naturalHeight===Number(i.getAttribute('height')))")
+            if topic == 'maintenance':
+                for label in ('Reset Learning Intelligence', 'Delete Study History', 'Reset Quiz Library & Results', 'Clear Imported / Source Content', 'Reset Application Settings', 'Reset DLMS to Fresh State', 'Remove DLMS Data from This Computer'):
+                    assert label in b.evaluate("document.querySelector('#reset-remove').textContent")
+                b.activate()
+                b.evaluate("document.querySelector('#backup-restore details summary').scrollIntoView({block:'center'});document.querySelector('#backup-restore details summary').focus();true")
+                b.press_key('\ue007')
+                assert b.evaluate("document.querySelector('#backup-restore details').open")
+                b.press_key('\ue004')
+                assert b.evaluate('document.activeElement.matches(":focus-visible")')
+            if output:
+                target = Path(output) / ('help-' + topic + '-' + theme + '-' + str(width) + '.png')
+                target.write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot', {'context': b.context, 'origin': 'document'})['data']))
+    # Visiting the destructive-action page is safe; do not press any reset control.
+    for route, name in (('/settings/reset-remove', 'settings-reset_remove'), ('/settings/backup', 'settings-backup'), ('/learning-profile', 'learning-profile'), ('/history', 'history')):
+        b.set_viewport(1440, 1000)
+        b.navigate(base + route)
+        b.wait_for_page_ready()
+        if output and theme == 'light':
+            from tests.browser._help_screenshots import capture_control
+            capture_control(b, Path(output) / (name + '.webp'), '.dashboard-main')
+            if name == 'settings-reset_remove':
+                # Crop before the machine-specific data path, without altering UI.
+                from PIL import Image
+                top, path_top = b.evaluate("(() => {const m=document.querySelector('.dashboard-main').getBoundingClientRect(),p=document.querySelector('.settings-current-value').getBoundingClientRect();return [Math.max(0,Math.floor(m.top+scrollY)-8),p.top+scrollY];})()")
+                image_path = Path(output) / (name + '.webp')
+                with Image.open(image_path) as original:
+                    original.crop((0, 0, original.width, int(path_top-top)-8)).save(image_path, format='WEBP', lossless=True)
+            if name == 'history':
+                from PIL import Image
+                top, panel_bottom = b.evaluate("(() => {const m=document.querySelector('.dashboard-main').getBoundingClientRect(),p=document.querySelector('.history-table-panel').getBoundingClientRect();return [Math.max(0,Math.floor(m.top+scrollY)-8),p.bottom+scrollY];})()")
+                image_path = Path(output) / (name + '.webp')
+                with Image.open(image_path) as original:
+                    original.crop((0, 0, original.width, min(original.height, int(panel_bottom-top)+8))).save(image_path, format='WEBP', lossless=True)
+
+
+def _portable_batch_selection(browser_stack, browser_server, theme, *, native_zoom=False):
+    """Real form downloads, ordinary-part import and label-based Study/Exam saves."""
+    b, root = browser_stack.browser, browser_stack.data_root
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    registry_path = root/'config/quizzes.json'
+    registry = json.loads(registry_path.read_text())
+    ids = []
+    with sqlite3.connect(root/'results.db') as c:
+        for n in range(101):
+            title = f'Sample Cloud course {n+1:03d}'
+            i = c.execute('INSERT INTO quizzes(title,source_file) VALUES(?,?)',(title,f'batch-{n}.html')).lastrowid
+            ids.append(i)
+            for number in ((1,2) if n==0 else (1,)):
+                qi = c.execute("INSERT INTO questions(quiz_id,question_number,question_text,question_type) VALUES(?,?,?,'choice')",(i,number,'Choose by label, not by equal text.')).lastrowid
+                c.executemany('INSERT INTO choices(question_id,label,text,is_correct) VALUES(?,?,?,?)',[(qi,'A','Same',1),(qi,'B','Same',0),(qi,'C','same',int(number==2)),(qi,'D','Other',0)])
+            registry.append({'id':i,'title':title,'html':f'batch-{n}.html','folder':'Sample Cloud','exam_minutes':5})
+        bad = c.execute('INSERT INTO quizzes(title,source_file) VALUES(?,?)',('Sample missing image','missing.html')).lastrowid
+        qi = c.execute("INSERT INTO questions(quiz_id,question_number,question_text,question_type,media_json) VALUES(?,1,'Missing sample image','choice',?)",(bad,json.dumps({'image_url':'/quiz-assets/missing/sample.png'}))).lastrowid
+        c.executemany('INSERT INTO choices(question_id,label,text,is_correct) VALUES(?,?,?,?)',[(qi,'A','First',1),(qi,'B','Second',0)])
+        registry.append({'id':bad,'title':'Sample missing image','html':'missing.html','folder':'Missing sample'})
+    registry_path.write_text(json.dumps(registry))
+    b.navigate(browser_stack.base_url+'/settings');b.wait_for('window.dlmsCsrfToken')
+    assert b.evaluate("fetch('/api/theme',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({theme:"+json.dumps(theme)+"})}).then(r=>r.ok)")
+    b.navigate(browser_stack.base_url+'/quiz-bundles');b.wait_for("document.getElementById('bundleSearch')")
+    if native_zoom:
+        b.command('browsingContext.setViewport',{'context':b.context,'viewport':None,'devicePixelRatio':None})
+        assert b.evaluate('devicePixelRatio')==2
+    b.evaluate("bundleFolder.value='Sample Cloud';bundleFolder.dispatchEvent(new Event('input',{bubbles:true}));true")
+    assert b.evaluate('bundleMatchCount.textContent').startswith('101 matching')
+    assert b.evaluate("document.querySelectorAll('.portable-bundle-quiz:not([hidden])').length")==50
+    b.click('#selectAllBundleQuizzes')
+    assert b.evaluate("document.querySelectorAll('input[name=quiz_ids]:checked').length")==101
+    b.click('#bundleNext');assert b.evaluate('bundlePage.textContent')=='Page 2 of 3'
+    assert b.evaluate("document.querySelectorAll('input[name=quiz_ids]:checked').length")==101
+    b.evaluate("bundleSearch.value='101';bundleSearch.dispatchEvent(new Event('input',{bubbles:true}));true")
+    assert b.evaluate('bundleQuizCount.textContent')=='101 selected · 100 outside this filter'
+    b.click('#clearBundleQuizzes');assert b.evaluate('bundleDownload.disabled')
+    assert b.evaluate("document.querySelectorAll('input[name=quiz_ids]:checked').length")==0
+    b.evaluate("bundleSearch.value='';bundleSearch.dispatchEvent(new Event('input',{bubbles:true}));true")
+    # Keyboard activation uses the focused semantic button.
+    b.activate()
+    b.click('#bundleSearch')
+    b.press_key('\ue004')
+    b.press_key('\ue004')
+    assert b.evaluate('document.activeElement.id')=='selectAllBundleQuizzes'
+    assert b.evaluate('document.hasFocus()')
+    b.press_key('\ue007')
+    b.wait_for("document.querySelectorAll('input[name=quiz_ids]:checked').length===101")
+    assert b.evaluate("getComputedStyle(document.activeElement).outlineStyle")!='none'
+    out = os.environ.get('DLMS_BUNDLE_CAPTURE_DIR')
+    for width in ((None,) if native_zoom else (1440,390)):
+        if width:b.set_viewport(width,1000)
+        # A mobile drawer can remain open after desktop sidebar focus. Capture
+        # the actual controls, using the application's normal dismissal.
+        if b.evaluate("document.querySelector('#dashboardSidebar')?.classList.contains('open') || false"):
+            b.press_key('\ue00c')
+            b.wait_for("!document.querySelector('#dashboardSidebar').classList.contains('open')")
+        if b.evaluate('innerWidth < 820'):
+            b.wait_for("document.querySelector('#dashboardSidebar').getBoundingClientRect().right <= 0")
+        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        if out:
+            folder=Path(out);folder.mkdir(parents=True,exist_ok=True)
+            shot=b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'document'})
+            (folder/f'export-{theme}-{width or "zoom200"}.png').write_bytes(base64.b64decode(shot['data']))
+            if theme=='light' and width==1440:
+                from tests.browser._help_screenshots import capture_control
+                capture_control(b,folder/'portable-bundle-selection.webp','#portableBundleExportForm')
+    if native_zoom:return
+    # The server returns the specific reason and retained selected ID/filter.
+    b.evaluate("bundleFolder.value='Missing sample';bundleFolder.dispatchEvent(new Event('input',{bubbles:true}));true")
+    b.click('#clearBundleQuizzes');b.click('#selectAllBundleQuizzes');b.click('#bundleDownload')
+    b.wait_for("document.querySelector('.portable-bundle-error')")
+    assert 'Export is blocked' in b.evaluate("document.querySelector('.portable-bundle-error').textContent")
+    assert 'Sample missing image · quiz ID' in b.evaluate("document.querySelector('.portable-preflight-group').textContent")
+    assert 'Question 1' in b.evaluate("document.querySelector('.portable-preflight-group').textContent")
+    assert b.evaluate("document.querySelectorAll('input[name=quiz_ids]:checked').length")==1
+    assert b.evaluate('bundleFolder.value')=='Missing sample'
+    assert b.evaluate('bundleDownload.disabled') is False
+    if theme!='light':return
+    b.evaluate("bundleFolder.value='Sample Cloud';bundleFolder.dispatchEvent(new Event('input',{bubbles:true}));true")
+    b.click('#clearBundleQuizzes');b.click('#selectAllBundleQuizzes');b.click('#bundleDownload')
+    deadline=time.monotonic()+30
+    while time.monotonic()<deadline:
+        files=list(browser_server.work_root.glob('firefox-session-*/downloads/*Collection*.zip'))
+        if files:
+            try:
+                with zipfile.ZipFile(files[0]) as z:
+                    if z.testzip() is None:break
+            except (OSError,zipfile.BadZipFile):pass
+        time.sleep(.1)
+    else:raise AssertionError('No complete native collection download')
+    with zipfile.ZipFile(files[0]) as z:
+        inv=json.loads(z.read('inventory.json'))
+        assert [p['quiz_count'] for p in inv['bundles']]==[100,1]
+        assert [q['source_quiz_id'] for p in inv['bundles'] for q in p['quizzes']]==ids
+        for part in inv['bundles']:
+            path=browser_server.work_root/part['filename'];path.write_bytes(z.read(part['filename']))
+            b.navigate(browser_stack.base_url+'/quiz-bundles');b.wait_for_page_ready()
+            b.set_files('[name=bundle_zip]',[str(path)]);b.click("form[action='/quiz-bundles/import'] button[type=submit]")
+            b.wait_for("location.pathname.includes('/quiz-bundles/import/')")
+            b.click('[name=confirm_import]');b.click("form[action$='/confirm'] button[type=submit]")
+            b.wait_for("location.pathname==='/quiz-bundles'")
+    registry=json.loads(registry_path.read_text()); imported=[e for e in registry if e['id'] not in ids and e['title'].startswith('Sample Cloud')]
+    assert len(imported)==101
+    entry=next(e for e in imported if e['title'].startswith('Sample Cloud course 001'))
+    b.navigate(browser_stack.base_url+'/quizzes/'+entry['html']);b.wait_for('quizRecoveryReady')
+    b.click('.study-mode-btn');b.wait_for('durableStudySession!==null')
+    b.click("#choices .choice[data-index='1']");b.wait_for('studyLearningEventSaves.size===0')
+    b.click("#choices .choice[data-index='0']");b.wait_for('studyLearningEventSaves.size===0')
+    b.click('#nextBtn');b.click("#choices .choice[data-index='0']");b.click("#choices .choice[data-index='2']");b.wait_for('studyLearningEventSaves.size===0')
+    b.click('#finishReviewBtn');b.wait_for('Boolean(durableStudySession.completed_at)')
+    session=b.evaluate('learningSessionId')
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT was_correct FROM study_responses WHERE session_id=? ORDER BY sequence',(session,)).fetchall()==[(0,),(1,),(None,),(1,)]
+    b.navigate(browser_stack.base_url+'/quizzes/'+entry['html']);b.wait_for('quizRecoveryReady')
+    b.click('.exam-mode-btn');b.click("#choices .choice[data-index='0']");b.click('#nextBtn');b.click("#choices .choice[data-index='0']");b.click("#choices .choice[data-index='2']")
+    b.evaluate('window.confirm=()=>true;true');b.click('#submitBtn');b.wait_for("result.textContent.includes('saved successfully')")
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT score,total FROM attempts WHERE quiz_id=? ORDER BY id DESC LIMIT 1',(entry['id'],)).fetchone()==(2,2)
+
+
+@pytest.mark.parametrize('theme',('light','dark','ethereal'))
+def test_portable_batch_selection_and_label_grading(browser_stack,browser_server,theme):
+    _portable_batch_selection(browser_stack,browser_server,theme)
+
+
+@pytest.mark.parametrize('theme',('light','dark','ethereal'))
+def test_portable_native_zoom_selection(browser_stack,browser_server,theme):
+    _portable_batch_selection(browser_stack,browser_server,theme,native_zoom=True)
+
+
+def test_gapped_labels_study_exam_resume_and_legacy_queue_guard(browser_stack):
+    b,root=browser_stack.browser,browser_stack.data_root
+    qid,html=_new_regular_study_quiz(browser_stack,2)
+    with sqlite3.connect(root/'results.db') as c:
+        for n,labels in ((1,['A','C','D']),(2,['D','A','C'])):
+            qi=c.execute('SELECT id FROM questions WHERE quiz_id=? AND question_number=?',(qid,n)).fetchone()[0]
+            choices=c.execute('SELECT id FROM choices WHERE question_id=? ORDER BY choice_order',(qi,)).fetchall()
+            c.execute('DELETE FROM choices WHERE id=?',choices[3])
+            for i,(choice_id,) in enumerate(choices[:3]):
+                c.execute('UPDATE choices SET label=?,is_correct=? WHERE id=?',(labels[i],int(i==2 or (n==2 and i==0)),choice_id))
+    # Explicitly rebuild this disposable page through the editor, preserving labels.
+    b.navigate(browser_stack.base_url+f'/edit_quiz/{qid}');b.wait_for_page_ready()
+    b.evaluate('window.__beforePreservationSave=true;true')
+    b.click('#edit-quiz-form .build-primary-button');b.wait_for_page_ready('window.__beforePreservationSave !== true')
+    b.navigate(browser_stack.base_url+'/quizzes/'+html);b.wait_for('quizRecoveryReady')
+    b.click('.study-mode-btn');b.wait_for('durableStudySession!==null')
+    b.click("#choices .choice[data-index='1']");b.wait_for('studyLearningEventSaves.size===0')
+    b.click("#choices .choice[data-index='2']");b.wait_for('studyLearningEventSaves.size===0')
+    session=b.evaluate('learningSessionId')
+    key=b.evaluate('quizRecoveryController.storageKey')
+    b.navigate(browser_stack.base_url+'/quizzes/'+html);b.wait_for("document.querySelector('.quiz-recovery-resume')")
+    b.click('.quiz-recovery-resume');b.wait_for('durableStudySession!==null && userAnswers.q0 !== undefined')
+    assert b.evaluate('userAnswers.q0')==[2]
+    b.click('#nextBtn');b.click("#choices .choice[data-index='0']");b.click("#choices .choice[data-index='2']")
+    b.wait_for('studyLearningEventSaves.size===0');b.click('#finishReviewBtn');b.wait_for('Boolean(durableStudySession.completed_at)')
+    with sqlite3.connect(root/'results.db') as c:
+        rows=c.execute('SELECT payload_json,was_correct FROM study_responses WHERE session_id=? ORDER BY sequence',(session,)).fetchall()
+        assert [(json.loads(r[0])['selected'],r[1]) for r in rows]==[(['C'],0),(['D'],1),(['D'],None),(['D','C'],1)]
+    b.navigate(browser_stack.base_url+'/quizzes/'+html);b.wait_for('quizRecoveryReady')
+    b.click('.exam-mode-btn');b.click("#choices .choice[data-index='2']");b.click('#nextBtn')
+    b.click("#choices .choice[data-index='0']");b.click("#choices .choice[data-index='2']")
+    b.evaluate('window.confirm=()=>true;true');b.click('#submitBtn');b.wait_for("result.textContent.includes('saved successfully')")
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT score,total FROM attempts WHERE quiz_id=? ORDER BY id DESC LIMIT 1',(qid,)).fetchone()==(2,2)
+    # An old ambiguous recovery record remains byte-for-byte; it is not claimed or replayed.
+    b.navigate(browser_stack.base_url+'/quizzes/'+html);b.wait_for('quizRecoveryReady')
+    b.click('.study-mode-btn');b.wait_for('durableStudySession!==null');b.click("#choices .choice[data-index='1']")
+    b.wait_for('studyLearningEventSaves.size===0')
+    b.navigate(browser_stack.base_url+'/quizzes/'+html);b.wait_for("document.querySelector('.quiz-recovery-resume')")
+    b.evaluate("const old=JSON.parse(localStorage.getItem("+json.dumps(key)+"));delete old.view.answerEncoding;localStorage.setItem("+json.dumps(key)+",JSON.stringify(old));true")
+    old=b.evaluate('localStorage.getItem('+json.dumps(key)+')')
+    b.click('.quiz-recovery-resume')
+    b.wait_for("document.body.textContent.includes('older recovery record cannot safely encode')")
+    assert b.evaluate('localStorage.getItem('+json.dumps(key)+')')==old
+
+
+def _portable_preflight_review(browser_stack,theme,*,zoom=False):
+    b,root=browser_stack.browser,browser_stack.data_root
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    registry_path=root/'config/quizzes.json';registry=json.loads(registry_path.read_text());ids=[]
+    with sqlite3.connect(root/'results.db') as c:
+        for title,kind in [('Sample repeated labels','duplicate'),('Sample incomplete questions','empty'),('Sample missing images','media')]:
+            qi=c.execute('INSERT INTO quizzes(title,source_file) VALUES(?,?)',(title,title+'.html')).lastrowid;ids.append(qi)
+            for n in (1,2):
+                question=c.execute("INSERT INTO questions(quiz_id,question_number,question_text,media_json) VALUES(?,?,?,?)",(qi,n,'' if kind=='empty' and n==1 else 'Sample preserved question',json.dumps({'image_url':'/quiz-assets/missing/sample.png'}) if kind=='media' else '{}')).lastrowid
+                for i,label in enumerate(['A','A' if kind=='duplicate' else 'B','C']):
+                    c.execute('INSERT INTO choices(question_id,choice_order,label,text,is_correct) VALUES(?,?,?,?,?)',(question,i,label,'Option '+str(i),int(i==2 and not(kind=='empty' and n==2))))
+            registry.append({'id':qi,'title':title,'html':title+'.html','folder':'Preservation samples'})
+    registry_path.write_text(json.dumps(registry))
+    b.navigate(browser_stack.base_url+'/settings');_set_theme(b,theme)
+    b.navigate(browser_stack.base_url+'/quiz-bundles');b.wait_for_page_ready()
+    b.evaluate("bundleFolder.value='Preservation samples';bundleFolder.dispatchEvent(new Event('input',{bubbles:true}));true")
+    b.click('#selectAllBundleQuizzes');b.click('#bundleDownload');b.wait_for_page_ready("document.getElementById('exportPreflightHeading')")
+    text=b.evaluate("document.querySelector('#exportPreflightHeading').parentElement.textContent")
+    assert '2 quizzes with Needs review warnings · 1 blocked' in text
+    assert text.count('Question 1')==3 and text.count('Question 2')==3
+    assert b.evaluate("document.querySelectorAll('[name=quiz_ids]:checked').length")==3
+    assert b.evaluate("document.querySelectorAll('.portable-preflight-group a').length")==3
+    # Real disclosure keyboard activation, focus and retained state.
+    b.evaluate("document.querySelector('.portable-preflight-group summary').focus();true");b.activate();b.press_key('\ue007')
+    b.wait_for("document.querySelector('.portable-preflight-group').open")
+    assert b.evaluate("getComputedStyle(document.activeElement).outlineStyle")!='none'
+    b.evaluate("document.querySelectorAll('.portable-preflight-group').forEach(d=>d.open=true);true")
+    for width in ((None,) if zoom else (1440,390)):
+        if width:b.set_viewport(width,1000)
+        else:
+            b.command('browsingContext.setViewport',{'context':b.context,'viewport':None,'devicePixelRatio':None})
+            assert b.evaluate('devicePixelRatio')==2
+        if b.evaluate("document.querySelector('#dashboardSidebar')?.classList.contains('open') || false"):
+            b.press_key('\ue00c')
+            b.wait_for("!document.querySelector('#dashboardSidebar').classList.contains('open')")
+        if b.evaluate('innerWidth < 820'):
+            b.wait_for("document.querySelector('#dashboardSidebar').getBoundingClientRect().right <= 0")
+        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        if os.environ.get('DLMS_BUNDLE_CAPTURE_DIR'):
+            out=Path(os.environ['DLMS_BUNDLE_CAPTURE_DIR']);out.mkdir(parents=True,exist_ok=True)
+            (out/f'preflight-{theme}-{width or "zoom200"}.png').write_bytes(base64.b64decode(b.command('browsingContext.captureScreenshot',{'context':b.context,'origin':'document'})['data']))
+            if theme=='light' and width==1440:
+                from tests.browser._help_screenshots import capture_control
+                capture_control(b,out/'portable-preflight.webp',"section:has(> #exportPreflightHeading)")
+    # Explicit editor correction on a disposable copy changes readiness, not history.
+    qid=ids[0];b.navigate(browser_stack.base_url+f'/edit_quiz/{qid}');b.wait_for_page_ready()
+    assert 'Needs review before graded Study or Exam' in b.evaluate('document.body.textContent')
+    b.evaluate("document.querySelectorAll('.edit-question-card').forEach(()=>{});document.querySelectorAll('input[name^=label_]').forEach((n,i)=>n.value=['A','B','C'][i%3]);true")
+    b.evaluate('window.__beforePreservationSave=true;true')
+    b.click('#edit-quiz-form .build-primary-button');b.wait_for_page_ready('window.__beforePreservationSave !== true')
+    status=b.evaluate('fetch("/api/study/quiz/'+str(qid)+'").then(r=>r.json())')
+    assert status['readiness']['ready']
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT COUNT(*) FROM study_sessions WHERE quiz_id=?',(qid,)).fetchone()[0]==0
+    b.navigate(browser_stack.base_url+'/library');b.wait_for_page_ready()
+    assert 'Needs review' in b.evaluate('document.body.textContent')
+
+
+@pytest.mark.parametrize('theme',('light','dark','ethereal'))
+def test_portable_complete_preflight_and_explicit_editor(browser_stack,theme):
+    _portable_preflight_review(browser_stack,theme)
+
+
+def test_portable_native_zoom_preflight(browser_stack):
+    _portable_preflight_review(browser_stack,'light',zoom=True)
+
+
+def _walkthrough_editor_repair(stack, theme, *, native_zoom=False):
+    """Real Add Choices repairs an incomplete key without inventing an answer."""
+    b, root = stack.browser, stack.data_root
+    b.context = b.command('browsingContext.create', {'type': 'tab'})['context']
+    b.navigate(stack.base_url + '/settings/appearance'); _set_theme(b, theme)
+    qid, html = _new_regular_study_quiz(stack, 1)
+    with sqlite3.connect(root / 'results.db') as c:
+        question = c.execute('SELECT id FROM questions WHERE quiz_id=?', (qid,)).fetchone()[0]
+        ids = [r[0] for r in c.execute('SELECT id FROM choices WHERE question_id=? ORDER BY choice_order', (question,))]
+        c.execute('DELETE FROM choices WHERE id=?', (ids[-1],))
+        for cid, label in zip(ids, ['A', 'C', 'D']):
+            c.execute('UPDATE choices SET label=?,text=?,is_correct=0 WHERE id=?', (label, 'Long answer ' + 'readable detail ' * 15, cid))
+    b.navigate(stack.base_url + f'/edit_quiz/{qid}'); b.wait_for_page_ready()
+    if native_zoom:
+        b.command('browsingContext.setViewport', {'context': b.context, 'viewport': None, 'devicePixelRatio': None})
+        assert b.evaluate('devicePixelRatio') == 2
+    for width in ((None,) if native_zoom else (1440, 390)):
+        if width: b.set_viewport(width, 1000)
+        geometry = b.evaluate("""[...document.querySelectorAll('.edit-quiz-choice-label')].map(l=>{
+            const i=l.querySelector('input'),s=l.querySelector('span');
+            return {width:l.clientWidth,inner:i.clientWidth-parseFloat(getComputedStyle(i).paddingLeft)-parseFloat(getComputedStyle(i).paddingRight),
+              captionFits:s.scrollWidth<=s.clientWidth,captionHeight:s.getBoundingClientRect().height};})""")
+        assert all(g['width'] >= 90 and g['inner'] >= 35 and g['captionFits'] and g['captionHeight'] < 30 for g in geometry), geometry
+        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        b.evaluate("document.querySelector('.edit-quiz-choice-label input').focus();true")
+        assert b.evaluate("document.activeElement.matches('.edit-quiz-choice-label input')")
+        if os.environ.get('DLMS_BUNDLE_CAPTURE_DIR'):
+            from tests.browser._help_screenshots import capture_control
+            out = Path(os.environ['DLMS_BUNDLE_CAPTURE_DIR'])
+            capture_control(b, out / f'after-editor-{theme}-{width or "native200"}.webp', '.question-block:last-child')
+    # No correct answer exists. Add two choices, then one, using the actual form.
+    for count, expected in ((2, 5), (1, 6)):
+        b.evaluate(f"document.querySelector('[name=choice_count_{question}]').value='{count}';document.querySelector('[name=question_{question}]').value='Edited incomplete sample';window.__beforeAdd=true;true")
+        b.click(f'button[value="add_choices_{question}"]')
+        b.wait_for_page_ready('window.__beforeAdd !== true')
+        assert b.evaluate("document.querySelectorAll('.edit-quiz-choice-label').length") == expected
+        with sqlite3.connect(root / 'results.db') as c:
+            rows = c.execute('SELECT id,label,text,is_correct,choice_order FROM choices WHERE question_id=? ORDER BY choice_order', (question,)).fetchall()
+            assert len(rows) == expected and all(r[3] == 0 for r in rows)
+            assert [r[1] for r in rows[:3]] == ['A', 'C', 'D']
+            assert c.execute('SELECT question_text FROM questions WHERE id=?', (question,)).fetchone()[0] == 'Edited incomplete sample'
+        status = b.evaluate(f"fetch('/api/study/quiz/{qid}').then(r=>r.json())")
+        assert not status['readiness']['ready']
+    # Final save still blocks a missing key, retaining the unsaved text.
+    b.evaluate("window.__alerts=[];window.alert=x=>__alerts.push(x);document.querySelector('.question-text').value='Unsaved retained sample';true")
+    b.click('#edit-quiz-form .build-primary-button')
+    assert b.evaluate('__alerts') == ['Question 1 must have at least one correct answer.']
+    assert b.evaluate("document.querySelector('.question-text').value") == 'Unsaved retained sample'
+    # Explicitly fill the new choices and mark only the chosen new answer.
+    b.evaluate("document.querySelectorAll('.edit-quiz-choice-list input[name^=choice_]').forEach((n,i)=>{if(!n.value)n.value='New answer '+i});document.querySelector('.edit-quiz-choice-list li:last-child input[type=checkbox]').checked=true;window.__beforeFinal=true;true")
+    b.click('#edit-quiz-form .build-primary-button'); b.wait_for_page_ready('window.__beforeFinal !== true')
+    status = b.evaluate(f"fetch('/api/study/quiz/{qid}').then(r=>r.json())")
+    assert status['readiness']['ready']
+    with sqlite3.connect(root / 'results.db') as c:
+        rows = c.execute('SELECT id,label,text,is_correct,choice_order FROM choices WHERE question_id=? ORDER BY choice_order', (question,)).fetchall()
+        assert [r[0] for r in rows[:3]] == ids[:3]
+        assert [r[3] for r in rows] == [0, 0, 0, 0, 0, 1]
+        assert c.execute('SELECT COUNT(*) FROM study_sessions WHERE quiz_id=?', (qid,)).fetchone()[0] == 0
+    b.navigate(stack.base_url + '/quizzes/' + html); b.wait_for('quizRecoveryReady')
+    b.click('.study-mode-btn'); b.wait_for('durableStudySession!==null')
+    b.click('#choices .choice[data-index="5"]'); b.wait_for('studyLearningEventSaves.size===0')
+    assert b.evaluate("document.querySelector('.choice-study-explanation.is-correct').textContent.includes('Correct')")
+    b.click('#finishReviewBtn'); b.wait_for('Boolean(durableStudySession.completed_at)')
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark'))
+def test_walkthrough_editor_label_geometry_and_incomplete_repair(browser_stack, theme):
+    _walkthrough_editor_repair(browser_stack, theme)
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark'))
+def test_portable_native_zoom_editor_repair(browser_stack, theme):
+    _walkthrough_editor_repair(browser_stack, theme, native_zoom=True)
+
+
+def _walkthrough_resume_same(stack, theme, *, native_zoom=False):
+    b, root = stack.browser, stack.data_root
+    b.context = b.command('browsingContext.create', {'type': 'tab'})['context']
+    b.navigate(stack.base_url + '/settings/appearance'); _set_theme(b, theme)
+    qid, html = _new_regular_study_quiz(stack, 6)
+    b.click('.study-mode-btn'); b.wait_for('durableStudySession!==null')
+    for _ in range(5):
+        b.click('#choices .choice[data-index="0"]'); b.wait_for('studyLearningEventSaves.size===0'); b.click('#nextBtn')
+    b.evaluate('durableStudyPositionSave.then(()=>true)')
+    session = b.evaluate('learningSessionId'); key = b.evaluate('quizRecoveryController.storageKey')
+    b.navigate(stack.base_url + '/quizzes/' + html); b.wait_for('quizRecoveryReady')
+    assert b.evaluate("document.querySelectorAll('.quiz-recovery-panel:not([hidden]),#durableStudyResume:not([hidden])').length") == 1
+    assert b.evaluate("document.querySelector('.quiz-recovery-panel').textContent.includes('Question 6 of 6')")
+    assert b.evaluate("document.querySelector('#quizRecoveryDurableSummary').textContent.includes('5 of 6')")
+    if native_zoom:
+        b.command('browsingContext.setViewport', {'context': b.context, 'viewport': None, 'devicePixelRatio': None})
+        assert b.evaluate('devicePixelRatio') == 2
+    for width in ((None,) if native_zoom else (1440, 390)):
+        if width: b.set_viewport(width, 1000)
+        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        if os.environ.get('DLMS_BUNDLE_CAPTURE_DIR'):
+            from tests.browser._help_screenshots import capture_control
+            capture_control(b, Path(os.environ['DLMS_BUNDLE_CAPTURE_DIR']) / f'after-resume-{theme}-{width or "native200"}.webp', '#modeSelect')
+    raw = b.evaluate('localStorage.getItem(' + json.dumps(key) + ')')
+    b.evaluate('window.confirm=()=>false;true'); b.click('.quiz-recovery-start-over')
+    assert b.evaluate('localStorage.getItem(' + json.dumps(key) + ')') == raw
+    b.click('.quiz-recovery-resume'); b.wait_for('durableStudySession!==null && index===5')
+    assert b.evaluate('learningSessionId') == session
+    with sqlite3.connect(root / 'results.db') as c:
+        assert c.execute('SELECT COUNT(*) FROM study_responses WHERE session_id=?', (session,)).fetchone()[0] == 5
+    b.click('#choices .choice[data-index="0"]'); b.wait_for('studyLearningEventSaves.size===0')
+    b.click('#finishReviewBtn'); b.wait_for('Boolean(durableStudySession.completed_at)')
+    b.navigate(stack.base_url + '/quizzes/' + html); b.wait_for('quizRecoveryReady')
+    assert b.evaluate("document.querySelectorAll('.quiz-recovery-panel,#durableStudyResume').length") == 0
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark'))
+def test_walkthrough_resume_same_session_and_canceled_discard(browser_stack, theme):
+    _walkthrough_resume_same(browser_stack, theme)
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark'))
+def test_portable_native_zoom_resume(browser_stack, theme):
+    _walkthrough_resume_same(browser_stack, theme, native_zoom=True)
+
+
+def test_walkthrough_distinct_browser_exam_and_server_study(browser_stack):
+    b, root = browser_stack.browser, browser_stack.data_root
+    qid, html = _new_regular_study_quiz(browser_stack, 2)
+    b.click('.study-mode-btn'); b.wait_for('durableStudySession!==null')
+    b.click('#choices .choice[data-index="0"]'); b.wait_for('studyLearningEventSaves.size===0')
+    session = b.evaluate('learningSessionId'); key = b.evaluate('quizRecoveryController.storageKey')
+    # An explicitly started Exam is distinct work; its recovery must not be
+    # routed into Study or overwritten by the server-only continuation button.
+    b.navigate(browser_stack.base_url + '/quizzes/' + html); b.wait_for('quizRecoveryReady')
+    b.click('.exam-mode-btn'); b.click('#choices .choice[data-index="1"]')
+    b.navigate(browser_stack.base_url + '/quizzes/' + html); b.wait_for('quizRecoveryReady')
+    assert b.evaluate("document.querySelectorAll('.quiz-recovery-panel:not([hidden]),#durableStudyResume').length") == 2
+    raw = b.evaluate('localStorage.getItem(' + json.dumps(key) + ')')
+    b.click('#durableStudyResume button')
+    b.wait_for("document.body.textContent.includes('different saved session')")
+    assert b.evaluate('localStorage.getItem(' + json.dumps(key) + ')') == raw
+    assert b.evaluate('learningSessionId') != session
+    b.evaluate('window.confirm=()=>false;true'); b.click('.quiz-recovery-start-over')
+    assert b.evaluate('localStorage.getItem(' + json.dumps(key) + ')') == raw
+    b.click('.quiz-recovery-resume'); b.wait_for('examMode && userAnswers.q0 !== undefined')
+    assert b.evaluate('userAnswers.q0') == [1]
+
+
+def test_walkthrough_server_takeover_preserves_new_browser_queue(browser_stack):
+    b = browser_stack.browser
+    qid, html = _new_regular_study_quiz(browser_stack, 2)
+    b.click('.study-mode-btn'); b.wait_for('durableStudySession!==null')
+    b.click('#choices .choice[data-index="0"]'); b.wait_for('studyLearningEventSaves.size===0')
+    key = b.evaluate('quizRecoveryController.storageKey')
+    b.navigate(browser_stack.base_url + '/quizzes/' + html); b.wait_for('quizRecoveryReady')
+    b.click('.exam-mode-btn'); b.click('#choices .choice[data-index="1"]')
+    raw = b.evaluate('localStorage.getItem(' + json.dumps(key) + ')')
+    # Simulate another tab retaining its distinct valid Exam checkpoint. The
+    # server claim is held at its real response boundary, not by an arbitrary sleep.
+    b.evaluate('localStorage.removeItem(' + json.dumps(key) + ');true')
+    b.navigate(browser_stack.base_url + '/quizzes/' + html); b.wait_for('quizRecoveryReady')
+    b.evaluate("""window.__realFetch=window.fetch;window.fetch=async (...args)=>{
+      const r=await __realFetch(...args);if(String(args[0])==='/api/study/session'){
+        window.__claimWaiting=true;await new Promise(resolve=>window.__releaseClaim=resolve);}
+      return r;};true""")
+    b.click('#durableStudyResume button'); b.wait_for('window.__claimWaiting===true')
+    b.evaluate('localStorage.setItem(' + json.dumps(key) + ',' + json.dumps(raw) + ');window.__releaseClaim();true')
+    b.wait_for("document.body.textContent.includes('Saved work appeared in this browser')")
+    assert b.evaluate('localStorage.getItem(' + json.dumps(key) + ')') == raw
+    assert b.evaluate('quizRecoveryController.ownsState') is False
+    assert b.evaluate("!document.querySelector('#modeSelect').classList.contains('hidden')")
+
+
+def test_walkthrough_missing_browser_record_restores_server_action(browser_stack):
+    b = browser_stack.browser
+    qid, html = _new_regular_study_quiz(browser_stack, 2)
+    b.click('.study-mode-btn'); b.wait_for('durableStudySession!==null')
+    b.click('#choices .choice[data-index="0"]'); b.wait_for('studyLearningEventSaves.size===0')
+    key = b.evaluate('quizRecoveryController.storageKey')
+    b.navigate(browser_stack.base_url + '/quizzes/' + html); b.wait_for('quizRecoveryReady')
+    assert b.evaluate("document.querySelector('#durableStudyResume')===null")
+    b.evaluate('localStorage.removeItem(' + json.dumps(key) + ');true')
+    b.click('.quiz-recovery-resume')
+    b.wait_for("document.querySelector('#durableStudyResume')!==null")
+    assert b.evaluate("document.querySelector('.quiz-recovery-panel').hidden")
+    assert b.evaluate('durableStudySession===null')
+    b.click('#durableStudyResume button'); b.wait_for('durableStudySession!==null')
+    assert b.evaluate('userAnswers.q0') == [0]
+
+
+def test_walkthrough_add_choices_without_a_correct_answer(browser_stack):
+    """Adding structure must not demand a false answer key first."""
+    b, root = browser_stack.browser, browser_stack.data_root
+    qid, _ = _new_regular_study_quiz(browser_stack, 1)
+    with sqlite3.connect(root / 'results.db') as c:
+        question = c.execute('SELECT id FROM questions WHERE quiz_id=?', (qid,)).fetchone()[0]
+        c.execute('UPDATE choices SET is_correct=0 WHERE question_id=?', (question,))
+    b.navigate(browser_stack.base_url + f'/edit_quiz/{qid}'); b.wait_for_page_ready()
+    b.evaluate("window.__alerts=[];window.alert=x=>__alerts.push(x);window.__beforeAdd=true;document.querySelector('.edit-quiz-choice-count input').value='2';true")
+    b.click(f'button[value="add_choices_{question}"]')
+    assert b.evaluate('window.__alerts || []') == []
+    b.wait_for_page_ready('window.__beforeAdd !== true')
+    with sqlite3.connect(root / 'results.db') as c:
+        assert c.execute('SELECT count(*),sum(is_correct) FROM choices WHERE question_id=?', (question,)).fetchone() == (6, 0)
+
+
+@pytest.mark.parametrize('browser_stack', [{'alwaysMatch': {'unhandledPromptBehavior': 'ignore'}}], indirect=True)
+def test_walkthrough_start_over_native_confirmation_and_changed_record(browser_stack):
+    b, root = browser_stack.browser, browser_stack.data_root
+    qid, html = _new_regular_study_quiz(browser_stack, 2)
+    b.click('.study-mode-btn'); b.wait_for('durableStudySession!==null')
+    b.click('#choices .choice[data-index="0"]'); b.wait_for('studyLearningEventSaves.size===0')
+    session, key = b.evaluate('learningSessionId'), b.evaluate('quizRecoveryController.storageKey')
+    b.navigate(browser_stack.base_url + '/quizzes/' + html); b.wait_for('quizRecoveryReady')
+    raw = b.evaluate('localStorage.getItem(' + json.dumps(key) + ')')
+    prompts = b.click_with_prompt('.quiz-recovery-start-over', accept=False)
+    assert len(prompts) == 1 and prompts[0]['type'] == 'confirm'
+    assert b.evaluate('localStorage.getItem(' + json.dumps(key) + ')') == raw
+    # A confirmed stale dialog must not erase a newer revision from another tab.
+    b.evaluate('window.__nativeConfirm=window.confirm;window.confirm=()=>{const key=' + json.dumps(key) + ';const r=JSON.parse(localStorage.getItem(key));r.session.revision++;window.__newerRaw=JSON.stringify(r);localStorage.setItem(key,__newerRaw);return true;};true')
+    b.click('.quiz-recovery-start-over'); b.wait_for("document.body.textContent.includes('Nothing was discarded')")
+    assert b.evaluate('localStorage.getItem(' + json.dumps(key) + ')===window.__newerRaw')
+    b.evaluate('window.confirm=window.__nativeConfirm;true')
+    prompts = b.click_with_prompt('.quiz-recovery-start-over', accept=True)
+    assert len(prompts) == 1
+    assert b.evaluate('localStorage.getItem(' + json.dumps(key) + ')') is None
+    b.wait_for("document.querySelector('#durableStudyResume')!==null")
+    with sqlite3.connect(root / 'results.db') as c:
+        assert c.execute('SELECT count(*) FROM study_responses WHERE session_id=?', (session,)).fetchone()[0] == 1
+        assert c.execute('SELECT completed_at FROM study_sessions WHERE id=?', (session,)).fetchone()[0] is None
+
+
+def test_walkthrough_preflight_download_uses_retained_selection(browser_stack, browser_server):
+    b, root = browser_stack.browser, browser_stack.data_root
+    qid, _ = _new_regular_study_quiz(browser_stack, 1)
+    with sqlite3.connect(root / 'results.db') as c:
+        c.execute('UPDATE choices SET is_correct=0 WHERE question_id IN (SELECT id FROM questions WHERE quiz_id=?)', (qid,))
+    b.navigate(browser_stack.base_url + '/quiz-bundles'); b.wait_for_page_ready()
+    b.click(f'[name=quiz_ids][value="{qid}"]')
+    b.evaluate('window.__beforeCheck=true;true'); b.click('[name=export_action][value=check]')
+    b.wait_for_page_ready('window.__beforeCheck !== true')
+    assert b.evaluate("document.querySelector('#bundleDownloadTop').form.id") == 'portableBundleExportForm'
+    assert b.evaluate("[...document.querySelectorAll('[name=quiz_ids]:checked')].map(n=>Number(n.value))") == [qid]
+    assert b.evaluate("document.querySelector('#bundleDownloadTop').disabled") is False
+    assert b.evaluate("document.querySelector('[href=\"#bundleImportHeading\"]')!==null")
+    # The export section occupies the workflow width; import remains below it.
+    assert b.evaluate("document.querySelector('[aria-labelledby=bundleExportHeading]').getBoundingClientRect().width / document.querySelector('.portable-bundle-workflows').getBoundingClientRect().width") > .98
+    b.click('#bundleDownloadTop')
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        files = list(browser_server.work_root.glob('firefox-session-*/downloads/DLMS-Quiz-Bundle*.zip'))
+        if files:
+            try:
+                with zipfile.ZipFile(files[0]) as z:
+                    data = json.loads(z.read('dlms-quiz-bundle.json'))
+                    assert z.testzip() is None
+                break
+            except (OSError, zipfile.BadZipFile): pass
+        time.sleep(.1)
+    else: raise AssertionError('No complete native download from the preflight action')
+    assert len(data['quizzes']) == 1 and len(data['quizzes'][0]['questions']) == 1
+    assert not any(choice['is_correct'] for choice in data['quizzes'][0]['questions'][0]['choices'])
+    assert b.evaluate("document.querySelector('a[href=\"#bundleExportHeading\"]')===null")
+    assert b.evaluate("[...document.querySelectorAll('[data-bundle-download]')].length") == 2
+    # Change the current selection after preflight; the lower button must use it.
+    other = browser_stack.metadata['critical_id']
+    b.click(f'[name=quiz_ids][value="{qid}"]')
+    b.click(f'[name=quiz_ids][value="{other}"]')
+    before_files = set(files)
+    b.click('#bundleDownload')
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        new_files = set(browser_server.work_root.glob('firefox-session-*/downloads/DLMS-Quiz-Bundle*.zip')) - before_files
+        if new_files:
+            try:
+                with zipfile.ZipFile(next(iter(new_files))) as z:
+                    second = json.loads(z.read('dlms-quiz-bundle.json'))
+                    assert z.testzip() is None
+                break
+            except (OSError, zipfile.BadZipFile): pass
+        time.sleep(.1)
+    else: raise AssertionError('No complete native download from the lower action')
+    assert len(second['quizzes']) == 1
+    assert second['quizzes'][0]['title'] != data['quizzes'][0]['title']
+    b.click('#clearBundleQuizzes')
+    assert b.evaluate("[...document.querySelectorAll('[data-bundle-download]')].every(n=>n.disabled)")
+
+
+@pytest.mark.parametrize('count', (1, 3))
+def test_cleanup_add_choices_restores_question_and_focus(browser_stack, count):
+    """Save-on-add keeps a long editor at the repaired question, with its values intact."""
+    b, root = browser_stack.browser, browser_stack.data_root
+    qid, _ = _new_regular_study_quiz(browser_stack, 13)
+    with sqlite3.connect(root / 'results.db') as c:
+        question = c.execute('SELECT id FROM questions WHERE quiz_id=? AND question_number=13', (qid,)).fetchone()[0]
+        original = c.execute('SELECT id,label,text,is_correct,choice_order FROM choices WHERE question_id=? ORDER BY choice_order', (question,)).fetchall()
+        c.execute('UPDATE choices SET is_correct=0 WHERE question_id=?', (question,))
+    b.navigate(browser_stack.base_url + f'/edit_quiz/{qid}'); b.wait_for_page_ready()
+    b.set_viewport(390, 1000)
+    first = original[0][0]
+    b.evaluate(f"document.querySelector('[name=choice_{first}]').value='Explicit edited answer';document.querySelector('[name=choice_count_{question}]').value='{count}';window.__oldEditor=true;true")
+    b.click(f'button[value="add_choices_{question}"]')
+    b.wait_for_page_ready('window.__oldEditor!==true')
+    old_names = [f'choice_{row[0]}' for row in original]
+    b.wait_for("document.activeElement.name?.startsWith('choice_') && !" + json.dumps(old_names) + ".includes(document.activeElement.name)")
+    assert b.evaluate(f"document.activeElement.closest('.question-block').dataset.questionId") == str(question)
+    geometry = b.evaluate('({top:document.activeElement.getBoundingClientRect().top,bottom:document.activeElement.getBoundingClientRect().bottom,height:innerHeight,y:scrollY})')
+    assert 0 <= geometry['top'] < geometry['bottom'] <= geometry['height'] and geometry['y'] > 1000
+    with sqlite3.connect(root / 'results.db') as c:
+        after = c.execute('SELECT id,label,text,is_correct,choice_order FROM choices WHERE question_id=? ORDER BY choice_order', (question,)).fetchall()
+    assert after[0][2] == 'Explicit edited answer'
+    assert [(r[0],r[1],r[4]) for r in after[:4]] == [(r[0],r[1],r[4]) for r in original]
+    assert len(after) == 4 + count and all(row[3] == 0 for row in after)
+    # The consumed position intent must not steal focus during a later ordinary visit.
+    b.navigate(browser_stack.base_url + f'/edit_quiz/{qid}'); b.wait_for_page_ready()
+    assert b.evaluate('scrollY') == 0
+    assert b.evaluate("document.activeElement.name?.startsWith('choice_') || false") is False
+
+
+def test_cleanup_secondary_navigation_and_learning_states(browser_stack):
+    b, base = browser_stack.browser, browser_stack.base_url
+    b.navigate(base + '/learning-profile'); b.wait_for("document.getElementById('lpRecommendationTitle').textContent!=='Loading…'")
+    data = b.evaluate("fetch('/api/learning-profile').then(r=>r.json())")
+    expected_disabled = not (data['summary']['weak_areas'] > 0 or data['retention']['due_now'] > 0)
+    assert b.evaluate("document.getElementById('lpSmartReview').disabled") == expected_disabled
+    if expected_disabled:
+        assert 'No weak topics or due topic reviews' in b.evaluate("document.getElementById('lpReviewAvailability').textContent")
+    b.navigate(base + '/learning-intelligence'); b.wait_for("document.getElementById('liLoading').hidden")
+    if b.evaluate('state.topics.length') == 0:
+        assert 'No tagged concepts' in b.evaluate("document.getElementById('liNoEvidenceDetail').textContent")
+    b.navigate(base + '/anki'); b.wait_for_page_ready()
+    preview = b.evaluate("document.querySelector('form[method=GET] select[name=quiz_id]')?.name || document.querySelector('form[method=get] select[name=quiz_id]')?.name")
+    assert preview == 'quiz_id'
+    assert 'Quiz to preview' in b.evaluate('document.body.textContent')
+    assert b.evaluate("document.querySelector('form[action=\"/anki/export/quiz\"] select[name=quiz_id]')!==null")
+    b.navigate(base + '/anki/custom'); b.wait_for_page_ready()
+    assert b.evaluate("document.querySelector('a[href=\"#printableCards\"]').textContent") == 'Export & print'
+    assert b.evaluate("document.querySelector('[formaction=\"/anki/export/custom\"]').form.id") == 'customAnkiForm'
+    assert b.evaluate("document.querySelector('[formaction=\"/anki/printable\"]').form.id") == 'customAnkiForm'
+    b.navigate(base + '/settings'); b.wait_for_page_ready()
+    assert b.evaluate("document.querySelector('.dashboard-main a[href=\"/certifications\"]')===null")
+    assert b.evaluate("document.querySelector('.dashboard-main a[href=\"/settings/layout\"]')!==null")
+    b.navigate(base + '/settings/layout#certifications-visibility'); b.wait_for_page_ready()
+    assert b.evaluate("document.querySelector('[name=show_certifications]')!==null")
+
+
+@pytest.mark.parametrize('browser_stack', [{'alwaysMatch': {'unhandledPromptBehavior': 'ignore'}}], indirect=True)
+def test_cleanup_saved_bank_management_counts_and_confirmation(browser_stack):
+    b, root = browser_stack.browser, browser_stack.data_root
+    bank_root = root / 'pdf_question_banks'; bank_root.mkdir(exist_ok=True)
+    for count in (0, 1, 2):
+        (bank_root / f'cleanup-{count}.json').write_text(json.dumps({
+            'id':f'cleanup-{count}', 'title':f'Sample bank {count}', 'source_name':f'sample-{count}.pdf',
+            'questions':[{'number':1,'question':'Which sample control?','choices':[{'label':'A','text':'Check access'},{'label':'B','text':'Skip checks'}],'correct':'A','active':True}],
+            'used_question_numbers':[1], 'generated_quizzes':[{'quiz_id':browser_stack.metadata['critical_id']} for _ in range(count)],
+        }))
+    b.navigate(browser_stack.base_url + '/pdf-import'); b.wait_for_page_ready()
+    b.click('#pdfExpandBanks')
+    for count, noun in ((0,'quizzes'), (1,'quiz'), (2,'quizzes')):
+        assert b.evaluate(f"document.querySelector('[href=\"/pdf-import/bank/cleanup-{count}\"]').textContent.includes('{count} {noun} generated')")
+    assert b.evaluate("[...document.querySelectorAll('.pdf-bank-manage-action')].every(n=>!n.getClientRects().length)")
+    b.click('#pdfManageBanks'); assert b.evaluate("document.getElementById('pdfManageBanks').textContent") == 'Done Managing'
+    selector='form[action="/pdf-import/bank/cleanup-1/delete"] button'
+    prompts=b.click_with_prompt(selector, accept=False)
+    assert len(prompts)==1 and prompts[0]['type']=='confirm'
+    assert (bank_root/'cleanup-1.json').exists()
+    with sqlite3.connect(root/'results.db') as c: quizzes=c.execute('SELECT COUNT(*) FROM quizzes').fetchone()[0]
+    b.evaluate('window.__beforeBankDelete=true;true')
+    prompts=b.click_with_prompt(selector, accept=True)
+    assert len(prompts)==1
+    b.wait_for_page_ready('window.__beforeBankDelete!==true')
+    assert not (bank_root/'cleanup-1.json').exists()
+    assert (bank_root/'cleanup-0.json').exists() and (bank_root/'cleanup-2.json').exists()
+    with sqlite3.connect(root/'results.db') as c: assert c.execute('SELECT COUNT(*) FROM quizzes').fetchone()[0]==quizzes
+    b.click('#pdfCollapseBanks'); assert b.evaluate("[...document.querySelectorAll('[data-pdf-bank-section]')].every(n=>!n.open)")
+    b.click('#pdfExpandBanks'); assert b.evaluate("[...document.querySelectorAll('[data-pdf-bank-section]')].every(n=>n.open)")
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_topic_preserved_concepts_rendered_visibility_after_reset(browser_stack, theme):
+    """The intended hidden state must hold in the rendered page, not just the DOM."""
+    b, base = browser_stack.browser, browser_stack.base_url
+    b.context = b.command('browsingContext.create', {'type': 'tab'})['context']
+    b.navigate(base + '/settings/appearance'); _set_theme(b, theme)
+    # Excluding every folder produces a genuine zero-concept API response.
+    b.navigate(base + '/learning-scope'); b.wait_for_page_ready()
+    while b.evaluate("[...document.querySelectorAll('.learning-scope-button')].some(n=>n.textContent==='Exclude folder')"):
+        b.evaluate("window.__scopePage=true;true")
+        b.click(".learning-scope-folder:has([name=included][value='0']) button")
+        b.wait_for_page_ready('window.__scopePage!==true')
+    b.navigate(base + '/learning-intelligence'); b.wait_for("document.getElementById('liLoading').hidden")
+    assert b.evaluate('state.topics.length') == 0
+    assert b.evaluate("document.getElementById('liToggleZeroEvidence').getClientRects().length") == 0
+    assert b.evaluate("getComputedStyle(document.getElementById('liToggleZeroEvidence')).display") == 'none'
+    # Restore only this fixture's scope, then exercise the real reset boundary.
+    b.navigate(base + '/learning-scope'); b.wait_for_page_ready()
+    while b.evaluate("[...document.querySelectorAll('.learning-scope-button')].some(n=>n.textContent==='Include folder')"):
+        b.evaluate("window.__scopePage=true;true")
+        b.click(".learning-scope-folder:has([name=included][value='1']) button")
+        b.wait_for_page_ready('window.__scopePage!==true')
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as c:
+        question = c.execute('SELECT id FROM questions WHERE quiz_id=? ORDER BY question_number', (browser_stack.metadata['critical_id'],)).fetchone()[0]
+        c.execute("INSERT INTO learning_events(event_type,quiz_id,question_id,attempt_id,mode,was_correct,response_json,occurred_at) VALUES ('exam_answer',?,?,?,'Exam',1,?,?)",
+                  (browser_stack.metadata['critical_id'], question, 'topic-visibility-fixture', '{"selected":["A"]}', '2026-01-01T12:00:00Z'))
+    b.navigate(base + '/learning-intelligence'); b.wait_for("document.getElementById('liLoading').hidden")
+    assert b.evaluate('state.hasEvidence')
+    assert b.evaluate("document.getElementById('liToggleZeroEvidence').getClientRects().length") == 0
+    reset = b.evaluate("fetch('/api/reset_learning_intelligence',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(async r=>({status:r.status,data:await r.json()}))")
+    assert reset['status'] == 200 and reset['data']['status'] == 'ok'
+    b.navigate(base + '/learning-intelligence'); b.wait_for("document.getElementById('liLoading').hidden")
+    assert b.evaluate('state.topics.length') > 0 and not b.evaluate('state.hasEvidence')
+    assert b.evaluate("document.getElementById('liToggleZeroEvidence').getClientRects().length") > 0
+    b.activate(); b.wait_for('document.hasFocus()')
+    b.evaluate("document.getElementById('liToggleZeroEvidence').focus();true")
+    b.press_key('\ue007')
+    assert b.evaluate("document.getElementById('liToggleZeroEvidence').getAttribute('aria-expanded')") == 'true'
+    assert b.evaluate("document.getElementById('liTableWrap').getClientRects().length") > 0
+    assert b.evaluate("document.querySelectorAll('#liRows tr').length") == b.evaluate('state.topics.length')
+    b.press_key('\ue007')
+    assert b.evaluate("document.getElementById('liToggleZeroEvidence').getAttribute('aria-expanded')") == 'false'
+    assert b.evaluate("document.getElementById('liTableWrap').getClientRects().length") == 0
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_cleanup_return_navigation_and_question_controls(browser_stack, theme):
+    b, base = browser_stack.browser, browser_stack.base_url
+    b.context = b.command('browsingContext.create', {'type': 'tab'})['context']
+    b.navigate(base + '/settings/appearance'); _set_theme(b, theme)
+    for page, destination in (('/pdf-import', '/upload'), ('/anki/law', '/anki'),
+                              ('/learning-scope', '/learning-intelligence'), ('/quiz-bundles', '/library')):
+        b.navigate(base + page); b.wait_for_page_ready()
+        if page == '/quiz-bundles':
+            # The second download is intentionally rendered only after a
+            # successful preflight. Exercise that actual state before counting.
+            assert b.evaluate("document.querySelectorAll('[data-bundle-download]').length") == 1
+            b.wait_for('window.dlmsCsrfToken')
+            b.click(f'input[name=quiz_ids][value="{browser_stack.metadata["critical_id"]}"]')
+            b.evaluate('window.__beforePreflight=true;true')
+            b.click('button[name=export_action][value=check]')
+            b.wait_for_page_ready('window.__beforePreflight!==true')
+        selector = f'main a[href="{destination}"]:has(use[href="/static/icons.svg#back"])'
+        assert b.evaluate(f'document.querySelectorAll({json.dumps(selector)}).length') == 1
+        b.activate(); b.wait_for('document.hasFocus()')
+        # Enter the link from the preceding control. Tabbing beyond a page's
+        # final link enters browser chrome, outside document-level BiDi input.
+        b.evaluate("""(()=>{const target=document.querySelector(""" + json.dumps(selector) + """);
+          const controls=[...document.querySelectorAll('a[href],button,input,select,textarea,summary')]
+            .filter(n=>!n.disabled && n.tabIndex>=0 && n.getClientRects().length);
+          controls[controls.indexOf(target)-1].focus();return true;})()""")
+        b.press_key('\ue004')
+        b.wait_for('document.activeElement.matches(":focus-visible")')
+        assert b.evaluate(f'document.activeElement===document.querySelector({json.dumps(selector)})')
+        if page == '/pdf-import':
+            assert b.evaluate("document.querySelectorAll('main a[href=\"/upload\"]').length") == 1
+            assert b.evaluate("document.querySelector('.pdf-import-upload-form .build-submit-row a')===null")
+        if page == '/quiz-bundles':
+            assert b.evaluate("document.querySelector('a[href=\"#bundleImportHeading\"]')!==null")
+            assert b.evaluate("document.querySelectorAll('[data-bundle-download]').length") == 2
+        b.press_key('\ue007'); b.wait_for(f'location.pathname==={json.dumps(destination)}')
+    b.navigate(base + '/learning-intelligence'); b.wait_for("document.getElementById('liLoading').hidden")
+    controls = b.evaluate("[...document.querySelectorAll('.learning-intelligence-review-form')].map(f=>({action:new URL(f.action).pathname,name:f.querySelector('select').name,value:f.querySelector('select').value,options:[...f.querySelector('select').options].map(n=>n.value),height:f.querySelector('select').getBoundingClientRect().height}))")
+    assert [c['action'] for c in controls] == ['/adaptive-study/generate', '/smart-review/generate']
+    for control in controls:
+        assert control['name'] == 'question_count' and control['value'] == '20'
+        assert control['options'] == ['10','20','30','50'] and control['height'] >= 44
+    # Use the existing generation path; the selected count reaches the server.
+    qid, _ = _new_regular_study_quiz(browser_stack, 13)
+    b.navigate(base + '/learning-intelligence'); b.wait_for("document.getElementById('liLoading').hidden")
+    b.evaluate("document.querySelector('form[action=\"/adaptive-study/generate\"] select').value='10';true")
+    b.click('#liAdaptiveStudyButton'); b.wait_for("location.pathname.startsWith('/quizzes/adaptive_study_')")
+    registry = json.loads((browser_stack.data_root / 'config/quizzes.json').read_text())
+    generated = next(entry for entry in registry if entry['html'] == b.evaluate('location.pathname.split("/").pop()'))
+    with sqlite3.connect(browser_stack.data_root / 'results.db') as c:
+        assert c.execute('SELECT count(*) FROM questions WHERE quiz_id=?', (generated['id'],)).fetchone()[0] == 10
+
+
+def _study_mistakes_browser_source(stack):
+    """Use actual saved regular questions and actual acknowledged wrong answers."""
+    stack.base_url = stack.base_url.replace('127.0.0.1', 'dlms-http.test')
+    b = stack.browser
+    qid, html = _new_regular_study_quiz(stack, 2)
+    assert b.evaluate('isSecureContext') is False
+    b.click('.study-mode-btn')
+    b.wait_for('durableStudySession !== null')
+    sid = b.evaluate('learningSessionId')
+    b.click('#choices .choice[data-index="1"]')
+    b.wait_for('studyLearningEventSaves.size === 0')
+    b.click('#choices .choice[data-index="0"]')
+    b.wait_for('studyLearningEventSaves.size === 0')
+    b.click('#nextBtn')
+    b.click('#choices .choice[data-index="1"]')
+    b.wait_for('studyLearningEventSaves.size === 0')
+    b.click('#finishReviewBtn')
+    b.wait_for('document.querySelector(".study-learning-save-message")?.textContent.includes("Review completed")')
+    return qid, html, sid
+
+
+def _mistake_browser_capture(b, name):
+    output = os.environ.get('DLMS_PRESENTATION_CAPTURE_DIR')
+    if output:
+        shot = b.command('browsingContext.captureScreenshot', {'context':b.context,'origin':'viewport'})
+        (Path(output) / (name + '.png')).write_bytes(base64.b64decode(shot['data']))
+
+
+@pytest.mark.parametrize('browser_stack', [{'alwaysMatch': {'unhandledPromptBehavior': 'ignore'}}], indirect=True)
+def test_study_mistakes_saved_mix_retry_study_exam_and_random(browser_stack):
+    b, root = browser_stack.browser, browser_stack.data_root
+    qid, source_html, sid = _study_mistakes_browser_source(browser_stack)
+    base = browser_stack.base_url
+    with sqlite3.connect(root/'results.db') as c:
+        original = list(c.execute('SELECT * FROM study_responses WHERE session_id=? ORDER BY sequence',(sid,)))
+        sources = list(c.execute('SELECT * FROM choices WHERE question_id IN (SELECT id FROM questions WHERE quiz_id=?) ORDER BY id',(qid,)))
+    route = base + '/quiz-composer/study-mistakes?quizzes=' + str(qid)
+    b.navigate(route)
+    b.wait_for('document.getElementById("mistakeCounts").textContent.includes("2 eligible questions")')
+    assert b.evaluate('document.getElementById("mistakeMode").value') == 'without-repeats'
+    b.click('#startMistakePass')
+    b.wait_for('document.readyState==="complete" && document.querySelector("#mistakePassSummary .study-mistakes-count-card:first-child strong")?.textContent==="2"')
+    b.evaluate("document.getElementById('mistakeTitle').value='One-question Study mistakes';document.getElementById('mistakeCount').value=1;true")
+    # The server really commits before this simulated lost acknowledgement.
+    b.evaluate("""window.realMistakeFetch=fetch;window.dropMistakeAck=true;window.mistakeTrace=[];
+      window.fetch=async(u,o)=>{const r=await realMistakeFetch(u,o);
+      if(String(u).includes('/study-mistakes/create')){mistakeTrace.push({body:JSON.parse(o.body),status:r.status});
+      if(dropMistakeAck&&r.ok){dropMistakeAck=false;throw new Error('Lost creation acknowledgement');}}return r;};true""")
+    b.click('#createMistakeMix')
+    try:
+        b.wait_for('document.getElementById("mistakeStatus").textContent.includes("Lost creation acknowledgement")')
+    except TimeoutError:
+        raise AssertionError(b.evaluate('({status:mistakeStatus.textContent,reason:mistakeCreationReason.textContent,trace:window.mistakeTrace,request:sessionStorage.getItem("dlms-study-mistakes-request"),name:mistakeTitle.value,count:mistakeCount.value,disabled:createMistakeMix.disabled,ready:document.readyState})'))
+    first = b.evaluate('mistakeTrace[0]')
+    b.navigate(route)
+    assert b.evaluate('JSON.parse(sessionStorage.getItem("dlms-study-mistakes-request"))') == first['body']
+    b.evaluate("window.mistakeTrace=[];window.realMistakeFetch=fetch;window.fetch=async(u,o)=>{const r=await realMistakeFetch(u,o);if(String(u).includes('/study-mistakes/create'))mistakeTrace.push({body:JSON.parse(o.body),status:r.status});return r;};true")
+    b.click('#retryMistakeMix')
+    b.wait_for('!document.getElementById("openMistakeMix").hidden')
+    trace = [first] + b.evaluate('mistakeTrace')
+    assert len(trace) == 2 and trace[0]['body'] == trace[1]['body']
+    assert all(row['status'] == 200 for row in trace)
+    assert b.evaluate('document.getElementById("createMistakeMix").disabled')
+    b.click('#openMistakeMix')
+    _wait_for_quiz_mode_controls(b, 1)
+    mix_id = b.evaluate('QUIZ_ID')
+    mix_path = b.evaluate('location.pathname')
+    b.click('.study-mode-btn');b.wait_for('durableStudySession !== null')
+    b.click('#choices .choice[data-index="1"]');b.wait_for('studyLearningEventSaves.size===0')
+    mix_sid = b.evaluate('learningSessionId')
+    b.navigate(base+mix_path)
+    b.wait_for('quizRecoveryReady && document.querySelector(".quiz-recovery-resume")')
+    b.click('.quiz-recovery-resume');b.wait_for('durableStudySession !== null')
+    assert b.evaluate('learningSessionId') == mix_sid
+    b.click('#choices .choice[data-index="0"]');b.wait_for('studyLearningEventSaves.size===0')
+    b.click('#finishReviewBtn')
+    b.wait_for('document.querySelector(".study-learning-save-message")?.textContent.includes("Review completed")')
+    b.navigate(base+mix_path);_wait_for_quiz_mode_controls(b,1)
+    b.click('.exam-mode-btn');b.click('#choices .choice[data-index="0"]')
+    assert b.click_with_prompt('#submitBtn',accept=True)
+    b.wait_for('document.getElementById("result").textContent.includes("saved successfully")')
+    assert 'Score: 1 / 1 (100%)' in b.evaluate('result.textContent')
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT COUNT(*) FROM attempts WHERE quiz_id=?',(mix_id,)).fetchone()[0] == 1
+        assert c.execute('SELECT COUNT(*) FROM quizzes WHERE title=?',('One-question Study mistakes',)).fetchone()[0] == 1
+        assert list(c.execute('SELECT * FROM study_responses WHERE session_id=? ORDER BY sequence',(sid,))) == original
+        assert list(c.execute('SELECT * FROM choices WHERE question_id IN (SELECT id FROM questions WHERE quiz_id=?) ORDER BY id',(qid,))) == sources
+    # Random permits another saved batch after a fresh page, but cannot replay
+    # its old ID under changed input or consume the Without repeats remainder.
+    for number in range(2):
+        b.navigate(route);b.wait_for('document.querySelector("#mistakePassSummary .study-mistakes-count-card:first-child strong")?.textContent==="1"')
+        b.evaluate("document.getElementById('mistakeMode').value='random';document.getElementById('mistakeMode').dispatchEvent(new Event('change'));document.getElementById('mistakeTitle').value="+json.dumps('Random mistakes '+str(number))+";document.getElementById('mistakeCount').value=1;true")
+        b.click('#createMistakeMix');b.wait_for('!document.getElementById("openMistakeMix").hidden')
+        assert b.evaluate('document.getElementById("createMistakeMix").disabled')
+    b.navigate(route);b.wait_for('document.querySelector("#mistakePassSummary .study-mistakes-count-card:first-child strong")?.textContent==="1"')
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT COUNT(*) FROM study_mistake_members WHERE used_by IS NOT NULL').fetchone()[0] == 1
+        assert c.execute('SELECT COUNT(*) FROM quizzes WHERE title LIKE "Random mistakes %"').fetchone()[0] == 2
+    # Explicit shortage recovery preserves the form and permits a smaller
+    # batch, without consuming anything or silently truncating the request.
+    b.evaluate("document.getElementById('mistakeMode').value='without-repeats';document.getElementById('mistakeMode').dispatchEvent(new Event('change'));document.getElementById('mistakeTitle').value='Final remainder';document.getElementById('mistakeCount').value=2;document.getElementById('mistakeCount').dispatchEvent(new Event('input',{bubbles:true}));true")
+    b.click('#createMistakeMix')
+    b.wait_for('document.getElementById("mistakeStatus").textContent.includes("Only 1 question remains")')
+    assert b.evaluate('!document.getElementById("changeMistakeRequest").hidden')
+    retained = b.evaluate('sessionStorage.getItem("dlms-study-mistakes-request")')
+    assert b.click_with_prompt('#changeMistakeRequest',accept=False)
+    assert b.evaluate('sessionStorage.getItem("dlms-study-mistakes-request")') == retained
+    assert b.click_with_prompt('#changeMistakeRequest',accept=True)
+    b.wait_for('!document.getElementById("createMistakeMix").disabled')
+    assert b.evaluate('document.getElementById("mistakeTitle").value') == 'Final remainder'
+    b.evaluate('document.getElementById("mistakeCount").value=1;true')
+    b.click('#createMistakeMix');b.wait_for('!document.getElementById("openMistakeMix").hidden')
+    b.navigate(route)
+    b.wait_for('document.querySelector("#mistakePassSummary .study-mistakes-count-card:first-child strong")?.textContent==="0"')
+    assert b.evaluate('document.getElementById("createMistakeMix").disabled && !document.getElementById("startMistakePass").disabled')
+    stale = b.evaluate('JSON.parse(document.getElementById("studyMistakeContext").textContent)')
+    stale_request = {key:stale[key] for key in ('scope','generation','fingerprint','request_id','pass_id')}
+    stale_request.update(mode='without-repeats',count=1,title='Old pre-restore request')
+    with sqlite3.connect(root/'results.db') as c:
+        pass_records = {table:list(c.execute('SELECT * FROM '+table+' ORDER BY rowid')) for table in
+                        ('study_mistake_passes','study_mistake_members','study_mistake_actions')}
+    existing = set((root/'backups').glob('*.zip'))
+    assert b.evaluate("fetch('/settings/backup/create',{method:'POST'}).then(async r=>{await r.arrayBuffer();return r.status;})") == 200
+    archive = set((root/'backups').glob('*.zip')) - existing
+    assert len(archive) == 1
+    b.navigate(base+'/settings/backup');b.wait_for('document.getElementById("backupFile")')
+    b.set_files('#backupFile',[str(archive.pop())])
+    b.click("form[action='/settings/backup/restore/stage'] button[type=submit]")
+    b.wait_for('document.querySelector("h1").textContent.includes("Review backup before restore")')
+    b.click("form[action*='/restore/confirm/'] button[type=submit]")
+    b.wait_for('document.querySelector("h1").textContent.includes("Restore complete")')
+    b.navigate(route);b.wait_for('document.querySelector("#mistakePassSummary .study-mistakes-count-card:first-child strong")?.textContent==="0"')
+    response = b.evaluate("fetch('/api/quiz-composer/study-mistakes/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify("+json.dumps(stale_request)+")}).then(async r=>({status:r.status,body:await r.json()}))")
+    assert response['status'] == 409 and 'restored or reset' in response['body']['error']
+    with sqlite3.connect(root/'results.db') as c:
+        for table,records in pass_records.items():
+            assert list(c.execute('SELECT * FROM '+table+' ORDER BY rowid')) == records
+
+
+def test_study_mistakes_all_theme_controls_and_responsive_views(browser_stack):
+    b = browser_stack.browser
+    b.context = b.command('browsingContext.create', {'type':'tab'})['context']
+    qid, _, _ = _study_mistakes_browser_source(browser_stack)
+    base = browser_stack.base_url
+    b.navigate(base+'/quiz-composer')
+    _mistake_browser_capture(b, 'before-manual-mixed-builder')
+    route = base+'/quiz-composer/study-mistakes?quizzes='+str(qid)
+    for theme in THEME_IDS:
+        b.navigate(base+'/settings/appearance');_set_theme(b,theme)
+        for width in ([1440,390] if theme in ('light','dark','ethereal') else [1100]):
+            b.set_viewport(width,1000 if width>400 else 844)
+            b.navigate(route);b.wait_for('document.getElementById("mistakeCounts")')
+            assert b.evaluate('document.documentElement.scrollWidth<=innerWidth'),(theme,width)
+            assert b.evaluate('document.querySelector(".mixed-builder-return").getBoundingClientRect().top-document.querySelector(".mixed-builder-intro > div").getBoundingClientRect().bottom<50'),(theme,width)
+            assert b.evaluate('document.getElementById("mistakeMode").options.length') == 2
+            assert b.evaluate("[...document.querySelectorAll('.study-mistakes-preview thead th')].map(n=>n.textContent)") == ['Source quiz', 'Question #', 'Question text']
+            assert b.evaluate("[...document.querySelectorAll('.study-mistakes-preview tbody [data-label=\"Question #\"]')].map(n=>n.textContent)") == ['1', '2']
+            assert b.evaluate('getComputedStyle(mixedBuilderReturn).whiteSpace==="nowrap" && getComputedStyle(mixedBuilderSourceNav.querySelector("[aria-current]")).borderTopWidth==="2px"')
+            contrast = _theme_contrast_snapshot(b, {'check':'#mistakeScopeForm button','primary':'#createMistakeMix','input':'#mistakeTitle',
+                                                     'sourceCount':'#mistakeCounts strong','tableHeading':'.study-mistakes-preview thead th',
+                                                     'tableQuestion':'.study-mistakes-preview tbody td:last-child'})
+            assert all(v['contrast']>=4.5 for v in contrast.values()),(theme,contrast)
+            b.activate();b.evaluate('document.getElementById("mistakeTitle").focus();true');b.press_key('\ue004')
+            assert b.evaluate('document.activeElement.id === "mistakeCount" && getComputedStyle(document.activeElement).outlineStyle !== "none"'), b.evaluate('({id:document.activeElement.id,outline:getComputedStyle(document.activeElement).outline,focus:document.activeElement.matches(":focus"),sheets:[...document.styleSheets].map(s=>s.href)})')
+            b.evaluate('document.querySelector("#mistakeUnavailableDetails summary").focus();true');b.press_key(' ')
+            assert b.evaluate('document.querySelector("#mistakeUnavailableDetails").open')
+            b.evaluate('document.querySelector("#mistakeUnavailableDetails").open=false;scrollTo(0,0);true')
+            _mistake_browser_capture(b, f'study-mistakes-{theme}-{width}')
+            if theme == 'light' and width == 1440:
+                shot = b.command('browsingContext.captureScreenshot', {'context':b.context,'origin':'document'})
+                output = os.environ.get('DLMS_PRESENTATION_CAPTURE_DIR')
+                if output:
+                    (Path(output)/'study-mistakes-help.png').write_bytes(base64.b64decode(shot['data']))
+    b.navigate(base+'/quiz-composer/study-mistakes')
+    assert b.evaluate('document.getElementById("createMistakeMix").disabled')
+    assert '0 eligible questions' in b.evaluate('document.getElementById("mistakeCounts").textContent')
+    _mistake_browser_capture(b, 'study-mistakes-empty')
+
+
+@pytest.mark.parametrize('theme',('light','dark','ethereal'))
+def test_study_mistakes_native_zoom(browser_stack,theme):
+    b = browser_stack.browser
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    b.command('browsingContext.setViewport',{'context':b.context,'viewport':None,'devicePixelRatio':None})
+    b.navigate(browser_stack.base_url+'/settings/appearance');_set_theme(b,theme)
+    qid,_=_mistake_usability_source(browser_stack,4,'Long quiz name for native zoom — '+('Learning material '*5))
+    b.navigate(browser_stack.base_url+'/quiz-composer/study-mistakes?quizzes='+str(qid))
+    b.wait_for('devicePixelRatio===2 && document.getElementById("mistakeTitle")')
+    assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+    assert b.evaluate("[...document.querySelectorAll('.study-mistakes-preview thead th')].map(n=>n.textContent)") == ['Source quiz', 'Question #', 'Question text']
+    assert b.evaluate("document.querySelectorAll('.study-mistakes-preview tbody tr').length") == 4
+    b.activate();b.evaluate('document.getElementById("mistakeTitle").focus();true');b.press_key('\ue004')
+    assert b.evaluate('document.activeElement.matches(":focus-visible")')
+    _mistake_browser_capture(b,'study-mistakes-native200-'+theme)
+    b.evaluate('scrollTo(0,0);true');_mistake_browser_capture(b,'study-mistakes-native200-top-'+theme)
+
+
+def _mistake_usability_source(stack, count, title, folder='Uncategorized', wrong=True):
+    """Actual regular quiz and acknowledged Study answers; metadata is synthetic."""
+    b=stack.browser
+    qid,html=_new_regular_study_quiz(stack,count)
+    path=stack.data_root/'config/quizzes.json';registry=json.loads(path.read_text())
+    for entry in registry:
+        if entry['id']==qid:entry.update(title=title,folder=folder)
+    path.write_text(json.dumps(registry))
+    with sqlite3.connect(stack.data_root/'results.db') as c:c.execute('UPDATE quizzes SET title=? WHERE id=?',(title,qid))
+    if wrong:
+        b.click('.study-mode-btn');b.wait_for('durableStudySession !== null')
+        for n in range(count):
+            b.click('#choices .choice[data-index="1"]');b.wait_for('studyLearningEventSaves.size===0')
+            if n+1<count:b.click('#nextBtn')
+    return qid,html
+
+
+def _mistake_generated_sources(root,url):
+    entry=next(e for e in json.loads((root/'config/quizzes.json').read_text()) if url.endswith('/'+e['html']))
+    with sqlite3.connect(root/'results.db') as c:
+        copied=c.execute('SELECT source_question_uid FROM questions WHERE quiz_id=?',(entry['id'],)).fetchall()
+    return {row[0] for row in copied}
+
+
+def _mistake_ui_create(b,count,title):
+    b.evaluate('mistakeTitle.value='+json.dumps(title)+';mistakeCount.value='+str(count)+';true')
+    b.click('#createMistakeMix');b.wait_for('!openMistakeMix.hidden && mistakeStatus.textContent.includes('+json.dumps(title+' is saved')+') && mistakeRefreshMessage.textContent.includes("Counts updated") && refreshMistakeCounts.hidden')
+    return b.evaluate('openMistakeMix.getAttribute("href")')
+
+
+@pytest.mark.parametrize('browser_stack',[{'alwaysMatch':{'unhandledPromptBehavior':'ignore'}}],indirect=True)
+def test_study_mistakes_owner_four_question_sequence_and_explicit_new_pass(browser_stack):
+    b,root=browser_stack.browser,browser_stack.data_root
+    qid,_=_mistake_usability_source(browser_stack,4,'Testing Quiz Learning')
+    with sqlite3.connect(root/'results.db') as c:
+        before={table:list(c.execute('SELECT * FROM '+table+' WHERE '+('quiz_id=?' if table=='questions' else 'question_id IN (SELECT id FROM questions WHERE quiz_id=?)')+' ORDER BY id',(qid,))) for table in ('questions','choices')}
+        history=list(c.execute('SELECT * FROM study_responses ORDER BY session_id,sequence'))
+    route=browser_stack.base_url+'/quiz-composer/study-mistakes?quizzes='+str(qid)
+    b.navigate(route);b.wait_for('mistakeCounts.textContent.includes("4 eligible questions")')
+    assert b.evaluate('[...document.querySelector("[name=folders]").selectedOptions].length')==0
+    assert b.evaluate('document.querySelector("[aria-label=\\"Question selection source\\"] [aria-current=page]").textContent')=='Study mistakes'
+    b.evaluate('mistakeTitle.value="Study mistakes test 1";mistakeCount.value=2;true')
+    b.click('#startMistakePass');b.wait_for('document.readyState==="complete" && mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="4"')
+    assert b.evaluate('mistakeTitle.value')=='Study mistakes test 1' and b.evaluate('mistakeCount.value')=='2'
+    assert b.evaluate('mistakePreviewHeading.compareDocumentPosition(mistakeCreateForm)&Node.DOCUMENT_POSITION_FOLLOWING')
+    first=_mistake_ui_create(b,2,'Study mistakes test 1')
+    b.wait_for('mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="2"')
+    assert b.evaluate('mistakePassSummary.querySelector(".study-mistakes-count-card:nth-child(2) strong")?.textContent==="2" && mistakeCounts.textContent.includes("4 eligible")')
+    assert b.evaluate('createMistakeMix.disabled && !nextMistakeMix.hidden')
+    _mistake_browser_capture(b,'usability-two-remaining')
+    b.navigate(route);b.wait_for('mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="2"')
+    second=_mistake_ui_create(b,2,'Study mistakes test 2')
+    b.wait_for('mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="0"')
+    assert b.evaluate('!mistakePassComplete.hidden && mistakePassComplete.textContent.includes("Pass complete") && mistakePassSummary.querySelector(".study-mistakes-count-card:nth-child(2) strong")?.textContent==="4"')
+    assert b.evaluate('createMistakeMix.disabled && mistakeCount.disabled && nextMistakeMix.hidden')
+    assert b.evaluate('mistakeCreationReason.textContent.includes("new pass")')
+    sets=[_mistake_generated_sources(root,url) for url in (first,second)]
+    assert all(len(ids)==2 for ids in sets) and sets[0].isdisjoint(sets[1])
+    with sqlite3.connect(root/'results.db') as c:
+        for table,rows in before.items():assert list(c.execute('SELECT * FROM '+table+' WHERE '+('quiz_id=?' if table=='questions' else 'question_id IN (SELECT id FROM questions WHERE quiz_id=?)')+' ORDER BY id',(qid,)))==rows
+        assert list(c.execute('SELECT * FROM study_responses ORDER BY session_id,sequence'))==history
+        assert c.execute('SELECT COUNT(*) FROM study_mistake_members WHERE used_by IS NOT NULL').fetchone()[0]==4
+        assert c.execute('SELECT COUNT(*) FROM study_mistake_members WHERE reserved_by IS NOT NULL').fetchone()[0]==0
+    for url in (first,second):
+        b.navigate(browser_stack.base_url+url);_wait_for_quiz_mode_controls(b,2)
+    for theme in ('light','dark','ethereal'):
+        b.navigate(browser_stack.base_url+'/settings/appearance');_set_theme(b,theme)
+        for width in (1440,390):
+            b.set_viewport(width,1000 if width>400 else 844);b.navigate(route)
+            assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+            b.evaluate('mistakePassComplete.scrollIntoView({block:"center"});true')
+            _mistake_browser_capture(b,f'usability-complete-{theme}-{width}')
+    old=b.evaluate('JSON.parse(studyMistakeContext.textContent).pass_id')
+    assert b.click_with_prompt('#startMistakePass',accept=False)
+    assert b.evaluate('JSON.parse(studyMistakeContext.textContent).pass_id')==old
+    assert b.click_with_prompt('#startMistakePass',accept=True)
+    b.wait_for('document.readyState==="complete" && mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="4"')
+    assert b.evaluate('JSON.parse(studyMistakeContext.textContent).pass_id')!=old
+
+
+def test_study_mistakes_scope_browsing_stale_guards_and_legacy_pages(browser_stack):
+    b,root=browser_stack.browser,browser_stack.data_root
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    qid,_=_mistake_usability_source(browser_stack,4,'Selected learning source','Alpha')
+    long='Other source with a complete long title that remains readable without hovering — '+('renewal practice material '*4)
+    other,_=_mistake_usability_source(browser_stack,2,long,'Beta')
+    legacy,_=_mistake_usability_source(browser_stack,25,'Legacy sample source','Alpha',wrong=False)
+    with sqlite3.connect(root/'results.db') as c:
+        for row in c.execute('SELECT id FROM questions WHERE quiz_id=?',(legacy,)).fetchall():
+            c.execute("INSERT INTO study_legacy_responses(quiz_id,question_id,mode,was_correct,response_json) VALUES(?,?,'Study',0,?)",(legacy,row[0],json.dumps({'selected':['B']})))
+    route=browser_stack.base_url+'/quiz-composer/study-mistakes?quizzes='+str(qid)
+    b.navigate(route);b.click('#startMistakePass');b.wait_for('document.readyState==="complete" && mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="4"')
+    old=b.evaluate('JSON.parse(studyMistakeContext.textContent).pass_id')
+    b.evaluate('[...mistakeQuizSelect.options].find(o=>o.value==='+json.dumps(str(other))+').selected=true;mistakeQuizSelect.dispatchEvent(new Event("change"));true')
+    assert b.evaluate('!mistakeSelectionChanged.hidden && studyMistakeResults.hidden && createMistakeMix.disabled && startMistakePass.disabled')
+    b.evaluate('[...document.querySelector("[name=folders]").options].find(o=>o.value==="Alpha").selected=true;document.querySelector("[name=folders]").dispatchEvent(new Event("change"));true')
+    assert b.evaluate('mistakeQuizBrowse.value')=='selected'
+    assert b.evaluate('[...mistakeQuizSelect.options].every(o=>o.dataset.folder==="Alpha")')
+    assert b.evaluate('mistakeBrowseStatus.textContent.includes("1 selected individual quiz outside")')
+    assert long in b.evaluate('mistakeSelectionSummary.textContent')
+    assert str(other) in b.evaluate('new FormData(mistakeScopeForm).getAll("quizzes")')
+    b.click('#mistakeScopeForm button[type=submit]');b.wait_for('mistakeCounts.textContent.includes("6 eligible questions")')
+    assert b.evaluate('mistakeSelectionChanged.hidden && JSON.parse(studyMistakeContext.textContent).scope.folders[0]==="Alpha"')
+    assert b.evaluate('mistakeUnavailableDetails.open') is False
+    assert 'Unavailable questions (25)' in b.evaluate('mistakeUnavailableDetails.querySelector("summary").textContent')
+    b.wait_for('document.readyState==="complete"');b.activate();b.wait_for('document.hasFocus()');b.evaluate('mistakeUnavailableDetails.querySelector("summary").focus();true');b.press_key(' ')
+    try:
+        b.wait_for('mistakeUnavailableDetails.open')
+    except TimeoutError:
+        raise AssertionError(b.evaluate('({active:document.activeElement.outerHTML,open:mistakeUnavailableDetails.open,focus:document.hasFocus(),ready:document.readyState})'))
+    assert b.evaluate('document.querySelectorAll(".study-mistakes-exclusions tbody tr").length')==20
+    assert b.evaluate('document.querySelectorAll(".study-mistakes-reasons li").length')==1
+    assert b.evaluate('document.querySelector(".study-mistakes-reasons").textContent.includes("Legacy response has no verifiable content revision")')
+    checked=b.evaluate('location.pathname+location.search')
+    for theme in ('light','dark','ethereal'):
+        b.navigate(browser_stack.base_url+'/settings/appearance');_set_theme(b,theme)
+        b.navigate(browser_stack.base_url+checked+'&show_unavailable=1#mistakeUnavailableDetails')
+        b.wait_for('document.readyState==="complete" && mistakeUnavailableDetails.open')
+        for width in (1440,390):
+            b.set_viewport(width,1000 if width>400 else 844)
+            if width<400:b.wait_for('dashboardSidebar.getBoundingClientRect().right<=0')
+            b.evaluate('mistakeUnavailableDetails.querySelector("summary").scrollIntoView({block:"start",behavior:"instant"});true')
+            assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+            _mistake_browser_capture(b,f'usability-unavailable-{theme}-{width}')
+    b.click('[aria-label="Unavailable questions pages"] a');b.wait_for('document.querySelectorAll(".study-mistakes-exclusions tbody tr").length===5 && mistakeUnavailableDetails.open')
+    # Folder-only and OR-overlap source count match the existing backend semantics.
+    b.navigate(browser_stack.base_url+'/quiz-composer/study-mistakes?folders=Alpha')
+    b.wait_for('mistakeCounts.textContent.includes("4 eligible questions")')
+    b.navigate(route);b.wait_for('document.readyState==="complete" && mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="4"')
+    assert b.evaluate('JSON.parse(studyMistakeContext.textContent).pass_id')==old
+    b.click('#clearMistakeScope');assert b.evaluate('!mistakeSelectionChanged.hidden && createMistakeMix.disabled')
+    b.click('#mistakeScopeForm button[type=submit]');b.wait_for('mistakeCounts.textContent.includes("0 eligible questions")')
+    assert b.evaluate('new FormData(mistakeScopeForm).getAll("quizzes").length===0')
+    # Long complete names are also available before selecting, through keyboard-accessible disclosure.
+    b.set_viewport(390,844);b.click('#mistakeScopeForm details summary')
+    assert long in b.evaluate('mistakeQuizNames.textContent')
+    assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+    _mistake_browser_capture(b,'usability-long-names-narrow')
+
+
+@pytest.mark.parametrize('browser_stack',[{'alwaysMatch':{'unhandledPromptBehavior':'ignore'}}],indirect=True)
+def test_study_mistakes_failed_refresh_keeps_confirmation_and_random_isolation(browser_stack):
+    b,root=browser_stack.browser,browser_stack.data_root
+    qid,_=_mistake_usability_source(browser_stack,4,'Refresh safety source')
+    route=browser_stack.base_url+'/quiz-composer/study-mistakes?quizzes='+str(qid)
+    b.navigate(route);b.click('#startMistakePass');b.wait_for('document.readyState==="complete" && mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="4"')
+    b.evaluate('window.originalRefreshFetch=fetch;window.failCounts=true;window.creationRequests=[];window.fetch=async(u,o)=>{if(String(u).includes("/study-mistakes/create"))creationRequests.push(JSON.parse(o.body));if(failCounts&&String(u).includes("/quiz-composer/study-mistakes")&&(!o?.method||o.method==="GET"))throw new Error("Fixture count refresh unavailable");return originalRefreshFetch(u,o);};mistakeTitle.value="Confirmed despite refresh failure";mistakeCount.value=2;true')
+    b.click('#createMistakeMix');b.wait_for('mistakeRefreshMessage.textContent.includes("Fixture count refresh unavailable")')
+    assert b.evaluate('!openMistakeMix.hidden && mistakeStatus.textContent.includes("is saved") && retryMistakeMix.hidden && createMistakeMix.disabled && nextMistakeMix.hidden && studyMistakeResults.hidden')
+    assert b.evaluate('sessionStorage.getItem("dlms-study-mistakes-request")') is None
+    assert b.evaluate('creationRequests.length')==1
+    # A restored-profile response must not replace counts for the acknowledged quiz.
+    b.evaluate('window.failCounts=false;window.wrongEpoch=true;window.fetch=async(u,o)=>{const r=await originalRefreshFetch(u,o);if(wrongEpoch&&String(u).includes("/quiz-composer/study-mistakes")&&(!o?.method||o.method==="GET")){const doc=new DOMParser().parseFromString(await r.text(),"text/html");const el=doc.getElementById("studyMistakeContext");const v=JSON.parse(el.textContent);v.generation+="-different";el.textContent=JSON.stringify(v);return new Response(doc.documentElement.outerHTML,{status:200});}if(String(u).includes("/study-mistakes/create"))creationRequests.push(JSON.parse(o.body));return r;};true')
+    b.click('#refreshMistakeCounts');b.wait_for('mistakeRefreshMessage.textContent.includes("profile or checked sources changed")')
+    assert b.evaluate('!openMistakeMix.hidden && createMistakeMix.disabled && nextMistakeMix.hidden && creationRequests.length===1')
+    b.evaluate('window.wrongEpoch=false;true');b.click('#refreshMistakeCounts')
+    b.wait_for('mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="2" && !nextMistakeMix.hidden')
+    assert b.evaluate('creationRequests.length')==1
+    first_id=b.evaluate('creationRequests[0].request_id')
+    b.click('#nextMistakeMix')
+    b.evaluate('mistakeMode.value="random";mistakeMode.dispatchEvent(new Event("change"));true')
+    _mistake_ui_create(b,2,'Independent Random batch')
+    assert b.evaluate('creationRequests.length')==2
+    assert b.evaluate('creationRequests[1].request_id')!=first_id
+    assert b.evaluate('mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="2" && mistakePassSummary.querySelector(".study-mistakes-count-card:nth-child(2) strong")?.textContent==="2"')
+    assert b.evaluate('mistakeTitle.value')=='Independent Random batch' and b.evaluate('mistakeCount.value')=='2'
+    with sqlite3.connect(root/'results.db') as c:
+        assert c.execute('SELECT count(*) FROM study_mistake_members WHERE used_by IS NOT NULL').fetchone()[0]==2
+        assert c.execute("SELECT count(*) FROM quizzes WHERE title IN ('Confirmed despite refresh failure','Independent Random batch')").fetchone()[0]==2
+
+
+@pytest.mark.parametrize('browser_stack',[{'alwaysMatch':{'unhandledPromptBehavior':'ignore'}}],indirect=True)
+def test_study_mistakes_acknowledged_request_storage_failure_gates_new_work(browser_stack):
+    b=browser_stack.browser
+    qid,_=_mistake_usability_source(browser_stack,2,'Storage failure source')
+    b.navigate(browser_stack.base_url+'/quiz-composer/study-mistakes?quizzes='+str(qid))
+    b.click('#startMistakePass');b.wait_for('document.readyState==="complete" && mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="2"')
+    b.evaluate('window.originalRemove=Storage.prototype.removeItem;Storage.prototype.removeItem=function(k){if(k==="dlms-study-mistakes-request")throw new Error("Fixture storage blocked");return originalRemove.call(this,k);};mistakeTitle.value="Known saved despite blocked cleanup";mistakeCount.value=1;true')
+    b.click('#createMistakeMix');b.wait_for('mistakeRefreshMessage.textContent.includes("recovery could not be cleared")')
+    assert b.evaluate('!openMistakeMix.hidden && nextMistakeMix.hidden && startMistakePass.disabled && mistakeScopeForm.querySelector("button[type=submit]").disabled && createMistakeMix.disabled')
+    retained=b.evaluate('sessionStorage.getItem("dlms-study-mistakes-request")')
+    b.navigate(browser_stack.base_url+'/quiz-composer/study-mistakes?quizzes='+str(qid))
+    b.wait_for('document.readyState==="complete" && !retryMistakeMix.hidden')
+    b.click('#retryMistakeMix');b.wait_for('mistakeRefreshMessage.textContent.includes("Counts updated")')
+    assert b.evaluate('sessionStorage.getItem("dlms-study-mistakes-request")') is None
+    assert json.loads(retained)['title']=='Known saved despite blocked cleanup'
+    with sqlite3.connect(browser_stack.data_root/'results.db') as c:
+        assert c.execute("SELECT count(*) FROM quizzes WHERE title='Known saved despite blocked cleanup'").fetchone()[0]==1
+        assert c.execute('SELECT count(*) FROM study_mistake_members WHERE used_by IS NOT NULL').fetchone()[0]==1
+
+
+def _check_study_mistakes_browse_wording_and_table(browser_stack, theme, native_zoom=False):
+    """Real rendered singular/plural copy and populated headings, with no creation."""
+    b, root = browser_stack.browser, browser_stack.data_root
+    b.context = b.command('browsingContext.create', {'type': 'tab'})['context']
+    if native_zoom:
+        b.command('browsingContext.setViewport', {'context': b.context, 'viewport': None, 'devicePixelRatio': None})
+    qid, _ = _mistake_usability_source(browser_stack, 2, 'Presentation sample source', 'Presentation sample', wrong=False)
+    with sqlite3.connect(root/'results.db') as c:
+        for row in c.execute('SELECT id FROM questions WHERE quiz_id=?', (qid,)).fetchall():
+            c.execute("INSERT INTO study_legacy_responses(quiz_id,question_id,mode,was_correct,response_json) VALUES(?,?,'Study',0,?)", (qid, row[0], json.dumps({'selected': ['B']})))
+        before = {table: list(c.execute('SELECT * FROM '+table+' ORDER BY rowid')) for table in ('questions', 'choices', 'study_legacy_responses')}
+    b.navigate(browser_stack.base_url+'/settings/appearance'); _set_theme(b, theme)
+    b.navigate(browser_stack.base_url+'/quiz-composer/study-mistakes?quizzes='+str(qid))
+    b.wait_for_page_ready('document.getElementById("mistakeQuizBrowse")')
+    statuses = {}
+    for value, label in [('selected', 'zero'), ('folder:Presentation sample', 'one'), ('all', 'plural')]:
+        b.evaluate('mistakeQuizBrowse.value='+json.dumps(value)+';mistakeQuizBrowse.dispatchEvent(new Event("change"));true')
+        statuses[label] = b.evaluate('({count:mistakeQuizSelect.options.length,text:mistakeBrowseStatus.textContent})')
+        assert b.evaluate('new FormData(mistakeScopeForm).getAll("quizzes")') == [str(qid)]
+    b.evaluate('mistakeQuizBrowse.value="folder:Presentation sample";mistakeQuizBrowse.dispatchEvent(new Event("change"));true')
+    b.activate(); b.wait_for('document.hasFocus()')
+    b.evaluate('mistakeUnavailableDetails.querySelector("summary").focus();true'); b.press_key(' ')
+    b.wait_for('mistakeUnavailableDetails.open')
+    measurements = []
+    for width in ((None,) if native_zoom else (1440, 390)):
+        if width: b.set_viewport(width, 1000)
+        if b.evaluate('innerWidth<900'): b.wait_for('dashboardSidebar.getBoundingClientRect().right<=0')
+        b.evaluate('mistakeUnavailableDetails.querySelector("summary").scrollIntoView({block:"start",behavior:"instant"});true')
+        metric = b.evaluate('''(() => {const table=document.querySelector('.study-mistakes-exclusions'),h=table.querySelector('thead th:nth-child(2)'),cell=table.querySelector('[data-label="Question"]'),r=document.createRange();r.selectNodeContents(h);return {width:innerWidth,dpr:devicePixelRatio,overflow:document.documentElement.scrollWidth>innerWidth,heading:h.textContent,headingLines:r.getClientRects().length,stacked:getComputedStyle(table.querySelector('thead')).position==='absolute',stackedLabel:getComputedStyle(cell,'::before').content,rows:table.querySelectorAll('tbody tr').length,href:table.querySelector('tbody a').getAttribute('href')};})()''')
+        measurements.append(metric)
+        _mistake_browser_capture(b, 'table-heading-'+theme+'-'+str(width or 'native200'))
+    output = os.environ.get('DLMS_PRESENTATION_CAPTURE_DIR')
+    if output:
+        (Path(output)/('table-heading-'+theme+'-'+('native200' if native_zoom else 'responsive')+'.json')).write_text(json.dumps(dict(statuses=statuses,measurements=measurements),indent=2))
+    assert statuses['zero']['count'] == 0 and statuses['zero']['text'].startswith('0 quizzes shown')
+    assert statuses['one']['count'] == 1 and statuses['one']['text'].startswith('1 quiz shown')
+    assert statuses['plural']['count'] > 1 and statuses['plural']['text'].startswith(str(statuses['plural']['count'])+' quizzes shown')
+    for metric in measurements:
+        assert not metric['overflow'] and metric['rows'] == 2 and metric['heading'] == 'Question', metric
+        assert metric['href'] == '/edit_quiz/'+str(qid), metric
+        if metric['stacked']: assert metric['stackedLabel'].replace('" "', '').strip('"') == 'Question: ', metric
+        else: assert metric['headingLines'] == 1, metric
+        if native_zoom: assert metric['dpr'] == 2
+    b.activate(); b.evaluate('document.querySelector(".study-mistakes-exclusions tbody a").focus();true')
+    assert b.evaluate('document.activeElement.matches(":focus-visible")')
+    b.press_key('\ue007'); b.wait_for_page_ready('location.pathname==="/edit_quiz/'+str(qid)+'"')
+    with sqlite3.connect(root/'results.db') as c:
+        for table, records in before.items(): assert list(c.execute('SELECT * FROM '+table+' ORDER BY rowid')) == records
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_study_mistakes_browse_wording_and_table_headings(browser_stack, theme):
+    _check_study_mistakes_browse_wording_and_table(browser_stack, theme)
+
+
+@pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
+def test_study_mistakes_native_zoom_table_headings(browser_stack, theme):
+    _check_study_mistakes_browse_wording_and_table(browser_stack, theme, True)

@@ -23,7 +23,7 @@ def test_study_save_requires_the_matching_server_acknowledgement():
     save = _function_block(source, "saveStudyLearningEvent")
 
     assert "async function saveStudyLearningEvent" in save
-    assert 'await fetch("/api/learning-events/study-response"' in save
+    assert 'await studyFetch("/api/learning-events/study-response"' in save
     assert "!response.ok" in save
     assert "data.ok !== true" in save
     assert 'String(data.event_id || "") !== record.eventId' in save
@@ -42,7 +42,7 @@ def test_network_http_and_malformed_acknowledgement_failures_show_one_retry_stat
     assert '"Waiting for learning progress to save…"' in update_status
     assert '"Saving review completion…"' in update_status
     assert 'studyCompletionMessage' in update_status
-    assert '"Learning progress was not saved."' in update_status
+    assert 'awaiting save confirmation.' in update_status
     assert 'retry.textContent = "Retry"' in ensure_status
     assert 'record.state = "failed"' in save
     assert "return false" in save
@@ -77,11 +77,12 @@ def test_study_recovery_completes_only_after_every_answer_is_complete_and_acknow
     assert 'question.type === "hotspot"' in answer_complete
     assert 'question.type === "matching"' in answer_complete
     assert "selected.length === correctCount" in answer_complete
-    assert "studyLearningEventSaves.size !== 0" in complete
-    assert "quiz.every" in complete
-    assert "generatedPracticeStatus?.is_transient !== false" in complete
-    assert "quizRecoveryController.complete()" in complete
-    assert "requestGeneratedPracticeCompletion" not in complete
+    assert "return false" in complete
+    assert "quizRecoveryController.complete()" not in complete
+    finish = _function_block(source, "finishGeneratedPracticeReview")
+    assert "studyLearningEventSaves.size !== 0" in finish
+    assert 'studyRequest("/api/study/finish"' in finish
+    assert "quizRecoveryController.complete()" in finish
 
 
 def test_generated_review_finishes_only_after_explicit_action_and_acknowledged_saves():
@@ -90,13 +91,13 @@ def test_generated_review_finishes_only_after_explicit_action_and_acknowledged_s
     finish = _function_block(source, "finishGeneratedPracticeReview")
     assert 'finishBtn.textContent = "Finish Review"' in navigation
     assert 'finishBtn.addEventListener("click", () => { void finishGeneratedPracticeReview(); })' in navigation
-    assert 'generatedPracticeStatus?.is_transient === true' in navigation
+    assert 'const showFinish = durableStudySupported && !examMode' in navigation
     assert 'index === quiz.length - 1' in navigation
     assert 'await Promise.all(saving.map(record => record.savePromise))' in finish
     assert 'studyLearningEventSaves.size !== 0' in finish
     assert 'quiz.findIndex' in finish
     assert 'await requestGeneratedPracticeCompletion("Study", sessionId)' in finish
-    assert 'completion.applicable !== true' in finish
+    assert 'durableStudySession = completion.session' in finish
     assert finish.index('await requestGeneratedPracticeCompletion("Study", sessionId)') < finish.index(
         'quizRecoveryController.complete()'
     )

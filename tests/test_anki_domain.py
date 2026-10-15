@@ -56,7 +56,7 @@ class AnkiDomainTests(unittest.TestCase):
             ["front", "back", "question_number", "question_id", "quiz_id"],
             list(rows[0]),
         )
-        self.assertEqual("First?\n\nA. Alpha\nB. Beta", rows[0]["front"])
+        self.assertEqual("First?\n\nB. Beta\nA. Alpha", rows[0]["front"])
         self.assertEqual("Correct Answer\nB. Beta", rows[0]["back"])
         self.assertEqual("Second?", rows[1]["front"])
         self.assertEqual("Correct Answer", rows[1]["back"])
@@ -290,7 +290,7 @@ class AnkiDomainTests(unittest.TestCase):
         self.assertEqual(200, response.status_code)
         self.assertEqual(
             "Front\tBack\tTags\n"
-            "Question über?\n\nA. Alpha value\nB. Beta\t"
+            "Question über?\n\nB. Beta\nA. Alpha value\t"
             "Correct: B\nB. Beta\tCafé_Quiz missed",
             response.get_data(as_text=True),
         )

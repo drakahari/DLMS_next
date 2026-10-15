@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Quiz needs review</title><link rel="stylesheet" href="/static/style.css"></head>
+<body><main class="build-container"><h1>{{ entry.title }} — Needs review</h1>
+<p>This quiz remains saved and can be exported. Graded Study and Exam are unavailable until these issues are resolved. No questions were omitted, and saved history and browser recovery are retained.</p>
+<ul>{% for issue in readiness.issues %}<li>{% if issue.position %}Question {{ issue.position }}{% if issue.number != issue.position %} (stored number {{ issue.number }}){% endif %}: {% endif %}{{ issue.reason }}</li>{% endfor %}</ul>
+<a class="library-primary-action" href="/edit_quiz/{{ entry.id }}">Review and edit</a> <a class="library-secondary-action" href="/quiz-bundles">Export saved content</a> <a class="library-secondary-action" href="/library">Quiz Library</a>
+</main><script src="/static/nav-normalize.js"></script></body></html>

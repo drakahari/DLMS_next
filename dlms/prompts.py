@@ -595,3 +595,32 @@ DEFAULT_MEDICAL_STUDY_PACK_AI_ADDENDUM = r"""MEDICAL-SPECIFIC SAFETY AND SOURCE 
 - Keep concise matching definitions separate from richer Study Mode explanations.
 - Mark uncertain image hotspot geometry for DLMS Image Study Editor review rather than pretending it is calibrated."""
 
+
+
+DEFAULT_CERTIFICATION_PROMPT = """Help me understand possible renewal-credit eligibility for my earned certification.
+Consult CURRENT official issuer rules, cite direct source links and policy dates, and explain
+possible eligibility, partial credit and missing information. Do not invent requirements or
+claim issuer verification or approval. Training hours, submitted credit and accepted credit
+are distinct user-recorded values. Guidance is not issuer approval; I must verify it myself.
+Do not request credential IDs or certificates. Do not infer stacked renewals or carry credit
+between cycles. Give a concise explanation and practical next steps.
+
+Selected context and my question:
+{{certification_context}}
+"""
+
+DEFAULT_PORTFOLIO_PROMPT = """Help me find possible renewal matches across my earned-certification portfolio.
+Use only the selected information below. Research current official issuer policies
+for each credential/version and renewal route, and relevant public course descriptions.
+Do not assume that an issuer or a course provider is supported by a special integration.
+For each possible match give source URLs, policy publication/check dates, category,
+potentially eligible credit, exclusions, uncertainty and missing information. Distinguish
+actual learning hours from claimed credit and issuer-accepted credit. Check annual
+minimums versus optional pacing, reporting-year boundaries, cycle totals and category caps.
+Do not assume the same activity is accepted by every issuer or that a full credit total
+completes renewal. Mention other conditions (such as fees, membership or audit).
+These are eligibility suggestions, not issuer approval. Ask before assuming unknown rules.
+Nothing you write updates DLMS or renews any credential; I must verify and record it myself.
+
+{{portfolio_context}}
+"""

@@ -274,7 +274,13 @@ class BackupBrowserContentRouteTests(unittest.TestCase):
             json.dumps(restored_portal),
             encoding="utf-8",
         )
-        (payload / "data" / "restored_quiz.json").write_text("[]", encoding="utf-8")
+        # Keep this security fixture internally consistent; an empty runtime
+        # list with a persisted question is now correctly rejected before restore.
+        (payload / "data" / "restored_quiz.json").write_text(json.dumps([{
+            "number": 1, "question": "Safe canonical question",
+            "choices": [{"label": "A", "text": "Safe answer", "is_correct": True}],
+            "correct": ["A"],
+        }]), encoding="utf-8")
         (payload / "data" / "parse_log_1.txt").write_text("safe parser output", encoding="utf-8")
         malicious = f"<!doctype html><script>window.{self.ATTACK_MARKER}=true</script>"
         (payload / "quizzes" / "restored_quiz.html").write_text(malicious, encoding="utf-8")

@@ -1,4 +1,4 @@
-# Reproducible DLMS 3.2.2 runtime environment.
+# Reproducible DLMS 3.3.0 runtime environment.
 #
 # These direct and transitive versions are the dependency set exercised by the
 # release-readiness suite on Python 3.14.7. Update intentionally: install the
@@ -21,3 +21,4 @@ pypdfium2==5.14.0
 PyYAML==6.0.3
 Werkzeug==3.1.9
 WTForms==3.2.2
+tzdata==2026.5

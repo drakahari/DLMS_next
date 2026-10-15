@@ -137,7 +137,7 @@ def _choice_response(cur, question_id, selected, *, study):
         )
 
     choices = cur.execute(
-        "SELECT label, is_correct FROM choices WHERE question_id = ? ORDER BY label",
+        "SELECT label, is_correct FROM choices WHERE question_id = ? ORDER BY choice_order, label, id",
         (question_id,),
     ).fetchall()
     allowed = {row["label"] for row in choices}
@@ -155,7 +155,7 @@ def _choice_response(cur, question_id, selected, *, study):
 
 
 def _matching_response(
-    cur, question_id, selected, *, study, learning_integer=_learning_integer
+    cur, question_id, selected, *, study, matching_variant=None, learning_integer=_learning_integer
 ):
     # Early content-pack clients represented an unanswered match as [].
     if selected == []:
@@ -169,6 +169,24 @@ def _matching_response(
     ).fetchone()[0]
     if pair_count < 2:
         raise LearningPayloadError("the stored matching question is not scoreable")
+    configuration = cur.execute('SELECT matching_round_size, matching_direction FROM questions WHERE id=?', (question_id,)).fetchone()
+    expected_count = min(pair_count, max(2, int(configuration['matching_round_size'] or pair_count)))
+    if matching_variant is None:
+        if not study and expected_count != pair_count:
+            raise LearningPayloadError('This reduced matching round is missing its round identity; use the current quiz page to save it.')
+    else:
+        if not isinstance(matching_variant, dict) or set(matching_variant) != {'sourcePairIndexes', 'direction'}:
+            raise LearningPayloadError('matchingVariant must identify its source pairs and direction')
+        indexes = matching_variant['sourcePairIndexes']
+        if not isinstance(indexes, list) or len(indexes) != expected_count:
+            raise LearningPayloadError('matchingVariant does not match the configured round size')
+        if any(type(index) is not int or not 0 <= index < pair_count for index in indexes) or len(set(indexes)) != len(indexes):
+            raise LearningPayloadError('matchingVariant must contain unique valid source pair indexes')
+        direction = matching_variant['direction']
+        configured = configuration['matching_direction'] or 'term_to_definition'
+        if direction not in ('term_to_definition', 'definition_to_term') or configured not in (direction, 'random'):
+            raise LearningPayloadError('matchingVariant does not match the configured direction')
+        pair_count = expected_count
 
     normalized = {}
     for raw_left, raw_right in selected.items():
@@ -256,7 +274,8 @@ def _validate_question_response(
         )
     elif question_type == "matching":
         selected, computed_correctness = matching_response(
-            cur, question["id"], detail.get("selected"), study=study
+            cur, question["id"], detail.get("selected"), study=study,
+            matching_variant=detail.get('matchingVariant')
         )
     else:
         selected = hotspot_response(detail.get("selected"), study=study)
@@ -269,7 +288,7 @@ def _validate_question_response(
         raise LearningPayloadError(
             f"{field}.wasCorrect is inconsistent with selected"
         )
-    return {
+    result = {
         "attemptQuestionNumber": (
             question["question_number"]
             if attempt_question_number is None
@@ -280,6 +299,9 @@ def _validate_question_response(
         "selected": selected,
         "questionId": question["id"],
     }
+    if question_type == 'matching' and detail.get('matchingVariant') is not None:
+        result['matchingVariant'] = detail['matchingVariant']
+    return result
 
 
 def _validate_missed_details(
@@ -331,7 +353,7 @@ def _validate_missed_details(
         cleaned["questionId"] = response["questionId"]
         if response["questionType"] == "choice":
             choice_rows = cur.execute(
-                "SELECT label, is_correct FROM choices WHERE question_id = ? ORDER BY label",
+                "SELECT label, is_correct FROM choices WHERE question_id = ? ORDER BY choice_order, label, id",
                 (response["questionId"],),
             ).fetchall()
             cleaned["correctLetters"] = [
@@ -346,16 +368,21 @@ def _validate_missed_details(
                 """,
                 (response["questionId"],),
             ).fetchall()
+            variant = response.get('matchingVariant')
+            if variant:
+                pair_rows = [pair_rows[index] for index in variant['sourcePairIndexes']]
+                cleaned['matchingVariant'] = variant
+            left_key, right_key = ('right_text', 'left_text') if variant and variant['direction'] == 'definition_to_term' else ('left_text', 'right_text')
             selections = response["selected"]
             cleaned["correctLetters"] = []
             cleaned["selectedLetters"] = []
             cleaned["correctText"] = [
-                f"{row['left_text']} ↔ {row['right_text']}" for row in pair_rows
+                f"{row[left_key]} ↔ {row[right_key]}" for row in pair_rows
             ]
             cleaned["selectedText"] = [
-                f"{row['left_text']} ↔ "
+                f"{row[left_key]} ↔ "
                 + (
-                    pair_rows[int(selections[str(pair_index)])]["right_text"]
+                    pair_rows[int(selections[str(pair_index)])][right_key]
                     if str(pair_index) in selections
                     else "[No answer]"
                 )
@@ -383,7 +410,7 @@ def _validate_missed_details(
                 """
                 SELECT text FROM choices
                 WHERE question_id = ? AND is_correct = 1
-                ORDER BY label LIMIT 1
+                ORDER BY choice_order, label, id LIMIT 1
                 """,
                 (response["questionId"],),
             ).fetchone()
@@ -422,6 +449,8 @@ def _validate_attempt_payload(
     )
     if not cur.execute("SELECT 1 FROM quizzes WHERE id = ?", (quiz_id,)).fetchone():
         raise LearningPayloadError("quizId does not identify an existing quiz")
+    from .quiz_readiness import require_ready
+    require_ready(cur, quiz_id, encoding=data.get("answerEncoding"), check_encoding=True)
     attempt_id = learning_identifier(data.get("attemptId"), "attemptId")
     session_id = optional_learning_identifier(data.get("sessionId"), "sessionId")
 
@@ -598,6 +627,12 @@ def _attempt_retry_matches_existing(
             "question_type": response["questionType"],
             "selected": response["selected"],
         }
+        # Older saved full-bank attempts have no round identity. A recovered
+        # request may now supply validated metadata; acknowledge matching
+        # historical fields without rewriting or inventing that old identity.
+        if ('matchingVariant' in response and isinstance(durable_response, dict)
+                and 'matching_variant' in durable_response):
+            expected_response['matching_variant'] = response['matchingVariant']
         if (
             event["question_id"] != response["questionId"]
             or event["was_correct"] != (1 if response["wasCorrect"] else 0)
@@ -765,6 +800,7 @@ def persist_attempt(
                 "question_number": question_number,
                 "question_type": detail.get("questionType") or "choice",
                 "selected": detail.get("selected"),
+                **({'matching_variant': detail['matchingVariant']} if 'matchingVariant' in detail else {}),
             },
         )
 
@@ -824,25 +860,23 @@ def persist_attempt(
             )
             response_json = json_module.dumps(hotspot_data, ensure_ascii=False)
         elif question_id and question_type == "matching":
-            cur.execute(
-                """
-                SELECT left_text, right_text
-                FROM matching_pairs
-                WHERE question_id = ?
-                ORDER BY pair_order, id
-                """,
-                (question_id,),
-            )
+            # These texts have already been rebuilt from canonical pairs in
+            # the validated runtime subset/direction, never client prose.
             choices_text = "\n".join(
-                f"{row['left_text']} ↔ {row['right_text']}" for row in cur.fetchall()
+                missed_detail.get("correctText") or []
             )
+            if missed_detail.get('matchingVariant') is not None:
+                response_json = json_module.dumps({
+                    'matching_variant': missed_detail['matchingVariant'],
+                    'selected': missed_detail['selected'],
+                }, ensure_ascii=False)
         elif question_id:
             cur.execute(
                 """
                 SELECT label, text
                 FROM choices
                 WHERE question_id = ?
-                ORDER BY label
+                ORDER BY choice_order, label, id
                 """,
                 (question_id,),
             )
@@ -949,6 +983,8 @@ def persist_study_learning_event(
     quiz_id = learning_integer(
         data.get("quizId"), "quizId", minimum=1, allow_numeric_string=True
     )
+    from .quiz_readiness import require_ready
+    require_ready(cur, quiz_id, encoding=data.get("answerEncoding"), check_encoding=True)
     question_ordinal = learning_integer(
         data.get("questionOrdinal", data.get("questionNumber")),
         "questionOrdinal",
@@ -985,8 +1021,8 @@ def persist_study_learning_event(
             """
             SELECT quiz_id, question_id, session_id, mode,
                    was_correct, response_json
-            FROM learning_events
-            WHERE event_type = 'study_answer' AND attempt_id = ?
+            FROM study_legacy_responses
+            WHERE attempt_id = ?
             ORDER BY id
             """,
             (event_id,),
@@ -1036,6 +1072,8 @@ def persist_study_learning_event(
         was_correct=detail["wasCorrect"],
         response=event_response,
     )
+    from dlms.persistence.study_schema import preserve_legacy
+    preserve_legacy(conn, cur.lastrowid)
     conn.commit()
     acknowledgement = {"ok": True}
     if event_id:

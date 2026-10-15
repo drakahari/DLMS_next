@@ -92,7 +92,7 @@ class ThemeSystemTests(unittest.TestCase):
 
     def test_each_explicitly_saved_theme_remains_selected(self):
         client = dlms.app.test_client()
-        for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
             with self.subTest(theme=theme), tempfile.TemporaryDirectory() as td:
                 portal = os.path.join(td, "portal.json")
                 with open(portal, "w", encoding="utf-8") as config_file:
@@ -108,7 +108,7 @@ class ThemeSystemTests(unittest.TestCase):
                 self.assertEqual(second_load["theme"], theme)
                 self.assertRegex(
                     appearance,
-                    rf'name="theme" value="{re.escape(theme)}" checked',
+                    rf'<option value="{re.escape(theme)}" selected>',
                 )
                 with open(portal, "r", encoding="utf-8") as config_file:
                     self.assertEqual(json.load(config_file)["theme"], theme)
@@ -202,9 +202,9 @@ class ThemeSystemTests(unittest.TestCase):
         self.assertTrue(any("outline: 3px solid var(--theme-accent-text" in block for block in focus))
         self.assertTrue(any("outline-offset: 3px" in block for block in focus))
 
-    def test_help_text_contrast_across_all_four_palettes(self):
+    def test_help_text_contrast_across_all_palettes(self):
         client = dlms.app.test_client()
-        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+        for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
             with self.subTest(theme=theme):
                 with mock.patch.object(dlms, "load_portal_config", return_value={
                     "title": "DLMS", "theme": theme, "background_image": None,
@@ -230,6 +230,47 @@ class ThemeSystemTests(unittest.TestCase):
                     self.assertGreaterEqual(
                         ratio, 4.5, f"{theme} Help {role} is only {ratio:.2f}:1",
                     )
+
+    def test_ethereal_save_and_restore_preserve_unrelated_settings(self):
+        client = dlms.app.test_client()
+        with tempfile.TemporaryDirectory() as td:
+            portal = Path(td) / "portal.json"
+            initial = {"title": "My study", "theme": "light", "background_image": "custom.png",
+                       "ai_helper_enabled": True, "custom_legacy_setting": {"keep": [1, 2]}}
+            portal.write_text(json.dumps(initial), encoding="utf-8")
+            with mock.patch.object(dlms, "PORTAL_CONFIG", str(portal)):
+                response = client.post("/settings/appearance/save", data={"theme": "ethereal"},
+                                       headers=csrf_headers(client))
+                self.assertEqual(response.status_code, 302)
+                saved = json.loads(portal.read_text(encoding="utf-8"))
+                for key, value in initial.items():
+                    self.assertEqual(saved[key], "ethereal" if key == "theme" else value)
+                self.assertEqual(dlms.load_portal_config()["theme"], "ethereal")
+                # A restored portal document uses the same additive theme field.
+                self.assertEqual(dlms._validate_restored_json(portal, "config/portal.json")["theme"], "ethereal")
+                for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
+                    response = client.post("/api/theme", json={"theme": theme}, headers=csrf_headers(client))
+                    self.assertEqual(response.get_json(), {"ok": True, "theme": theme})
+                    self.assertEqual(dlms.load_portal_config()["theme"], theme)
+                    self.assertEqual(json.loads(portal.read_text())["custom_legacy_setting"], initial["custom_legacy_setting"])
+
+    def test_ethereal_selection_and_control_contrast(self):
+        client = dlms.app.test_client()
+        with mock.patch.object(dlms, "load_portal_config", return_value={"theme": "ethereal"}):
+            response = client.get("/dynamic.css")
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+        variables = self._css_variables(response.get_data(as_text=True))
+        selected = self._rgba(variables["theme-selection-bg"])[:3]
+        self.assertGreaterEqual(self._contrast(variables["theme-selection-text"], selected), 7)
+        for token in ("theme-body-base", "theme-panel-1", "theme-surface-2", "theme-input-bg"):
+            surface = self._rgba(variables[token])[:3]
+            self.assertGreaterEqual(self._contrast(variables["theme-selection-bg"], surface), 3)
+            self.assertGreaterEqual(self._contrast(variables["theme-control-border"], surface), 3)
+        for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+            with mock.patch.object(dlms, "load_portal_config", return_value={"theme": theme}):
+                css = client.get("/dynamic.css").get_data(as_text=True)
+            self.assertNotIn("--theme-display-font:", css)
+            self.assertNotIn("--theme-selection-bg:", css)
 
     def test_theme_api_rejects_unknown_theme(self):
         client = dlms.app.test_client()
@@ -282,6 +323,7 @@ class ThemeSystemTests(unittest.TestCase):
             "dark": "dark",
             "purple-gold": "dark",
             "maroon-gold": "dark",
+            "ethereal": "dark",
         }
         for theme, scheme in expected.items():
             with self.subTest(theme=theme):
@@ -317,7 +359,11 @@ class ThemeSystemTests(unittest.TestCase):
         }
         for name, value in expected_tokens.items():
             with self.subTest(token=name):
-                self.assertEqual(variables.get(name), value)
+                # New themes may override a semantic role. The original five
+                # still resolve to exactly this unchanged light/dark fallback.
+                actual = variables.get(name)
+                self.assertTrue(actual.startswith("var(--theme-semantic-"), actual)
+                self.assertTrue(actual.endswith(", " + value + ")"), actual)
 
         shutdown_rules = {
             ".dashboard-shutdown": (
@@ -534,7 +580,7 @@ class ThemeSystemTests(unittest.TestCase):
 
     def test_ai_builder_status_pill_contrast_across_palettes(self):
         client = dlms.app.test_client()
-        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+        for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
             with self.subTest(theme=theme):
                 with mock.patch.object(dlms, "load_portal_config", return_value={
                     "title": "DLMS", "theme": theme, "background_image": None,
@@ -564,7 +610,7 @@ class ThemeSystemTests(unittest.TestCase):
             self.assertIn(declaration, chips.group(1))
 
         client = dlms.app.test_client()
-        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+        for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
             with self.subTest(theme=theme):
                 with mock.patch.object(dlms, "load_portal_config", return_value={
                     "title": "DLMS", "theme": theme, "background_image": None,
@@ -685,7 +731,7 @@ class ThemeSystemTests(unittest.TestCase):
 
     def test_paste_quiz_and_preview_text_contrast_across_palettes(self):
         client = dlms.app.test_client()
-        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+        for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
             with self.subTest(theme=theme):
                 with mock.patch.object(dlms, "load_portal_config", return_value={
                     "title": "DLMS", "theme": theme, "background_image": None,
@@ -782,7 +828,7 @@ class ThemeSystemTests(unittest.TestCase):
                     self.assertIn(declaration, rule.group(1))
 
         client = dlms.app.test_client()
-        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+        for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
             with self.subTest(theme=theme):
                 with mock.patch.object(dlms, "load_portal_config", return_value={
                     "title": "DLMS", "theme": theme, "background_image": None,
@@ -1089,7 +1135,7 @@ class ThemeSystemTests(unittest.TestCase):
 
     def test_content_pack_detail_and_library_text_contrast_across_palettes(self):
         client = dlms.app.test_client()
-        for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
             with self.subTest(theme=theme), mock.patch.object(
                 dlms,
                 "load_portal_config",
@@ -1211,7 +1257,7 @@ class ThemeSystemTests(unittest.TestCase):
 
     def test_anki_preview_text_contrast_across_palettes(self):
         client = dlms.app.test_client()
-        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+        for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
             with self.subTest(theme=theme):
                 with mock.patch.object(dlms, "load_portal_config", return_value={
                     "title": "DLMS", "theme": theme, "background_image": None,
@@ -1301,7 +1347,7 @@ class ThemeSystemTests(unittest.TestCase):
 
     def test_custom_anki_semantic_text_contrast_across_palettes(self):
         client = dlms.app.test_client()
-        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+        for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
             with self.subTest(theme=theme):
                 with mock.patch.object(dlms, "load_portal_config", return_value={
                     "title": "DLMS", "theme": theme, "background_image": None,
@@ -1380,7 +1426,7 @@ class ThemeSystemTests(unittest.TestCase):
 
     def test_shared_focus_foreground_meets_contrast_across_palettes(self):
         client = dlms.app.test_client()
-        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+        for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
             with self.subTest(theme=theme):
                 with mock.patch.object(dlms, "load_portal_config", return_value={
                     "title": "DLMS", "theme": theme, "background_image": None,
@@ -1453,7 +1499,7 @@ class ThemeSystemTests(unittest.TestCase):
 
     def test_generated_quiz_shell_text_contrast_across_palettes(self):
         client = dlms.app.test_client()
-        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+        for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
             with self.subTest(theme=theme):
                 with mock.patch.object(dlms, "load_portal_config", return_value={
                     "title": "DLMS", "theme": theme, "background_image": None,
@@ -1533,9 +1579,9 @@ class ThemeSystemTests(unittest.TestCase):
         self.assertFalse(any("rgba(7,21,44" in block for block in hover))
         self.assertNotIn("a.settings-hub-card:hover .settings-hub-icon", css)
 
-    def test_settings_hub_state_contrast_across_all_four_palettes(self):
+    def test_settings_hub_state_contrast_across_all_palettes(self):
         client = dlms.app.test_client()
-        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+        for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
             with self.subTest(theme=theme):
                 with mock.patch.object(dlms, "load_portal_config", return_value={
                     "title": "DLMS", "theme": theme, "background_image": None,
@@ -1638,9 +1684,9 @@ class ThemeSystemTests(unittest.TestCase):
                         f"{selector} {scheme} contrast is only {ratio:.2f}:1",
                     )
 
-    def test_shared_neutral_chip_text_contrast_across_all_four_palettes(self):
+    def test_shared_neutral_chip_text_contrast_across_all_palettes(self):
         client = dlms.app.test_client()
-        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+        for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
             with self.subTest(theme=theme):
                 with mock.patch.object(dlms, "load_portal_config", return_value={
                     "title": "DLMS", "theme": theme, "background_image": None,
@@ -1726,7 +1772,7 @@ class ThemeSystemTests(unittest.TestCase):
         self.assertTrue(any("24%" in rule for rule in active_rules))
 
         client = dlms.app.test_client()
-        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+        for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
             with self.subTest(theme=theme):
                 with mock.patch.object(dlms, "load_portal_config", return_value={
                     "title": "DLMS", "theme": theme, "background_image": None,
@@ -1754,7 +1800,7 @@ class ThemeSystemTests(unittest.TestCase):
 
     def test_muted_secondary_text_meets_contrast_across_palettes(self):
         client = dlms.app.test_client()
-        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+        for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
             with self.subTest(theme=theme):
                 with mock.patch.object(dlms, "load_portal_config", return_value={
                     "title": "DLMS", "theme": theme, "background_image": None,
@@ -1841,9 +1887,9 @@ class ThemeSystemTests(unittest.TestCase):
             self._rule_blocks(css, ".portable-bundle-selection-actions button")
         ))
 
-    def test_primary_action_foreground_contrast_across_all_four_palettes(self):
+    def test_primary_action_foreground_contrast_across_all_palettes(self):
         client = dlms.app.test_client()
-        for theme in ("dark", "light", "purple-gold", "maroon-gold"):
+        for theme in ("dark", "light", "purple-gold", "maroon-gold", "ethereal"):
             with self.subTest(theme=theme):
                 with mock.patch.object(dlms, "load_portal_config", return_value={
                     "title": "DLMS", "theme": theme, "background_image": None,
@@ -2005,7 +2051,7 @@ class ThemeSystemTests(unittest.TestCase):
             all(declaration in rule for declaration in (
                 "flex: 1 0 100%", "width: 100%", "min-width: 0",
                 "box-sizing: border-box", "padding: 18px",
-                "border-radius: 15px",
+                "border-radius: var(--theme-panel-radius, 15px)",
             ))
             for rule in source_rules
         ))
@@ -2025,7 +2071,7 @@ class ThemeSystemTests(unittest.TestCase):
             "warning": ("#765511", "#f4cf72", "#d69b21", .11),
             "error": ("#8f2435", "#ff9eaa", "#c63f52", .10),
         }
-        for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
             with self.subTest(theme=theme):
                 with mock.patch.object(dlms, "load_portal_config", return_value={
                     "title": "DLMS", "theme": theme, "background_image": None,
@@ -2285,7 +2331,7 @@ class ThemeSystemTests(unittest.TestCase):
                 for index in range(3)
             )
 
-        for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
             with self.subTest(theme=theme):
                 with mock.patch.object(dlms, "load_portal_config", return_value={
                     "title": "DLMS", "theme": theme, "background_image": None,
@@ -2355,7 +2401,7 @@ class ThemeSystemTests(unittest.TestCase):
             )
 
         client = dlms.app.test_client()
-        for theme in ("light", "dark", "purple-gold", "maroon-gold"):
+        for theme in ("light", "dark", "purple-gold", "maroon-gold", "ethereal"):
             with self.subTest(theme=theme):
                 with mock.patch.object(dlms, "load_portal_config", return_value={
                     "title": "DLMS", "theme": theme, "background_image": None,

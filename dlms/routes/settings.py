@@ -7,10 +7,14 @@ from functools import wraps
 from typing import Any
 
 from flask import Blueprint, jsonify, redirect, render_template, request
+from dlms.persistence.portal import DASHBOARD_CARD_GROUPS, dashboard_card_defaults
+from dlms.themes import THEME_IDS, theme_groups
+from dlms.prompts import DEFAULT_CERTIFICATION_PROMPT, DEFAULT_PORTFOLIO_PROMPT
+from dlms.services import certification_display
 
 
 Dependency = Callable[..., Any]
-THEMES = {"dark", "light", "purple-gold", "maroon-gold"}
+THEMES = THEME_IDS
 AI_PROVIDERS = {"chatgpt", "claude", "gemini", "local"}
 
 
@@ -76,10 +80,74 @@ def save_lifecycle_settings(dependencies):
     return redirect("/settings/lifecycle?saved=1")
 
 
-def settings_navigation_page(dependencies):
+def _layout_redirect(section, saved=False):
+    saved = saved or request.args.get("saved") == "1"
+    return redirect("/settings/layout" + ("?saved=1" if saved else "") + "#" + section)
+
+
+def settings_navigation_page(_dependencies):
+    return _layout_redirect("study-areas")
+
+
+def settings_dashboard_page(_dependencies):
+    return _layout_redirect("dashboard-panels")
+
+
+def settings_layout_page(dependencies):
     cfg = dependencies.load_portal_config()
-    visibility = cfg["study_area_visibility"]
-    return render_template("settings/navigation.html", visibility=visibility)
+    return render_template(
+        "settings/dashboard.html", groups=DASHBOARD_CARD_GROUPS,
+        visibility=cfg.get("dashboard_card_visibility", dashboard_card_defaults()),
+        sidebar_visibility=cfg["study_area_visibility"],
+        show_certifications=cfg.get("show_certifications",True),
+        certification_display_count=cfg.get("certification_display_count","3"),
+        certification_sort=cfg.get("certification_sort","earned"),
+    )
+
+
+def save_layout_settings(dependencies):
+    action = request.form.get("action", "save")
+    if action not in {"save", "dashboard_defaults", "sidebar_defaults"}:
+        return "Unknown layout settings action", 400
+    cfg = dependencies.load_portal_config()
+    if action == "dashboard_defaults":
+        cfg["dashboard_card_visibility"] = dashboard_card_defaults()
+    elif action == "sidebar_defaults":
+        cfg["study_area_visibility"] = dict.fromkeys(("it", "law", "medical", "other"), True)
+    else:
+        cfg["dashboard_card_visibility"] = {
+            key: f"dashboard_card_{key}" in request.form for key in dashboard_card_defaults()
+        }
+        cfg["study_area_visibility"] = {
+            key: f"study_area_{key}" in request.form for key in ("it", "law", "medical", "other")
+        }
+    if action == "save" and request.form.get("certifications_visibility_present") == "yes":
+        cfg["show_certifications"] = "show_certifications" in request.form
+    if action == "save" and "certification_count_mode" in request.form:
+        try:
+            if request.form.get("certification_count_mode") not in ("all", "custom"):raise ValueError("Choose All or Custom number.")
+            cfg['certification_display_count'] = certification_display.count('all' if request.form.get('certification_count_mode') == 'all' else request.form.get('certification_display_count'))
+            cfg['certification_sort'] = certification_display.sort(request.form.get('certification_sort', cfg.get('certification_sort', 'earned')))
+        except ValueError as exc:
+            return render_template('settings/dashboard.html', groups=DASHBOARD_CARD_GROUPS,
+                visibility=cfg['dashboard_card_visibility'], sidebar_visibility=cfg['study_area_visibility'],
+                show_certifications=cfg.get('show_certifications', True), certification_display_count=request.form.get('certification_display_count',''),
+                certification_sort=request.form.get('certification_sort','earned'), layout_error=str(exc)), 400
+    dependencies.write_portal_config(cfg)
+    return redirect("/settings/layout?saved=1")
+
+
+def save_dashboard_settings(dependencies):
+    action = request.form.get("action", "save")
+    if action not in {"save", "defaults"}:
+        return "Unknown dashboard settings action", 400
+    cfg = dependencies.load_portal_config()
+    defaults = dashboard_card_defaults()
+    cfg["dashboard_card_visibility"] = defaults if action == "defaults" else {
+        key: f"dashboard_card_{key}" in request.form for key in defaults
+    }
+    dependencies.write_portal_config(cfg)
+    return _layout_redirect("dashboard-panels", saved=True)
 
 
 def save_navigation_settings(dependencies):
@@ -91,12 +159,12 @@ def save_navigation_settings(dependencies):
         "other": "study_area_other" in request.form,
     }
     dependencies.write_portal_config(cfg)
-    return redirect("/settings/navigation?saved=1")
+    return _layout_redirect("study-areas", saved=True)
 
 
 def settings_appearance_page(dependencies):
     cfg = dependencies.load_portal_config()
-    return render_template("settings/appearance.html", cfg=cfg)
+    return render_template("settings/appearance.html", cfg=cfg, theme_groups=theme_groups())
 
 
 def save_appearance_settings(dependencies):
@@ -106,7 +174,10 @@ def save_appearance_settings(dependencies):
     requested_theme = str(
         request.form.get("theme") or cfg.get("theme") or default_theme
     ).strip().lower()
-    cfg["theme"] = requested_theme if requested_theme in THEMES else default_theme
+    if requested_theme not in THEMES:
+        return render_template("settings/appearance.html", cfg=cfg, theme_groups=theme_groups(),
+                               theme_error="Choose a supported theme. Settings were not saved."), 400
+    cfg["theme"] = requested_theme
 
     title = request.form.get("portal_title", "").strip()
     if title:
@@ -119,23 +190,33 @@ def save_appearance_settings(dependencies):
         except ValueError as exc:
             return f"Invalid background image: {html.escape(str(exc))}", 400
 
-    dependencies.write_portal_config(cfg)
+    try:
+        dependencies.write_portal_config(cfg)
+    except OSError:
+        return render_template("settings/appearance.html", cfg=cfg, theme_groups=theme_groups(),
+                               theme_error="DLMS could not save settings. Your saved choice is unchanged. Try saving again."), 503
     return redirect("/settings/appearance?saved=1")
 
 
 def api_set_theme(dependencies):
-    cfg = dependencies.load_portal_config()
-    payload = request.get_json(silent=True) or request.form
-    requested = str(payload.get("theme") or "").strip().lower()
+    payload = request.get_json(silent=True) if request.is_json else request.form
+    value = payload.get("theme") if hasattr(payload, "get") else None
+    requested = value.strip().lower() if isinstance(value, str) else ""
     if requested not in THEMES:
         return jsonify({"ok": False, "error": "Unsupported theme"}), 400
+    # Reject invalid submissions before loading/recovering configuration, so
+    # even a missing or malformed settings file cannot be changed by this call.
+    cfg = dependencies.load_portal_config()
     cfg["theme"] = requested
-    dependencies.write_portal_config(cfg)
+    try:
+        dependencies.write_portal_config(cfg)
+    except OSError:
+        return jsonify({"ok": False, "error": "Could not save theme. Your saved choice is unchanged."}), 503
     return jsonify({"ok": True, "theme": requested})
 
 
-def settings_ai_page(dependencies):
-    cfg = dependencies.load_portal_config()
+def settings_ai_page(dependencies, *, cfg=None, error=None):
+    cfg = dict(dependencies.load_portal_config() if cfg is None else cfg)
     study_prompt = dependencies.default_study_content_pack_prompt()
     medical_addendum = dependencies.default_medical_study_pack_ai_addendum()
     law_prompt = dependencies.default_law_ai_prompt()
@@ -152,6 +233,9 @@ def settings_ai_page(dependencies):
     return render_template(
         "settings/ai.html",
         cfg=cfg,
+        ai_error=error,
+        certification_default_prompt=DEFAULT_CERTIFICATION_PROMPT,
+        portfolio_default_prompt=DEFAULT_PORTFOLIO_PROMPT,
         law_default_prompt=law_prompt,
         study_pack_default_prompt=study_prompt,
         medical_study_pack_default_addendum=medical_addendum,
@@ -167,12 +251,7 @@ def save_ai_settings(dependencies):
     provider = request.form.get("ai_provider", "chatgpt").strip().lower()
     cfg["ai_provider"] = provider if provider in AI_PROVIDERS else "chatgpt"
 
-    try:
-        cfg["ai_custom_url"] = dependencies.validate_custom_ai_url(
-            request.form.get("ai_custom_url", "")
-        )
-    except ValueError as exc:
-        return str(exc), 400
+    cfg["ai_custom_url"] = request.form.get("ai_custom_url", "")
 
     cfg["ai_prompt_template"] = request.form.get(
         "ai_prompt_template", ""
@@ -190,7 +269,28 @@ def save_ai_settings(dependencies):
         or dependencies.default_law_ai_prompt()
     )
 
-    dependencies.write_portal_config(cfg)
+    cfg["certification_ai_prompt_template"] = request.form.get("certification_ai_prompt_template", cfg.get("certification_ai_prompt_template", DEFAULT_CERTIFICATION_PROMPT)).strip() or DEFAULT_CERTIFICATION_PROMPT
+    cfg["portfolio_ai_prompt_template"] = request.form.get("portfolio_ai_prompt_template", cfg.get("portfolio_ai_prompt_template", DEFAULT_PORTFOLIO_PROMPT)).strip() or DEFAULT_PORTFOLIO_PROMPT
+    def failed(message, status):
+        retained = dict(cfg)
+        for key in ("ai_custom_url", "ai_prompt_template", "study_pack_ai_prompt_template",
+                    "medical_study_pack_ai_addendum", "law_ai_prompt_template",
+                    "certification_ai_prompt_template", "portfolio_ai_prompt_template"):
+            if key in request.form:
+                retained[key] = request.form[key]
+        return settings_ai_page(dependencies, cfg=retained, error=message), status
+
+    try:
+        cfg["ai_custom_url"] = dependencies.validate_custom_ai_url(cfg["ai_custom_url"])
+        for key, label in (("certification_ai_prompt_template", "Certification"), ("portfolio_ai_prompt_template", "Portfolio")):
+            if len(cfg[key]) > 20000:
+                raise ValueError(f"{label} prompt exceeds 20,000 characters.")
+    except ValueError as exc:
+        return failed(str(exc), 400)
+    try:
+        dependencies.write_portal_config(cfg)
+    except OSError:
+        return failed("Could not save AI settings. Try saving again.", 503)
     return redirect("/settings/ai?saved=1")
 
 
@@ -234,6 +334,10 @@ def api_portal_config(dependencies):
 def create_settings_blueprint(dependencies):
     blueprint = Blueprint("settings", __name__)
     rules = (
+        ("/settings/layout", "settings_layout_page", settings_layout_page, ["GET"]),
+        ("/settings/layout/save", "save_layout_settings", save_layout_settings, ["POST"]),
+        ("/settings/dashboard", "settings_dashboard_page", settings_dashboard_page, ["GET"]),
+        ("/settings/dashboard/save", "save_dashboard_settings", save_dashboard_settings, ["POST"]),
         ("/settings", "settings_page", settings_page, ["GET"]),
         (
             "/settings/lifecycle",

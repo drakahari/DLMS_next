@@ -133,7 +133,7 @@ def _quiz_json_payload_from_db(
             SELECT label, text, is_correct
             FROM choices
             WHERE question_id = ?
-            ORDER BY label
+            ORDER BY choice_order, label, id
             """,
             (q["id"],)
         ).fetchall()
@@ -486,7 +486,7 @@ def build_quiz_html(
                             type="button"
                             class="hidden"
                             onclick="toggleCurrentQuestionForAnki()">
-                        ⭐ Mark for Anki
+                        ⭐ Mark for review
                     </button>
 
                     <button id="studyCopyBtn"
@@ -500,7 +500,7 @@ def build_quiz_html(
                             type="button"
                             class="hidden"
                             onclick="exportStudyAnkiSelections()">
-                        📦 Export Selected to Anki
+                        Marked questions
                     </button>
                 </div>
                 <p id="questionCopyStatus" class="quiz-question-copy-status" role="status" aria-live="polite"></p>
@@ -529,6 +529,7 @@ def build_quiz_html(
   window.QUIZ_ID = {quiz_id_json};
 </script>
 
+<script src="/static/manual-ai.js"></script>
 <script src="/static/script.js"></script>
 
 

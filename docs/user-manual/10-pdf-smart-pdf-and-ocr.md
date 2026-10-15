@@ -24,7 +24,7 @@ faster and more reliable than optical character recognition (OCR), and DLMS
 always treats that embedded text as the primary source. OCR is for text that is
 present only as pixels, such as a scan or screenshot.
 
-![PDF and Image Import page with a selectable-text PDF chosen and source-rights confirmation enabled](images/UM-15-pdf-image-import.png)
+![PDF and Image Import page with its three separate import forms and saved fictional sample banks](../../static/help_assets/pdf_import.webp)
 
 ## Import a selectable-text PDF
 
@@ -37,7 +37,7 @@ select in a PDF reader.
    filename. You can change the title during review.
 4. Leave **Content type** on **Auto-detect**, or choose **Question bank** or
    **Glossary / terminology** when you already know the document's structure.
-5. Set the default Exam timer for practice generated from the bank.
+5. Set **Exam timer (minutes)** for practice generated from the bank.
 6. Confirm that you have permission to use the document for your own study,
    then choose **Analyze PDF**.
 
@@ -71,7 +71,7 @@ converted into a trustworthy quiz merely because it is a PDF.
 Analysis opens **Review & Repair**. This is a staging step: nothing on the page
 is yet a playable quiz or saved source bank.
 
-The summary and filters separate records into **Complete**, **Needs Review**,
+The summary and filters separate records into **Complete**, **Needs review**,
 and **Incomplete** states. For a question bank, compare each record with the
 source and:
 
@@ -94,7 +94,7 @@ Bulk actions apply to records you select. **Select All Visible** uses the
 current filter, while **Clear Selection** clears selections across all filters.
 Exclusion or deletion marks are not committed until you save the reviewed bank.
 
-![Question-bank Review and Repair showing status filters, bulk selection, editable choices, and unassigned text](images/UM-16-review-and-repair.png)
+![Question-bank Review and Repair showing status filters, bulk selection, editable choices, and unassigned text](../../static/help_assets/pdf-review-controls.webp)
 
 *Status filters and bulk actions help separate ready questions from records
 that still need correction or exclusion.*
@@ -104,6 +104,8 @@ that still need correction or exclusion.*
 Choose **Save Reviewed Question Bank** or **Save Reviewed Terminology Bank**
 after every included record is valid. Excluded source records remain represented
 in the bank but are not used for generated practice.
+
+Use the **Saved banks** jump link on PDF & Image Import. **Included** counts items available for generation; **used in quizzes** counts items previously selected for generation, not answered or reviewed. The generated-quiz count records generation and is not a count of completed reviews.
 
 A saved bank is different from a quiz in the Quiz Library. It preserves the
 reviewed source collection so you can create several practice quizzes without

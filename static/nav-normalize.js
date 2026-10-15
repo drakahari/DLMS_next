@@ -4,13 +4,18 @@
     const match = document.cookie.split(';').map(value => value.trim()).find(value => value.startsWith(prefix));
     return match ? decodeURIComponent(match.slice(prefix.length)) : '';
   };
-  const csrfToken = readCookie('dlms_csrf_token');
+  const currentCsrfToken = () => {
+    const token = readCookie('dlms_csrf_token');
+    window.dlmsCsrfToken = token;
+    return token;
+  };
   const unsafeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
   const isSameOrigin = (value) => {
     try { return new URL(value || window.location.href, window.location.href).origin === window.location.origin; }
     catch (_error) { return false; }
   };
   const protectForm = (form) => {
+    const csrfToken = currentCsrfToken();
     const method = (form.getAttribute('method') || 'GET').toUpperCase();
     if (!csrfToken || !unsafeMethods.has(method) || !isSameOrigin(form.getAttribute('action'))) return form;
     let field = form.querySelector('input[name="csrf_token"]');
@@ -23,18 +28,35 @@
     field.value = csrfToken;
     return form;
   };
-  window.dlmsCsrfToken = csrfToken;
+  currentCsrfToken();
   window.dlmsProtectForm = protectForm;
   document.querySelectorAll('form').forEach(protectForm);
 
   const originalFetch = window.fetch.bind(window);
   window.fetch = (input, init = {}) => {
+    const csrfToken = currentCsrfToken();
     const requestUrl = typeof input === 'string' || input instanceof URL ? input : input.url;
     const method = String(init.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
     if (!csrfToken || !unsafeMethods.has(method) || !isSameOrigin(requestUrl)) return originalFetch(input, init);
     const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
     if (!headers.has('X-CSRFToken')) headers.set('X-CSRFToken', csrfToken);
     return originalFetch(input, {...init, headers});
+  };
+
+  let csrfRenewal = null;
+  window.dlmsRefreshCsrfToken = () => {
+    if (!csrfRenewal) {
+      csrfRenewal = window.fetch('/api/csrf-token', {
+        cache: 'no-store', credentials: 'same-origin',
+        headers: {'X-DLMS-CSRF-Refresh': '1'}
+      }).then(async response => {
+        const data = await response.json();
+        if (!response.ok || typeof data.csrf_token !== 'string' || !data.csrf_token || !currentCsrfToken()) {
+          throw new Error('Security verification could not be renewed.');
+        }
+      }).finally(() => { csrfRenewal = null; });
+    }
+    return csrfRenewal;
   };
 
   const portalConfigPromise = fetch('/config/portal.json', {cache:'no-store'})
@@ -121,9 +143,10 @@
     if (key === 'law') return path === '/law' || path.startsWith('/law/');
     if (key === 'medical') return path === '/medical' || path.startsWith('/medical/') || medicalBuilder;
     if (key === 'other') return otherStudies || otherBuilder;
+    if (key === 'certifications') return path.startsWith('/certifications');
     if (key === 'history') return path === '/history' || path.startsWith('/review');
     if (key === 'analytics') return path === '/dashboard';
-    if (key === 'learning') return path === '/learning-intelligence' || path === '/learning-profile' || path === '/review-schedule' || path === '/learning-diagnostics';
+    if (key === 'learning') return path === '/learning-intelligence' || path === '/learning-profile' || path === '/review-schedule' || path === '/learning-diagnostics' || path.startsWith('/exam-plans');
     if (key === 'anki') return path === '/anki' || path.startsWith('/anki/');
     if (key === 'settings') return path === '/settings' || path.startsWith('/settings/') || path === '/admin/maintenance';
     if (key === 'content') return path === '/content-packs' || path.startsWith('/content-packs/');
@@ -138,7 +161,8 @@
   const isActiveParent = (key) => (
     (key === 'build' && buildOpen) ||
     (key === 'learning' && learningOpen) ||
-    (key === 'anki' && ankiOpen && path !== '/anki')
+    (key === 'anki' && ankiOpen && path !== '/anki') ||
+    (key === 'certifications' && path.startsWith('/certifications/training'))
   );
   const iconMarkup = (icon, cssClass) => `<svg class="dlms-icon ${cssClass}" aria-hidden="true" focusable="false"><use href="/static/icons.svg#${icon}"></use></svg>`;
   const item = (key, href, icon, label) => {
@@ -183,12 +207,17 @@
     });
   };
 
+  const certificationNavigation = () => `<div class="dashboard-nav-group" data-certification-navigation hidden style="display:none">${item('certifications','/certifications','star','My Certifications')}${path.startsWith('/certifications') ? `<div class="dashboard-nav-submenu normalized-open">${sub('/certifications/training','branch','Training library',path.startsWith('/certifications/training'))}</div>` : ''}</div>`;
   const mountNavigation = (studyAreaVisibility) => {
     // Learning Intelligence pages ship with this exact canonical sidebar
     // because their content is otherwise ready to paint before this shared
     // script can replace the one-link template seed. Keep that stable DOM.
     const canonicalSeed = sidebar.querySelector(':scope > .dashboard-nav-normalized[data-navigation-seed="canonical"]');
     if (canonicalSeed) {
+      if (!canonicalSeed.querySelector('[data-certification-navigation]')) canonicalSeed.insertAdjacentHTML('beforeend',certificationNavigation());
+      if (!canonicalSeed.querySelector('a[href="/exam-plans"]')) {
+        canonicalSeed.querySelector('a[href="/learning-profile"]')?.insertAdjacentHTML('beforebegin', sub('/exam-plans','branch','Exam Plans', false));
+      }
       applyStudyAreaVisibility(studyAreaVisibility);
       return;
     }
@@ -210,9 +239,10 @@
       item('medical','/medical','medical','Medical Study'),
       item('other','/study-packs?domain_group=other','other','Other Studies'),
       primarySection('Progress & tools'),
-      item('history','/history','history','History'),
+      certificationNavigation(),
+      item('history','/history','history','Exam History'),
       item('analytics','/dashboard','analytics','Analytics'),
-      `<div class="dashboard-nav-group">${item('learning','/learning-intelligence','learning','Learning Intelligence')}${learningOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/learning-intelligence','branch','Topic Intelligence', path === '/learning-intelligence')}${sub('/learning-profile','branch','Learning Profile', path === '/learning-profile')}${sub('/review-schedule','branch','Review Schedule', path === '/review-schedule')}${sub('/learning-diagnostics','branch','Diagnostics', path === '/learning-diagnostics')}</div>` : ''}</div>`,
+      `<div class="dashboard-nav-group">${item('learning','/learning-intelligence','learning','Learning Intelligence')}${learningOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/learning-intelligence','branch','Topic Intelligence', path === '/learning-intelligence')}${sub('/exam-plans','branch','Exam Plans', path.startsWith('/exam-plans'))}${sub('/learning-profile','branch','Learning Profile', path === '/learning-profile')}${sub('/review-schedule','branch','Review Schedule', path === '/review-schedule')}${sub('/learning-diagnostics','branch','Diagnostics', path === '/learning-diagnostics')}</div>` : ''}</div>`,
       `<div class="dashboard-nav-group">${item('anki','/anki','anki','Anki Tools')}${ankiOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/anki/custom','branch','Custom Deck & Printable Cards', path === '/anki/custom')}${sub('/anki/law','branch','Law Study Anki', path === '/anki/law')}</div>` : ''}</div>`
     ].join('');
 
@@ -272,6 +302,20 @@
   });
   syncMenuState();
 
+  // Native focus scrolling can leave a partly visible control at the edge.
+  // Keep its full target and focus ring inside Ethereal's mobile drawer.
+  sidebar.addEventListener('focusin', event => {
+    if (sidebar.dataset.theme !== 'ethereal' || !window.matchMedia('(max-width: 820px)').matches) return;
+    const target = event.target;
+    requestAnimationFrame(() => {
+      if (document.activeElement !== target) return;
+      const control = target.getBoundingClientRect();
+      const drawer = sidebar.getBoundingClientRect();
+      if (control.bottom > drawer.bottom - 8) sidebar.scrollTop += control.bottom - drawer.bottom + 8;
+      else if (control.top < drawer.top + 8) sidebar.scrollTop -= drawer.top + 8 - control.top;
+    });
+  });
+
   // The Learning Intelligence parent and Topic Intelligence lead to the
   // same landing page. Once already there, do not reload the page merely for
   // a repeated parent click; the section stays expanded while it is current.
@@ -287,30 +331,40 @@
   const themeQuick = document.createElement('div');
   themeQuick.className = 'dashboard-theme-quick';
   themeQuick.hidden = true;
-  themeQuick.innerHTML = `<label for="dlmsQuickTheme">Theme</label><select id="dlmsQuickTheme" aria-label="DLMS theme"><option value="dark">Dark</option><option value="light">Light</option><option value="purple-gold" selected>Purple & Gold</option><option value="maroon-gold">Maroon & Gold</option></select>`;
+  themeQuick.innerHTML = `<label for="dlmsQuickTheme">Theme</label><select id="dlmsQuickTheme" aria-label="DLMS theme" disabled></select>`;
   const themeAnchor = sidebar.querySelector('.dashboard-sidebar-version');
   if (themeAnchor) themeAnchor.before(themeQuick); else sidebar.appendChild(themeQuick);
   const navigationCustomize = document.createElement('a');
   navigationCustomize.className = 'dashboard-navigation-customize';
-  navigationCustomize.href = '/settings/navigation';
+  navigationCustomize.href = '/settings/layout#study-areas';
   navigationCustomize.textContent = 'Customize navigation';
   themeQuick.after(navigationCustomize);
   const themeSelect = themeQuick.querySelector('select');
   portalConfigPromise.then(cfg => {
-    if (cfg?.theme) themeSelect.value = cfg.theme;
+    // Scope optional sidebar presentation without changing the canonical menu.
+    sidebar.dataset.theme = cfg?.theme || '';
+    for (const group of cfg?.theme_groups || []) {
+      const optgroup = document.createElement('optgroup');
+      optgroup.label = group.label;
+      for (const item of group.options) optgroup.appendChild(new Option(item.name, item.id));
+      themeSelect.appendChild(optgroup);
+    }
+    if (themeSelect.options.length) {
+      themeSelect.value = cfg.theme;
+      themeSelect.dataset.previous = themeSelect.value;
+      themeSelect.disabled = false;
+    } else {
+      themeSelect.appendChild(new Option('Themes unavailable', ''));
+      const appearanceLink = document.createElement('a');
+      appearanceLink.href = '/settings/appearance';
+      appearanceLink.textContent = 'Open Appearance settings';
+      themeQuick.appendChild(appearanceLink);
+    }
+    document.querySelectorAll('[data-certification-navigation]').forEach(node => { const shown=cfg?.show_certifications !== false;node.hidden=!shown;node.style.display=shown?'':'none'; });
     const visibility = normalizeStudyAreaVisibility(cfg?.study_area_visibility);
     applyStudyAreaVisibility(visibility);
     cacheStudyAreaVisibility(visibility);
   }).finally(() => { themeQuick.hidden = false; });
-  document.querySelector('form[action="/settings/navigation/save"]')?.addEventListener('submit', event => {
-    const form = event.currentTarget;
-    cacheStudyAreaVisibility({
-      it: form.elements.study_area_it.checked,
-      law: form.elements.study_area_law.checked,
-      medical: form.elements.study_area_medical.checked,
-      other: form.elements.study_area_other.checked,
-    });
-  });
   themeSelect.addEventListener('change', async () => {
     const previous = themeSelect.dataset.previous || '';
     themeSelect.disabled = true;

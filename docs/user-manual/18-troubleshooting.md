@@ -75,7 +75,7 @@ mode from the address of one requesting browser.
 
 ### A study area is missing from the navigation
 
-Open **Settings → Navigation** and check whether the area is hidden. Hiding a
+Open **Settings → Layout & navigation** and check whether the area is hidden. Hiding a
 study area removes its navigation link without deleting its content. Show it
 again and save the page.
 
@@ -137,7 +137,7 @@ on the other client.
 
 ### Questions are still due after completing Due Questions
 
-Today’s Review reports the total currently due, while one review session uses a
+Study next reports the total currently due, while one review session uses a
 limited next batch. The Dashboard's default next batch is up to 20 questions;
 Review Schedule can request 10, 20, 30, or 50. If more questions were due than
 the completed batch included, DLMS recalculates the remainder and offers
@@ -342,3 +342,21 @@ restart after checking disk space and data-folder access. If recovery still fail
 seek help before deleting files or resetting DLMS. Do not post
 backups, private quizzes, credentials, or personal learning History in a public
 issue.
+
+## Study saves or Finish Review need recovery
+
+Keep the quiz tab and its recovery data. Read whether the failure concerns an
+answer save or Finish Review. Use the displayed Retry/Resume recovery rather than
+answering again or clearing storage. Current shared-CSS pages can renew a known
+expired security token once; unrelated failures remain visible. A score or 100%
+coverage does not establish acknowledged persistence/completion. For a changed
+quiz, competing browser or unsupported older page, follow the specific message.
+Before reloading an uncertain session, establish what is saved and retained; do
+not assume every visible answer is durable.
+
+## A certification has no goal or an unclassified date
+
+Use **Set renewal goal** for a personal target; optional detailed requirements
+are separate. Unknown rules do not mean zero requirements. A preserved old date
+remains unclassified until you explicitly choose its meaning; it is not used as
+an official deadline. See [dates and goals](certifications-and-training.md#dates-and-goals).
