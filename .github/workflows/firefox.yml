@@ -2,6 +2,14 @@ name: Firefox release gate
 
 on:
   workflow_dispatch:
+    inputs:
+      scope:
+        description: Full gate or only the three diagnosed consolidation failures
+        type: choice
+        default: full
+        options:
+          - full
+          - consolidation-followup
   schedule:
     - cron: "23 8 * * 1"
 
@@ -14,7 +22,7 @@ concurrency:
 
 jobs:
   firefox-workflows:
-    name: Isolated Firefox workflows
+    name: Isolated Firefox workflows${{ inputs.scope == 'consolidation-followup' && ' - focused follow-up' || '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 
@@ -56,11 +64,27 @@ jobs:
           GDK_BACKEND: x11
           MOZ_ENABLE_WAYLAND: "0"
           PYTHONDONTWRITEBYTECODE: "1"
+          DLMS_FIREFOX_SCOPE: ${{ inputs.scope || 'full' }}
         # xvfb-run owns the X server/auth file and cleans up on command exit.
         # Firefox must not use native --headless with this virtual framebuffer.
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24 -nolisten tcp" \
             bash -euc '
               printf "Firefox mode=%s DISPLAY=%s\n" "$DLMS_FIREFOX_MODE" "$DISPLAY"
-              python -m pytest -q -p no:cacheprovider -m browser tests/browser/test_critical_workflows.py
+              case "$DLMS_FIREFOX_SCOPE" in
+                full)
+                  selected=(tests/browser/test_critical_workflows.py)
+                  ;;
+                consolidation-followup)
+                  selected=(
+                    "tests/browser/test_critical_workflows.py::test_law_guided_create_import_preview_and_cancel_workflow"
+                    "tests/browser/test_critical_workflows.py::test_dashboard_generated_resume_identity_and_sequence[dark]"
+                    "tests/browser/test_critical_workflows.py::test_study_mistakes_saved_mix_retry_study_exam_and_random[browser_stack0]"
+                  )
+                  ;;
+                *) printf "Unsupported Firefox scope\n" >&2; exit 2 ;;
+              esac
+              printf "Firefox scope=%s\n" "$DLMS_FIREFOX_SCOPE"
+              printf "Browser scope: %s. Focused follow-up is not a new full-gate pass.\n" "$DLMS_FIREFOX_SCOPE" >> "$GITHUB_STEP_SUMMARY"
+              python -m pytest -q -p no:cacheprovider -m browser "${selected[@]}"
             '

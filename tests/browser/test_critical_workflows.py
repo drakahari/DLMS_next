@@ -8118,7 +8118,8 @@ def test_law_guided_create_import_preview_and_cancel_workflow(browser_stack):
         '  Sources Used\nSource & </textarea><script id="lawGuidedRawInjected">bad()</script> '
         '\u2028line\u2029paragraph\n\n1. Case Brief\nBrowser facts.  '
     )
-    stripped_packet = raw_packet.strip()
+    # The accepted Law persistence contract preserves input exactly. Browser
+    # form submission normalizes line endings, not leading/trailing spaces.
 
     browser.set_viewport(760, 1100)
     browser.navigate(f"{base_url}/law/create")
@@ -8247,15 +8248,15 @@ def test_law_guided_create_import_preview_and_cancel_workflow(browser_stack):
         "injected:!!document.getElementById('lawGuidedRawInjected')};})()"
     )
     assert preview == {
-        "raw": stripped_packet,
+        "raw": raw_packet,
         "rows": 22,
         "placeholder": (
             "Paste the AI-generated case brief, Socratic review, IRAC drill, and "
             "flashcards here..."
         ),
         "metrics": [
-            str(len(stripped_packet.splitlines())),
-            str(len(stripped_packet) + stripped_packet.count("\n")),
+            str(len(raw_packet.splitlines())),
+            str(len(raw_packet) + raw_packet.count("\n")),
             "Ready",
         ],
         "injected": False,
@@ -13939,6 +13940,9 @@ def test_dashboard_generated_resume_identity_and_sequence(browser_stack, theme):
         browser.wait_for('studyLearningEventSaves.size===0')
     browser.click('#finishReviewBtn');browser.wait_for('durableStudySession.completed_at!==null')
     browser.navigate(base+'/');browser.wait_for('document.getElementById("recentActivity").getAttribute("aria-busy")==="false"')
+    # Recent activity and the continuity panel use independent requests. An
+    # activity response is not readiness of /api/daily-review-plan.
+    browser.wait_for("document.getElementById('regularStudyContinuity').textContent.includes('Review finished')")
     assert browser.evaluate("document.querySelector('#recentActivity .dashboard-quiz-sequence a').getAttribute('href')")=='/quizzes/'+next_html
     assert browser.evaluate("document.getElementById('continueStudyHeading').textContent")=='Continue studying'  # generated work remains unfinished
     assert browser.evaluate("document.getElementById('regularStudyContinuity').textContent.includes('Review finished')")
@@ -17798,10 +17802,24 @@ def test_study_mistakes_saved_mix_retry_study_exam_and_random(browser_stack):
     assert b.click_with_prompt('#changeMistakeRequest',accept=False)
     assert b.evaluate('localStorage.getItem("dlms-study-mistakes-request")') == retained
     assert b.click_with_prompt('#changeMistakeRequest',accept=True)
-    b.wait_for('!document.getElementById("createMistakeMix").disabled')
+    rejected_id = json.loads(retained)['request_id']
+    # A server-rendered button can be enabled before the deferred script has
+    # restored count=2 from the prior draft. Wait for the new document and its
+    # initialization before changing the count; never submit the old identity.
+    b.wait_for('document.readyState==="complete" && '
+               'JSON.parse(document.getElementById("studyMistakeContext").textContent).request_id !== '+json.dumps(rejected_id)+
+               ' && !document.getElementById("createMistakeMix").disabled')
     assert b.evaluate('document.getElementById("mistakeTitle").value') == 'Final remainder'
-    b.evaluate('document.getElementById("mistakeCount").value=1;true')
+    assert b.evaluate('localStorage.getItem("dlms-study-mistakes-request")') is None
+    fresh_id = b.evaluate('JSON.parse(studyMistakeContext.textContent).request_id')
+    b.evaluate('document.getElementById("mistakeCount").value=1;document.getElementById("mistakeCount").dispatchEvent(new Event("input",{bubbles:true}));'
+               'window.finalRemainderTrace=[];window.finalRemainderFetch=fetch;window.fetch=async(u,o)=>{const r=await finalRemainderFetch(u,o);'
+               'if(String(u).includes("/study-mistakes/create"))finalRemainderTrace.push({body:JSON.parse(o.body),status:r.status});return r;};true')
     b.click('#createMistakeMix');b.wait_for('!document.getElementById("openMistakeMix").hidden')
+    final_requests = b.evaluate('finalRemainderTrace')
+    assert len(final_requests) == 1 and final_requests[0]['status'] == 200
+    assert final_requests[0]['body']['request_id'] == fresh_id != rejected_id
+    assert final_requests[0]['body']['count'] == 1
     b.navigate(route)
     b.wait_for('document.getElementById("mistakePassSummary").textContent.includes("0 remaining")')
     assert b.evaluate('document.getElementById("createMistakeMix").disabled && !document.getElementById("startMistakePass").disabled')
