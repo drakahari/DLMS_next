@@ -54,7 +54,7 @@ class UICleanupTests(unittest.TestCase):
         self.assertNotIn('Your existing parsers are untouched', available)
 
     def test_pdf_review_safeguards_and_exclusion_meaning(self):
-        template = (ROOT/'templates/pdf_import/review-question-bank.html').read_text()
+        template = (ROOT/'templates/pdf_import/review-question-bank.html').read_text(encoding="utf-8")
         for guard in ('data-review-reset-confirmation-on-edit="true"',
                       'data-review-require-explanation="false"',
                       'data-review-reject-duplicate-questions="false"',
@@ -77,11 +77,11 @@ class UICleanupTests(unittest.TestCase):
         self.assertIn('Automatic parsing confidence was low.', text_recovery)
 
     def test_anki_selectors_and_shared_outputs_remain_separate(self):
-        index = (ROOT/'templates/anki/index.html').read_text()
+        index = (ROOT/'templates/anki/index.html').read_text(encoding="utf-8")
         self.assertIn('Quiz to preview', index)
         self.assertIn('action="/anki/export/quiz"', index)
         self.assertIn('Export Anki deck (.apkg)', index)
-        custom = (ROOT/'templates/anki/custom.html').read_text()
+        custom = (ROOT/'templates/anki/custom.html').read_text(encoding="utf-8")
         for destination in ('/anki/custom','/anki/export/custom','/anki/printable'):
             self.assertIn(f'formaction="{destination}"', custom)
         self.assertIn('formtarget="_blank"', custom)
@@ -95,7 +95,7 @@ class UICleanupTests(unittest.TestCase):
                      'anki_tools.webp', 'anki-print-controls.webp'}
         references = []
         for page in (ROOT/'static').glob('help*.html'):
-            for tag in re.findall(r'<img\b[^>]*>', page.read_text()):
+            for tag in re.findall(r'<img\b[^>]*>', page.read_text(encoding="utf-8")):
                 source = re.search(r'src="/static/help_assets/([^"]+)"', tag)
                 if not source or source[1] not in refreshed:
                     continue

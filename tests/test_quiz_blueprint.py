@@ -101,7 +101,7 @@ class QuizBlueprintTests(unittest.TestCase):
         "registry_lock", "export_catalog", "build_export", "stage_upload",
         "load_staged", "plan_import", "install_staged", "cancel_staged",
         "upload_max_bytes", "multipart_overhead_bytes", "print_message",
-        "preflight_export",
+        "preflight_export", "import_progress",
     }
 
     def test_blueprint_is_registered_once_and_owns_exact_route_contract(self):

@@ -23,19 +23,19 @@ def _write(path: Path, contents: bytes = b"fixture") -> Path:
 
 
 def _source_tree(root: Path, *, executable=True):
-    binary = _write(root / "source" / "bin" / "tesseract", b"native executable")
+    binary = _write(root / "bin" / "tesseract", b"native executable")
     binary.chmod(0o755 if executable else 0o644)
     library = _write(
-        root / "source" / "bin" / "libtesseract.so.5", b"native library"
+        root / "bin" / "libtesseract.so.5", b"native library"
     )
-    tessdata = root / "source" / "tessdata"
+    tessdata = root / "tessdata"
     _write(tessdata / "eng.traineddata", b"english model")
     _write(tessdata / "configs" / "tsv", b"tessedit_create_tsv 1\n")
     licenses = []
     for name in ("tesseract", "tessdata", "leptonica"):
         licenses.append(
             _write(
-                root / "source" / "licenses" / f"{name}.txt",
+                root / "licenses" / f"{name}.txt",
                 f"{name} license".encode(),
             )
         )
@@ -245,7 +245,7 @@ class OCRBundlePreparationTests(unittest.TestCase):
     def test_windows_preparation_uses_exe_and_copies_adjacent_dll(self):
         with tempfile.TemporaryDirectory(prefix="dlms-ocr-windows-") as directory:
             root = Path(directory)
-            source_root = root / "source"
+            source_root = root
             executable = _write(source_root / "bin/tesseract.exe", b"windows exe")
             library = _write(source_root / "bin/liblept.dll", b"windows dll")
             tessdata = source_root / "tessdata"

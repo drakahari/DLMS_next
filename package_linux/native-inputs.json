@@ -1,0 +1,20 @@
+[
+  {
+    "file": "Python-3.14.7.tar.xz",
+    "url": "https://www.python.org/ftp/python/3.14.7/Python-3.14.7.tar.xz",
+    "sha256": "3b48dac8fb59f62eaa67ac83c1eb12bda1b7a08406dd286e252c11a66be27f81",
+    "bytes": 24053924
+  },
+  {
+    "file": "tesseract-5.5.3.tar.gz",
+    "url": "https://github.com/tesseract-ocr/tesseract/archive/refs/tags/5.5.3.tar.gz",
+    "sha256": "9218e62793116d42a9f6d14cd9348518b27f382096eea3d0f2d1a24616bb5884",
+    "bytes": 1916037
+  },
+  {
+    "file": "leptonica-1.87.0.tar.gz",
+    "url": "https://github.com/DanBloomberg/leptonica/archive/refs/tags/1.87.0.tar.gz",
+    "sha256": "fa2b40c5caea96d1bb93a97486262aed8731b69ce25a84a6bf5d25323e33f631",
+    "bytes": 13719323
+  }
+]

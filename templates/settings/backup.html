@@ -1,7 +1,7 @@
 {% from "shared/_settings-sidebar.html" import settings_shell_sidebar -%}
 
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Backup & Restore Settings - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/storage-health.css"><link rel="icon" href="/static/favicon.ico"></head>
+<html lang="en"{% if dlms_desktop_managed|default(false) %} data-dlms-desktop-settings="backup"{% endif %}><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Backup & Restore Settings - DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/storage-health.css"><link rel="icon" href="/static/favicon.ico"></head>
 <body class="dashboard-home settings-detail-page"><div class="dashboard-shell">{{ settings_shell_sidebar("Settings")|safe }}<main class="dashboard-main settings-dashboard-main"><div class="settings-page-shell settings-detail-shell">
 <div class="settings-page-header"><button class="dashboard-menu-button" data-settings-menu type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button><div><span class="settings-eyebrow">SETTINGS / BACKUP &amp; RESTORE</span><h1><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#save"></use></svg> Backup &amp; Restore</h1><p>Create portable backups or validate and restore an existing DLMS backup.</p></div><button type="button" class="settings-back-button" onclick="location.href='/settings'">← Settings</button></div>
 
@@ -41,10 +41,15 @@
 </section>
 
 <section class="settings-form-section"><div class="settings-section-heading"><div class="settings-section-icon icon-blue" aria-hidden="true"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#upload"></use></svg></div><div><h2>Restore from Backup</h2><p>Upload a DLMS portable-backup ZIP. DLMS validates it and shows a confirmation page before changing anything.</p></div></div>
+{% if dlms_desktop_managed|default(false) %}
+<div class="settings-warning-panel" role="status"><strong>Desktop-managed import for this profile</strong><span>Use the native <em>Import a DLMS backup…</em> control adjacent to this page. It closes the local application, validates a copy, creates a safety backup, reconciles any interruption and isolates old browser recovery evidence before reopening. Only project-local synthetic ZIPs are allowed in this phase. The web restore form is unavailable here.</span></div>
+<button class="settings-secondary-button" type="button" disabled aria-describedby="desktopRestoreReason">Web restore unavailable in Desktop</button><p id="desktopRestoreReason">Use the adjacent Desktop control; no data changes from this web form.</p>
+{% else %}
 {% if request.args.get('restore_error') %}<div class="settings-critical-panel" role="alert"><strong>Restore file not accepted</strong><span>Select a DLMS ZIP backup created by this Backup &amp; Restore page.</span></div>{% endif %}
 {% if request.args.get('restore_cancelled') %}<div class="settings-warning-panel" role="status" aria-live="polite"><strong>Restore cancelled</strong><span>The validated backup staging files were removed. No DLMS data was changed.</span></div>{% endif %}
 <div class="settings-warning-panel"><strong>Restore is deliberately cautious.</strong><span>The uploaded ZIP is checked for archive integrity, traversal/symlink attacks, schema compatibility, duplicate paths, and expansion limits. DLMS also creates a pre-restore backup of the current data before applying the snapshot.</span></div>
 <form method="POST" action="/settings/backup/restore/stage" enctype="multipart/form-data"><label class="settings-field-label" for="backupFile">DLMS backup ZIP</label><input id="backupFile" class="settings-file-input" type="file" name="backup_file" accept=".zip,application/zip" required><div class="settings-form-actions"><button type="submit" class="settings-primary-button">Validate Backup &amp; Continue</button></div></form>
+{% endif %}
 </section>
 
 <div class="settings-form-actions"><button type="button" class="settings-secondary-button" onclick="location.href='/settings'">← Back to Settings</button><button type="button" class="settings-secondary-button" onclick="location.href='/settings/reset-remove'"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#warning"></use></svg> Reset &amp; Remove</button></div>

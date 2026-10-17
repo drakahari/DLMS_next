@@ -44,6 +44,11 @@ class HistoryApiPaginationTests(unittest.TestCase):
             dlms.save_registry([{"id": quiz_id, "title": title, "source_type": source_type}])
         return quiz_id
 
+    def test_study_history_navigation_is_an_outlined_secondary_link(self):
+        page = self.client.get('/history').get_data(as_text=True)
+        self.assertIn('<p class="history-study-navigation"><a href="/study-history">Study History — finished reviews and partial work</a></p>', page)
+        self.assertLess(page.index('history-study-navigation'), page.index('history-table-stats'))
+
     def _attempts(self, quiz_id, count, prefix="attempt", start=None):
         start = start or datetime(2026, 1, 1, 12, 0, 0)
         conn = dlms.get_db()

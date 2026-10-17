@@ -378,7 +378,7 @@ class DatabaseBootstrapTests(unittest.TestCase):
         source = Path(dlms.__file__).read_text(encoding="utf-8")
         restore_reconciliation_call = source.index("\n_run_restore_startup_reconciliation()")
         bootstrap_call = source.index("\nensure_db_initialized()", restore_reconciliation_call)
-        reconciliation_call = source.index("\n_run_quiz_publication_startup_reconciliation()")
+        reconciliation_call = source.index("\n_quiz_publication_startup_report = _run_quiz_publication_startup_reconciliation()")
         self.assertLess(restore_reconciliation_call, bootstrap_call)
         self.assertLess(bootstrap_call, reconciliation_call)
 

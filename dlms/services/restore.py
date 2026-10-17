@@ -1,6 +1,7 @@
 """Restore, crash recovery, reset, and runtime-data removal services."""
 
 import json
+from contextlib import closing
 from dlms.persistence.study_schema import invalidate_queues, preserve_legacy
 from dlms.persistence.study_mistake_schema import invalidate as invalidate_mistakes
 from dlms.persistence.exam_plan_schema import invalidate as invalidate_plans
@@ -192,7 +193,7 @@ def prepare_staged_restore_database(
     database_path = staged_database_path(staged_data_root)
     try:
         bootstrap_result = bootstrap_database(database_path)
-        with sqlite3.connect(database_path) as restored_conn:
+        with closing(sqlite3.connect(database_path)) as restored_conn, restored_conn:
             invalidate_queues(restored_conn)
             invalidate_mistakes(restored_conn)
             invalidate_plans(restored_conn)
@@ -861,34 +862,36 @@ def reset_quiz_library_core(
     sqlite_module=sqlite3,
 ):
     conn = sqlite_module.connect(db_path)
-    conn.execute("PRAGMA foreign_keys = OFF")
-    cur = conn.cursor()
-    cur.executescript("""
-        UPDATE exam_plan_actions SET quiz_id=NULL;
-        DELETE FROM study_mistake_members;
-        DELETE FROM study_mistake_actions;
-        DELETE FROM study_mistake_passes;
-        DELETE FROM study_responses;
-        DELETE FROM study_sessions;
-        DELETE FROM study_legacy_responses;
-        DELETE FROM learning_events;
-        DELETE FROM question_concepts;
-        DELETE FROM concepts;
-        DELETE FROM missed_questions;
-        DELETE FROM attempt_answers;
-        DELETE FROM attempts;
-        DELETE FROM choices;
-        DELETE FROM questions;
-        DELETE FROM quizzes;
-        DELETE FROM sqlite_sequence;
-    """)
-    invalidate_queues(conn)
-    invalidate_mistakes(conn)
-    invalidate_plans(conn)
-    invalidate_marks(conn)
-    conn.commit()
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.close()
+    try:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        cur = conn.cursor()
+        cur.executescript("""
+            UPDATE exam_plan_actions SET quiz_id=NULL;
+            DELETE FROM study_mistake_members;
+            DELETE FROM study_mistake_actions;
+            DELETE FROM study_mistake_passes;
+            DELETE FROM study_responses;
+            DELETE FROM study_sessions;
+            DELETE FROM study_legacy_responses;
+            DELETE FROM learning_events;
+            DELETE FROM question_concepts;
+            DELETE FROM concepts;
+            DELETE FROM missed_questions;
+            DELETE FROM attempt_answers;
+            DELETE FROM attempts;
+            DELETE FROM choices;
+            DELETE FROM questions;
+            DELETE FROM quizzes;
+            DELETE FROM sqlite_sequence;
+        """)
+        invalidate_queues(conn)
+        invalidate_mistakes(conn)
+        invalidate_plans(conn)
+        invalidate_marks(conn)
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys = ON")
+    finally:
+        conn.close()
     save_registry([])
     for folder in folders:
         clear_directory(folder)
@@ -955,7 +958,25 @@ def full_data_reset_core(
 def run_reset_with_backup(reset_label, reset_callable, *, require_owned_root, create_backup):
     require_owned_root(f"run the {reset_label} reset")
     safety_path, _ = create_backup("pre-reset-" + reset_label)
-    reset_callable()
+    try:
+        reset_callable()
+    except Exception as exc:
+        # Keep the original exception/type (including filesystem diagnostics),
+        # but do not lose the recovery identity after a partial destructive reset.
+        # This reports retained recovery material; it does not claim rollback.
+        try:
+            # Mutation may already have happened even when its later ownership
+            # check fails or the backup label cannot safely be displayed.
+            exc.dlms_reset_outcome = "possibly_modified"
+            name = os.path.basename(safety_path)
+            if (name and len(name) <= 255 and "\\" not in name and "/" not in name
+                    and not any(ord(c) < 32 or ord(c) == 127 for c in name)
+                    and name.lower().endswith(".zip")):
+                exc.dlms_reset_safety_backup = name
+                exc.add_note(f"Reset may have partially changed data. Retained safety backup: {name}")
+        except Exception:
+            pass  # Recovery annotation must never replace the original failure.
+        raise
     return os.path.basename(safety_path)
 
 

@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "DLMS Desktop private network policy",
+  "version": "2.0.0",
+  "description": "Restricts unused sockets and worker contexts in this private Desktop browser profile.",
+  "permissions": ["declarativeNetRequest"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "declarative_net_request": {
+    "rule_resources": [
+      {"id": "dlms_network_boundary_v2", "enabled": true, "path": "rules.json"}
+    ]
+  }
+}

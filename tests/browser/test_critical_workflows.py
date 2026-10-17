@@ -26,6 +26,7 @@ from pathlib import Path
 import pytest
 
 from dlms.rendering.quiz_artifacts import build_quiz_html
+from dlms.services.content_pack_mutations import _staged_pack_tree_sha256
 from dlms.themes import THEME_IDS, THEME_REGISTRY
 from tests.browser._bidi import FirefoxBidi
 from tests.browser._help_screenshots import HELP_SCREENSHOTS, capture_help_screenshots
@@ -3264,22 +3265,6 @@ def test_study_feedback_exam_save_and_history_navigation(browser_stack, theme):
     browser.click("#result button[onclick*='/history']")
     browser.wait_for("location.pathname === '/history'")
     browser.wait_for("document.body.textContent.includes('Browser Critical Workflow')")
-    study_link = '.history-study-navigation a'
-    assert browser.evaluate("[document.querySelector('.history-study-navigation a').textContent, document.querySelector('.history-study-navigation a').getAttribute('href')]") == [
-        'Study History — finished reviews and partial work', '/study-history'
-    ]
-    assert browser.evaluate("(() => {const link=document.querySelector('.history-study-navigation a'),cards=document.querySelector('.history-table-stats'),panel=document.querySelector('.history-table-panel');return cards.getBoundingClientRect().top-link.getBoundingClientRect().bottom>=16 && panel.getBoundingClientRect().top-cards.getBoundingClientRect().bottom>=16})()")
-    browser.context = browser.command('browsingContext.create', {'type': 'tab'})['context']
-    browser.navigate(browser_stack.base_url + '/history')
-    browser.activate(); browser.wait_for('document.hasFocus()')
-    browser.evaluate("document.querySelector('#shutdownBtn').focus();true")
-    for _ in range(12):
-        browser.press_key('\ue004')
-        if browser.evaluate("document.activeElement.matches('.history-study-navigation a')"):
-            break
-    assert browser.evaluate("document.activeElement.matches('.history-study-navigation a:focus') && getComputedStyle(document.activeElement).outlineStyle !== 'none'")
-    browser.click(study_link)
-    browser.wait_for("location.pathname === '/study-history'")
 
 
 def test_study_feedback_waits_for_deferred_recovery_initialization(browser_stack):
@@ -3308,11 +3293,9 @@ def test_study_feedback_waits_for_deferred_recovery_initialization(browser_stack
         state['held'] = False
 
     def observed_navigate(target):
-        controlled_quiz_navigation = False
         if '/quizzes/' in target:
             state['visits'] += 1
             if state['visits'] == 2:
-                controlled_quiz_navigation = True
                 b.command('session.subscribe', {'events': ['network.beforeRequestSent'], 'contexts': [b.context]})
                 state['interception'] = b.command('network.addIntercept', {
                     'phases': ['beforeRequestSent'], 'contexts': [b.context],
@@ -3320,7 +3303,7 @@ def test_study_feedback_waits_for_deferred_recovery_initialization(browser_stack
                 })['intercept']
                 b._receive_text = record
         result = navigate(target)
-        if controlled_quiz_navigation and state['interception']:
+        if state['visits'] == 2 and state['interception']:
             request_arrived()
             release()  # The initial readiness check succeeds.
             wait('quiz.length === 2')
@@ -3923,7 +3906,7 @@ def test_generated_practice_exam_completion_requires_saved_attempt(browser_stack
         "window.confirm=()=>true;return true;})()"
     )
     browser.click("#submitBtn")
-    browser.wait_for("document.getElementById('result').textContent.includes('was not saved')")
+    browser.wait_for("document.getElementById('result').textContent.includes('not confirmed as retained or saved')")
     registry_path = browser_stack.data_root / "config" / "quizzes.json"
     with registry_path.open(encoding="utf-8") as handle:
         assert "generated_practice_completion" not in next(item for item in json.load(handle) if item["id"] == quiz_id)
@@ -4000,7 +3983,7 @@ def test_quiz_recovery_resends_one_exact_exam_attempt_after_lost_acknowledgement
     browser.click("#choices .choice[data-index='1']")
     browser.evaluate("window.confirm = () => true; true")
     browser.click("#submitBtn")
-    browser.wait_for("document.getElementById('result').textContent.includes('was not saved')")
+    browser.wait_for("document.getElementById('result').textContent.includes('not confirmed as retained or saved')")
     storage_key = browser.evaluate("quizRecoveryController.storageKey")
     pending = browser.evaluate(f"JSON.parse(localStorage.getItem({json.dumps(storage_key)})).pendingAttempt")
     original_payload = browser.evaluate("pendingExamAttempt.payload")
@@ -6778,6 +6761,7 @@ def test_content_pack_import_review_install_cancel_csrf_and_escaping(browser_sta
                 "uploaded_name": uploaded_name,
                 "file_count": 2,
                 "uncompressed_bytes": 1048576,
+                "tree_sha256": _staged_pack_tree_sha256(pack_root),
                 "report": {},
                 "created_at": "2026-09-06T12:00:00",
             }),
@@ -8134,7 +8118,8 @@ def test_law_guided_create_import_preview_and_cancel_workflow(browser_stack):
         '  Sources Used\nSource & </textarea><script id="lawGuidedRawInjected">bad()</script> '
         '\u2028line\u2029paragraph\n\n1. Case Brief\nBrowser facts.  '
     )
-    stripped_packet = raw_packet.strip()
+    # The accepted Law persistence contract preserves input exactly. Browser
+    # form submission normalizes line endings, not leading/trailing spaces.
 
     browser.set_viewport(760, 1100)
     browser.navigate(f"{base_url}/law/create")
@@ -8263,15 +8248,15 @@ def test_law_guided_create_import_preview_and_cancel_workflow(browser_stack):
         "injected:!!document.getElementById('lawGuidedRawInjected')};})()"
     )
     assert preview == {
-        "raw": stripped_packet,
+        "raw": raw_packet,
         "rows": 22,
         "placeholder": (
             "Paste the AI-generated case brief, Socratic review, IRAC drill, and "
             "flashcards here..."
         ),
         "metrics": [
-            str(len(stripped_packet.splitlines())),
-            str(len(stripped_packet) + stripped_packet.count("\n")),
+            str(len(raw_packet.splitlines())),
+            str(len(raw_packet) + raw_packet.count("\n")),
             "Ready",
         ],
         "injected": False,
@@ -13237,7 +13222,7 @@ def test_today_review_clear_protects_failed_study_and_submitted_exam_saves(brows
         if mode == "exam":
             browser.evaluate("window.confirm=()=>true; true")
             browser.click("#submitBtn")
-            browser.wait_for("document.getElementById('result').textContent.includes('was not saved')")
+            browser.wait_for("document.getElementById('result').textContent.includes('not confirmed as retained or saved')")
         else:
             browser.wait_for("document.querySelector('.study-learning-save-retry:not([hidden])')")
     browser.navigate(base_url + "/")
@@ -13955,6 +13940,9 @@ def test_dashboard_generated_resume_identity_and_sequence(browser_stack, theme):
         browser.wait_for('studyLearningEventSaves.size===0')
     browser.click('#finishReviewBtn');browser.wait_for('durableStudySession.completed_at!==null')
     browser.navigate(base+'/');browser.wait_for('document.getElementById("recentActivity").getAttribute("aria-busy")==="false"')
+    # Recent activity and the continuity panel use independent requests. An
+    # activity response is not readiness of /api/daily-review-plan.
+    browser.wait_for("document.getElementById('regularStudyContinuity').textContent.includes('Review finished')")
     assert browser.evaluate("document.querySelector('#recentActivity .dashboard-quiz-sequence a').getAttribute('href')")=='/quizzes/'+next_html
     assert browser.evaluate("document.getElementById('continueStudyHeading').textContent")=='Continue studying'  # generated work remains unfinished
     assert browser.evaluate("document.getElementById('regularStudyContinuity').textContent.includes('Review finished')")
@@ -17747,7 +17735,7 @@ def test_study_mistakes_saved_mix_retry_study_exam_and_random(browser_stack):
     b.wait_for('document.getElementById("mistakeCounts").textContent.includes("2 eligible questions")')
     assert b.evaluate('document.getElementById("mistakeMode").value') == 'without-repeats'
     b.click('#startMistakePass')
-    b.wait_for('document.readyState==="complete" && document.querySelector("#mistakePassSummary .study-mistakes-count-card:first-child strong")?.textContent==="2"')
+    b.wait_for('document.readyState==="complete" && document.getElementById("mistakePassSummary").textContent.includes("2 remaining")')
     b.evaluate("document.getElementById('mistakeTitle').value='One-question Study mistakes';document.getElementById('mistakeCount').value=1;true")
     # The server really commits before this simulated lost acknowledgement.
     b.evaluate("""window.realMistakeFetch=fetch;window.dropMistakeAck=true;window.mistakeTrace=[];
@@ -17758,10 +17746,10 @@ def test_study_mistakes_saved_mix_retry_study_exam_and_random(browser_stack):
     try:
         b.wait_for('document.getElementById("mistakeStatus").textContent.includes("Lost creation acknowledgement")')
     except TimeoutError:
-        raise AssertionError(b.evaluate('({status:mistakeStatus.textContent,reason:mistakeCreationReason.textContent,trace:window.mistakeTrace,request:sessionStorage.getItem("dlms-study-mistakes-request"),name:mistakeTitle.value,count:mistakeCount.value,disabled:createMistakeMix.disabled,ready:document.readyState})'))
+        raise AssertionError(b.evaluate('({status:mistakeStatus.textContent,reason:mistakeCreationReason.textContent,trace:window.mistakeTrace,request:localStorage.getItem("dlms-study-mistakes-request"),name:mistakeTitle.value,count:mistakeCount.value,disabled:createMistakeMix.disabled,ready:document.readyState})'))
     first = b.evaluate('mistakeTrace[0]')
     b.navigate(route)
-    assert b.evaluate('JSON.parse(sessionStorage.getItem("dlms-study-mistakes-request"))') == first['body']
+    assert b.evaluate('JSON.parse(localStorage.getItem("dlms-study-mistakes-request"))') == first['body']
     b.evaluate("window.mistakeTrace=[];window.realMistakeFetch=fetch;window.fetch=async(u,o)=>{const r=await realMistakeFetch(u,o);if(String(u).includes('/study-mistakes/create'))mistakeTrace.push({body:JSON.parse(o.body),status:r.status});return r;};true")
     b.click('#retryMistakeMix')
     b.wait_for('!document.getElementById("openMistakeMix").hidden')
@@ -17796,11 +17784,11 @@ def test_study_mistakes_saved_mix_retry_study_exam_and_random(browser_stack):
     # Random permits another saved batch after a fresh page, but cannot replay
     # its old ID under changed input or consume the Without repeats remainder.
     for number in range(2):
-        b.navigate(route);b.wait_for('document.querySelector("#mistakePassSummary .study-mistakes-count-card:first-child strong")?.textContent==="1"')
+        b.navigate(route);b.wait_for('document.getElementById("mistakePassSummary").textContent.includes("1 remaining")')
         b.evaluate("document.getElementById('mistakeMode').value='random';document.getElementById('mistakeMode').dispatchEvent(new Event('change'));document.getElementById('mistakeTitle').value="+json.dumps('Random mistakes '+str(number))+";document.getElementById('mistakeCount').value=1;true")
         b.click('#createMistakeMix');b.wait_for('!document.getElementById("openMistakeMix").hidden')
         assert b.evaluate('document.getElementById("createMistakeMix").disabled')
-    b.navigate(route);b.wait_for('document.querySelector("#mistakePassSummary .study-mistakes-count-card:first-child strong")?.textContent==="1"')
+    b.navigate(route);b.wait_for('document.getElementById("mistakePassSummary").textContent.includes("1 remaining")')
     with sqlite3.connect(root/'results.db') as c:
         assert c.execute('SELECT COUNT(*) FROM study_mistake_members WHERE used_by IS NOT NULL').fetchone()[0] == 1
         assert c.execute('SELECT COUNT(*) FROM quizzes WHERE title LIKE "Random mistakes %"').fetchone()[0] == 2
@@ -17810,16 +17798,30 @@ def test_study_mistakes_saved_mix_retry_study_exam_and_random(browser_stack):
     b.click('#createMistakeMix')
     b.wait_for('document.getElementById("mistakeStatus").textContent.includes("Only 1 question remains")')
     assert b.evaluate('!document.getElementById("changeMistakeRequest").hidden')
-    retained = b.evaluate('sessionStorage.getItem("dlms-study-mistakes-request")')
+    retained = b.evaluate('localStorage.getItem("dlms-study-mistakes-request")')
     assert b.click_with_prompt('#changeMistakeRequest',accept=False)
-    assert b.evaluate('sessionStorage.getItem("dlms-study-mistakes-request")') == retained
+    assert b.evaluate('localStorage.getItem("dlms-study-mistakes-request")') == retained
     assert b.click_with_prompt('#changeMistakeRequest',accept=True)
-    b.wait_for('!document.getElementById("createMistakeMix").disabled')
+    rejected_id = json.loads(retained)['request_id']
+    # A server-rendered button can be enabled before the deferred script has
+    # restored count=2 from the prior draft. Wait for the new document and its
+    # initialization before changing the count; never submit the old identity.
+    b.wait_for('document.readyState==="complete" && '
+               'JSON.parse(document.getElementById("studyMistakeContext").textContent).request_id !== '+json.dumps(rejected_id)+
+               ' && !document.getElementById("createMistakeMix").disabled')
     assert b.evaluate('document.getElementById("mistakeTitle").value') == 'Final remainder'
-    b.evaluate('document.getElementById("mistakeCount").value=1;true')
+    assert b.evaluate('localStorage.getItem("dlms-study-mistakes-request")') is None
+    fresh_id = b.evaluate('JSON.parse(studyMistakeContext.textContent).request_id')
+    b.evaluate('document.getElementById("mistakeCount").value=1;document.getElementById("mistakeCount").dispatchEvent(new Event("input",{bubbles:true}));'
+               'window.finalRemainderTrace=[];window.finalRemainderFetch=fetch;window.fetch=async(u,o)=>{const r=await finalRemainderFetch(u,o);'
+               'if(String(u).includes("/study-mistakes/create"))finalRemainderTrace.push({body:JSON.parse(o.body),status:r.status});return r;};true')
     b.click('#createMistakeMix');b.wait_for('!document.getElementById("openMistakeMix").hidden')
+    final_requests = b.evaluate('finalRemainderTrace')
+    assert len(final_requests) == 1 and final_requests[0]['status'] == 200
+    assert final_requests[0]['body']['request_id'] == fresh_id != rejected_id
+    assert final_requests[0]['body']['count'] == 1
     b.navigate(route)
-    b.wait_for('document.querySelector("#mistakePassSummary .study-mistakes-count-card:first-child strong")?.textContent==="0"')
+    b.wait_for('document.getElementById("mistakePassSummary").textContent.includes("0 remaining")')
     assert b.evaluate('document.getElementById("createMistakeMix").disabled && !document.getElementById("startMistakePass").disabled')
     stale = b.evaluate('JSON.parse(document.getElementById("studyMistakeContext").textContent)')
     stale_request = {key:stale[key] for key in ('scope','generation','fingerprint','request_id','pass_id')}
@@ -17837,7 +17839,7 @@ def test_study_mistakes_saved_mix_retry_study_exam_and_random(browser_stack):
     b.wait_for('document.querySelector("h1").textContent.includes("Review backup before restore")')
     b.click("form[action*='/restore/confirm/'] button[type=submit]")
     b.wait_for('document.querySelector("h1").textContent.includes("Restore complete")')
-    b.navigate(route);b.wait_for('document.querySelector("#mistakePassSummary .study-mistakes-count-card:first-child strong")?.textContent==="0"')
+    b.navigate(route);b.wait_for('document.getElementById("mistakePassSummary").textContent.includes("0 remaining")')
     response = b.evaluate("fetch('/api/quiz-composer/study-mistakes/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify("+json.dumps(stale_request)+")}).then(async r=>({status:r.status,body:await r.json()}))")
     assert response['status'] == 409 and 'restored or reset' in response['body']['error']
     with sqlite3.connect(root/'results.db') as c:
@@ -17861,12 +17863,8 @@ def test_study_mistakes_all_theme_controls_and_responsive_views(browser_stack):
             assert b.evaluate('document.documentElement.scrollWidth<=innerWidth'),(theme,width)
             assert b.evaluate('document.querySelector(".mixed-builder-return").getBoundingClientRect().top-document.querySelector(".mixed-builder-intro > div").getBoundingClientRect().bottom<50'),(theme,width)
             assert b.evaluate('document.getElementById("mistakeMode").options.length') == 2
-            assert b.evaluate("[...document.querySelectorAll('.study-mistakes-preview thead th')].map(n=>n.textContent)") == ['Source quiz', 'Question #', 'Question text']
-            assert b.evaluate("[...document.querySelectorAll('.study-mistakes-preview tbody [data-label=\"Question #\"]')].map(n=>n.textContent)") == ['1', '2']
             assert b.evaluate('getComputedStyle(mixedBuilderReturn).whiteSpace==="nowrap" && getComputedStyle(mixedBuilderSourceNav.querySelector("[aria-current]")).borderTopWidth==="2px"')
-            contrast = _theme_contrast_snapshot(b, {'check':'#mistakeScopeForm button','primary':'#createMistakeMix','input':'#mistakeTitle',
-                                                     'sourceCount':'#mistakeCounts strong','tableHeading':'.study-mistakes-preview thead th',
-                                                     'tableQuestion':'.study-mistakes-preview tbody td:last-child'})
+            contrast = _theme_contrast_snapshot(b, {'check':'#mistakeScopeForm button','primary':'#createMistakeMix','input':'#mistakeTitle'})
             assert all(v['contrast']>=4.5 for v in contrast.values()),(theme,contrast)
             b.activate();b.evaluate('document.getElementById("mistakeTitle").focus();true');b.press_key('\ue004')
             assert b.evaluate('document.activeElement.id === "mistakeCount" && getComputedStyle(document.activeElement).outlineStyle !== "none"'), b.evaluate('({id:document.activeElement.id,outline:getComputedStyle(document.activeElement).outline,focus:document.activeElement.matches(":focus"),sheets:[...document.styleSheets].map(s=>s.href)})')
@@ -17895,8 +17893,6 @@ def test_study_mistakes_native_zoom(browser_stack,theme):
     b.navigate(browser_stack.base_url+'/quiz-composer/study-mistakes?quizzes='+str(qid))
     b.wait_for('devicePixelRatio===2 && document.getElementById("mistakeTitle")')
     assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
-    assert b.evaluate("[...document.querySelectorAll('.study-mistakes-preview thead th')].map(n=>n.textContent)") == ['Source quiz', 'Question #', 'Question text']
-    assert b.evaluate("document.querySelectorAll('.study-mistakes-preview tbody tr').length") == 4
     b.activate();b.evaluate('document.getElementById("mistakeTitle").focus();true');b.press_key('\ue004')
     assert b.evaluate('document.activeElement.matches(":focus-visible")')
     _mistake_browser_capture(b,'study-mistakes-native200-'+theme)
@@ -17945,18 +17941,18 @@ def test_study_mistakes_owner_four_question_sequence_and_explicit_new_pass(brows
     assert b.evaluate('[...document.querySelector("[name=folders]").selectedOptions].length')==0
     assert b.evaluate('document.querySelector("[aria-label=\\"Question selection source\\"] [aria-current=page]").textContent')=='Study mistakes'
     b.evaluate('mistakeTitle.value="Study mistakes test 1";mistakeCount.value=2;true')
-    b.click('#startMistakePass');b.wait_for('document.readyState==="complete" && mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="4"')
+    b.click('#startMistakePass');b.wait_for('document.readyState==="complete" && mistakePassSummary.textContent.includes("4 remaining")')
     assert b.evaluate('mistakeTitle.value')=='Study mistakes test 1' and b.evaluate('mistakeCount.value')=='2'
     assert b.evaluate('mistakePreviewHeading.compareDocumentPosition(mistakeCreateForm)&Node.DOCUMENT_POSITION_FOLLOWING')
     first=_mistake_ui_create(b,2,'Study mistakes test 1')
-    b.wait_for('mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="2"')
-    assert b.evaluate('mistakePassSummary.querySelector(".study-mistakes-count-card:nth-child(2) strong")?.textContent==="2" && mistakeCounts.textContent.includes("4 eligible")')
+    b.wait_for('mistakePassSummary.textContent.includes("2 remaining")')
+    assert b.evaluate('mistakePassSummary.textContent.includes("2 included") && mistakeCounts.textContent.includes("4 eligible")')
     assert b.evaluate('createMistakeMix.disabled && !nextMistakeMix.hidden')
     _mistake_browser_capture(b,'usability-two-remaining')
-    b.navigate(route);b.wait_for('mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="2"')
+    b.navigate(route);b.wait_for('mistakePassSummary.textContent.includes("2 remaining")')
     second=_mistake_ui_create(b,2,'Study mistakes test 2')
-    b.wait_for('mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="0"')
-    assert b.evaluate('!mistakePassComplete.hidden && mistakePassComplete.textContent.includes("Pass complete") && mistakePassSummary.querySelector(".study-mistakes-count-card:nth-child(2) strong")?.textContent==="4"')
+    b.wait_for('mistakePassSummary.textContent.includes("0 remaining")')
+    assert b.evaluate('!mistakePassComplete.hidden && mistakePassComplete.textContent.includes("Pass complete") && mistakePassSummary.textContent.includes("4 included")')
     assert b.evaluate('createMistakeMix.disabled && mistakeCount.disabled && nextMistakeMix.hidden')
     assert b.evaluate('mistakeCreationReason.textContent.includes("new pass")')
     sets=[_mistake_generated_sources(root,url) for url in (first,second)]
@@ -17979,7 +17975,7 @@ def test_study_mistakes_owner_four_question_sequence_and_explicit_new_pass(brows
     assert b.click_with_prompt('#startMistakePass',accept=False)
     assert b.evaluate('JSON.parse(studyMistakeContext.textContent).pass_id')==old
     assert b.click_with_prompt('#startMistakePass',accept=True)
-    b.wait_for('document.readyState==="complete" && mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="4"')
+    b.wait_for('document.readyState==="complete" && mistakePassSummary.textContent.includes("4 remaining")')
     assert b.evaluate('JSON.parse(studyMistakeContext.textContent).pass_id')!=old
 
 
@@ -17994,7 +17990,7 @@ def test_study_mistakes_scope_browsing_stale_guards_and_legacy_pages(browser_sta
         for row in c.execute('SELECT id FROM questions WHERE quiz_id=?',(legacy,)).fetchall():
             c.execute("INSERT INTO study_legacy_responses(quiz_id,question_id,mode,was_correct,response_json) VALUES(?,?,'Study',0,?)",(legacy,row[0],json.dumps({'selected':['B']})))
     route=browser_stack.base_url+'/quiz-composer/study-mistakes?quizzes='+str(qid)
-    b.navigate(route);b.click('#startMistakePass');b.wait_for('document.readyState==="complete" && mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="4"')
+    b.navigate(route);b.click('#startMistakePass');b.wait_for('document.readyState==="complete" && mistakePassSummary.textContent.includes("4 remaining")')
     old=b.evaluate('JSON.parse(studyMistakeContext.textContent).pass_id')
     b.evaluate('[...mistakeQuizSelect.options].find(o=>o.value==='+json.dumps(str(other))+').selected=true;mistakeQuizSelect.dispatchEvent(new Event("change"));true')
     assert b.evaluate('!mistakeSelectionChanged.hidden && studyMistakeResults.hidden && createMistakeMix.disabled && startMistakePass.disabled')
@@ -18031,7 +18027,7 @@ def test_study_mistakes_scope_browsing_stale_guards_and_legacy_pages(browser_sta
     # Folder-only and OR-overlap source count match the existing backend semantics.
     b.navigate(browser_stack.base_url+'/quiz-composer/study-mistakes?folders=Alpha')
     b.wait_for('mistakeCounts.textContent.includes("4 eligible questions")')
-    b.navigate(route);b.wait_for('document.readyState==="complete" && mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="4"')
+    b.navigate(route);b.wait_for('document.readyState==="complete" && mistakePassSummary.textContent.includes("4 remaining")')
     assert b.evaluate('JSON.parse(studyMistakeContext.textContent).pass_id')==old
     b.click('#clearMistakeScope');assert b.evaluate('!mistakeSelectionChanged.hidden && createMistakeMix.disabled')
     b.click('#mistakeScopeForm button[type=submit]');b.wait_for('mistakeCounts.textContent.includes("0 eligible questions")')
@@ -18048,18 +18044,18 @@ def test_study_mistakes_failed_refresh_keeps_confirmation_and_random_isolation(b
     b,root=browser_stack.browser,browser_stack.data_root
     qid,_=_mistake_usability_source(browser_stack,4,'Refresh safety source')
     route=browser_stack.base_url+'/quiz-composer/study-mistakes?quizzes='+str(qid)
-    b.navigate(route);b.click('#startMistakePass');b.wait_for('document.readyState==="complete" && mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="4"')
+    b.navigate(route);b.click('#startMistakePass');b.wait_for('document.readyState==="complete" && mistakePassSummary.textContent.includes("4 remaining")')
     b.evaluate('window.originalRefreshFetch=fetch;window.failCounts=true;window.creationRequests=[];window.fetch=async(u,o)=>{if(String(u).includes("/study-mistakes/create"))creationRequests.push(JSON.parse(o.body));if(failCounts&&String(u).includes("/quiz-composer/study-mistakes")&&(!o?.method||o.method==="GET"))throw new Error("Fixture count refresh unavailable");return originalRefreshFetch(u,o);};mistakeTitle.value="Confirmed despite refresh failure";mistakeCount.value=2;true')
     b.click('#createMistakeMix');b.wait_for('mistakeRefreshMessage.textContent.includes("Fixture count refresh unavailable")')
     assert b.evaluate('!openMistakeMix.hidden && mistakeStatus.textContent.includes("is saved") && retryMistakeMix.hidden && createMistakeMix.disabled && nextMistakeMix.hidden && studyMistakeResults.hidden')
-    assert b.evaluate('sessionStorage.getItem("dlms-study-mistakes-request")') is None
+    assert b.evaluate('localStorage.getItem("dlms-study-mistakes-request")') is None
     assert b.evaluate('creationRequests.length')==1
     # A restored-profile response must not replace counts for the acknowledged quiz.
     b.evaluate('window.failCounts=false;window.wrongEpoch=true;window.fetch=async(u,o)=>{const r=await originalRefreshFetch(u,o);if(wrongEpoch&&String(u).includes("/quiz-composer/study-mistakes")&&(!o?.method||o.method==="GET")){const doc=new DOMParser().parseFromString(await r.text(),"text/html");const el=doc.getElementById("studyMistakeContext");const v=JSON.parse(el.textContent);v.generation+="-different";el.textContent=JSON.stringify(v);return new Response(doc.documentElement.outerHTML,{status:200});}if(String(u).includes("/study-mistakes/create"))creationRequests.push(JSON.parse(o.body));return r;};true')
     b.click('#refreshMistakeCounts');b.wait_for('mistakeRefreshMessage.textContent.includes("profile or checked sources changed")')
     assert b.evaluate('!openMistakeMix.hidden && createMistakeMix.disabled && nextMistakeMix.hidden && creationRequests.length===1')
     b.evaluate('window.wrongEpoch=false;true');b.click('#refreshMistakeCounts')
-    b.wait_for('mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="2" && !nextMistakeMix.hidden')
+    b.wait_for('mistakePassSummary.textContent.includes("2 remaining") && !nextMistakeMix.hidden')
     assert b.evaluate('creationRequests.length')==1
     first_id=b.evaluate('creationRequests[0].request_id')
     b.click('#nextMistakeMix')
@@ -18067,7 +18063,7 @@ def test_study_mistakes_failed_refresh_keeps_confirmation_and_random_isolation(b
     _mistake_ui_create(b,2,'Independent Random batch')
     assert b.evaluate('creationRequests.length')==2
     assert b.evaluate('creationRequests[1].request_id')!=first_id
-    assert b.evaluate('mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="2" && mistakePassSummary.querySelector(".study-mistakes-count-card:nth-child(2) strong")?.textContent==="2"')
+    assert b.evaluate('mistakePassSummary.textContent.includes("2 remaining") && mistakePassSummary.textContent.includes("2 included")')
     assert b.evaluate('mistakeTitle.value')=='Independent Random batch' and b.evaluate('mistakeCount.value')=='2'
     with sqlite3.connect(root/'results.db') as c:
         assert c.execute('SELECT count(*) FROM study_mistake_members WHERE used_by IS NOT NULL').fetchone()[0]==2
@@ -18079,15 +18075,15 @@ def test_study_mistakes_acknowledged_request_storage_failure_gates_new_work(brow
     b=browser_stack.browser
     qid,_=_mistake_usability_source(browser_stack,2,'Storage failure source')
     b.navigate(browser_stack.base_url+'/quiz-composer/study-mistakes?quizzes='+str(qid))
-    b.click('#startMistakePass');b.wait_for('document.readyState==="complete" && mistakePassSummary.querySelector(".study-mistakes-count-card:first-child strong")?.textContent==="2"')
+    b.click('#startMistakePass');b.wait_for('document.readyState==="complete" && mistakePassSummary.textContent.includes("2 remaining")')
     b.evaluate('window.originalRemove=Storage.prototype.removeItem;Storage.prototype.removeItem=function(k){if(k==="dlms-study-mistakes-request")throw new Error("Fixture storage blocked");return originalRemove.call(this,k);};mistakeTitle.value="Known saved despite blocked cleanup";mistakeCount.value=1;true')
     b.click('#createMistakeMix');b.wait_for('mistakeRefreshMessage.textContent.includes("recovery could not be cleared")')
     assert b.evaluate('!openMistakeMix.hidden && nextMistakeMix.hidden && startMistakePass.disabled && mistakeScopeForm.querySelector("button[type=submit]").disabled && createMistakeMix.disabled')
-    retained=b.evaluate('sessionStorage.getItem("dlms-study-mistakes-request")')
+    retained=b.evaluate('localStorage.getItem("dlms-study-mistakes-request")')
     b.navigate(browser_stack.base_url+'/quiz-composer/study-mistakes?quizzes='+str(qid))
     b.wait_for('document.readyState==="complete" && !retryMistakeMix.hidden')
     b.click('#retryMistakeMix');b.wait_for('mistakeRefreshMessage.textContent.includes("Counts updated")')
-    assert b.evaluate('sessionStorage.getItem("dlms-study-mistakes-request")') is None
+    assert b.evaluate('localStorage.getItem("dlms-study-mistakes-request")') is None
     assert json.loads(retained)['title']=='Known saved despite blocked cleanup'
     with sqlite3.connect(browser_stack.data_root/'results.db') as c:
         assert c.execute("SELECT count(*) FROM quizzes WHERE title='Known saved despite blocked cleanup'").fetchone()[0]==1
@@ -18152,3 +18148,57 @@ def test_study_mistakes_browse_wording_and_table_headings(browser_stack, theme):
 @pytest.mark.parametrize('theme', ('light', 'dark', 'ethereal'))
 def test_study_mistakes_native_zoom_table_headings(browser_stack, theme):
     _check_study_mistakes_browse_wording_and_table(browser_stack, theme, True)
+
+
+def test_desktop_history_reference_link_at_matched_ethereal_viewport(browser_stack, tmp_path):
+    """Capture the prior and revised link in one isolated rendered browser session."""
+    b = browser_stack.browser
+    b.navigate(browser_stack.base_url + '/')
+    _set_theme(b, 'ethereal')
+    b.set_viewport(1196, 1264)
+    b.navigate(browser_stack.base_url + '/history')
+    b.wait_for_page_ready("document.querySelector('.history-study-navigation a')")
+    output = Path(os.environ.get('DLMS_PRESENTATION_CAPTURE_DIR', tmp_path))
+    output.mkdir(parents=True, exist_ok=True)
+
+    def measure():
+        return b.evaluate('''(() => {const a=document.querySelector('.history-study-navigation a');
+          const c=getComputedStyle(a),r=a.getBoundingClientRect();
+          return {theme:document.querySelector('.dashboard-sidebar').dataset.theme,
+            viewport:[innerWidth,innerHeight],dpr:devicePixelRatio,zoom:getComputedStyle(document.body).zoom,
+            href:a.getAttribute('href'),rect:[r.x,r.y,r.width,r.height],
+            size:c.fontSize,weight:c.fontWeight,color:c.color,padding:c.padding,
+            border:c.border,borderRadius:c.borderRadius,
+            overflow:document.documentElement.scrollWidth>innerWidth};})()''')
+
+    def capture(name):
+        result = b.command('browsingContext.captureScreenshot',
+                           {'context': b.context, 'origin': 'viewport'})
+        (output / name).write_bytes(base64.b64decode(result['data']))
+
+    b.evaluate('''(() => {const style=document.createElement('style');style.id='prior-history-control';
+      style.textContent='.history-study-navigation a {padding:9px 15px !important;'
+        +'color:var(--theme-link) !important;font-size:inherit !important;font-weight:700 !important}';
+      document.head.append(style);return true})()''')
+    before = measure()
+    capture('history-link-before-ethereal-1196x1264.png')
+    b.evaluate("document.getElementById('prior-history-control').remove();true")
+    after = measure()
+    capture('history-link-after-ethereal-1196x1264.png')
+    (output / 'history-link-metrics.json').write_text(
+        json.dumps({'before': before, 'after': after}, indent=2) + '\n')
+    assert before['theme'] == after['theme'] == 'ethereal'
+    assert before['viewport'] == after['viewport'] == [1196, 1264]
+    assert before['dpr'] == after['dpr'] == 1
+    assert before['zoom'] == after['zoom'] == '1'
+    assert after['href'] == before['href'] == '/study-history'
+    assert before['size'] != after['size'] == '16px'
+    assert before['weight'] == '700' and after['weight'] == '600'
+    assert before['color'] != after['color'] == 'rgb(255, 206, 173)'
+    assert after['padding'] == '8px 13px'
+    assert after['rect'][2] < before['rect'][2]
+    assert not before['overflow'] and not after['overflow']
+    b.activate()
+    b.evaluate("document.querySelector('.history-study-navigation a').focus();true")
+    assert b.evaluate("document.activeElement.matches('.history-study-navigation a')")
+    assert b.evaluate("getComputedStyle(document.activeElement).outlineWidth") == '3px'

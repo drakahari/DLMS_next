@@ -39,22 +39,25 @@
 .mixed-quiz-builder-page .study-mistakes-names { max-height: 16rem; overflow: auto; padding-inline-start: 1.5rem; }
 .mixed-quiz-builder-page .study-mistakes-names li { padding-block: .4rem; overflow-wrap: anywhere; }
 .mixed-quiz-builder-page .study-mistakes-notice { padding: 1rem; margin-block: 1rem; border-inline-start: 4px solid var(--theme-accent-text); background: var(--semantic-secondary-control-surface); color: var(--theme-page-text); }
-.mixed-quiz-builder-page .study-mistakes-pass-summary,
-.mixed-quiz-builder-page .study-mistakes-pass-details-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: .75rem; margin-block: 1rem; }
-.mixed-quiz-builder-page .study-mistakes-count-card,
-.mixed-quiz-builder-page .study-mistakes-pass-details-counts > div { min-width: 0; padding: .85rem 1rem; border: 1px solid var(--theme-border-soft); border-radius: var(--theme-control-radius,9px); background: var(--theme-surface); overflow-wrap: anywhere; }
-.mixed-quiz-builder-page .study-mistakes-count-card strong,
-.mixed-quiz-builder-page .study-mistakes-pass-details-counts strong { display: block; color: var(--theme-heading); font-size: 1.8rem; line-height: 1.2; }
-.mixed-quiz-builder-page .study-mistakes-count-card span,
-.mixed-quiz-builder-page .study-mistakes-pass-details-counts span { display: block; margin-top: .3rem; color: var(--theme-page-text); font-weight: 600; }
-.mixed-quiz-builder-page .study-mistakes-pass-details-counts > div { padding: .6rem .8rem; background: var(--theme-surface-2); }
-.mixed-quiz-builder-page .study-mistakes-pass-details-counts strong { font-size: 1.25rem; }
-.mixed-quiz-builder-page .study-mistakes-source-count { display: flex; flex-direction: column; gap: .35rem; padding: .75rem 1rem; border-inline-start: 3px solid var(--theme-accent-text); background: var(--theme-surface-2); color: var(--theme-page-text); }
-.mixed-quiz-builder-page .study-mistakes-preview { width: 100%; table-layout: fixed; border-collapse: collapse; }
-.mixed-quiz-builder-page .study-mistakes-preview :is(th,td) { text-align: start; padding: .75rem; border-bottom: 1px solid var(--theme-border-soft); vertical-align: top; overflow-wrap: anywhere; }
-.mixed-quiz-builder-page .study-mistakes-preview thead th { border-top: 1px solid var(--theme-border-soft); color: var(--theme-heading); }
-.mixed-quiz-builder-page .study-mistakes-preview thead th:first-child { width: 30%; }
-.mixed-quiz-builder-page .study-mistakes-preview thead th:nth-child(2) { width: 7.5rem; white-space: nowrap; overflow-wrap: normal; }
+.mixed-quiz-builder-page .study-mistakes-pass-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: .8rem; margin-block: 1rem; }
+.mixed-quiz-builder-page .study-mistakes-summary-card,
+.mixed-quiz-builder-page .study-mistakes-detail-card { display: flex; flex-direction: column; gap: .35rem; min-width: 0; padding: .85rem 1rem; border: 1px solid var(--theme-border-soft); border-radius: var(--theme-panel-radius, 12px); background: var(--theme-panel-1); overflow-wrap: anywhere; }
+.mixed-quiz-builder-page .study-mistakes-summary-card span { color: var(--theme-muted-text); }
+.mixed-quiz-builder-page .study-mistakes-summary-card strong { color: var(--theme-heading); font-size: 1.3rem; }
+.mixed-quiz-builder-page .study-mistakes-pass-details { margin-block: .7rem 1rem; }
+.mixed-quiz-builder-page .study-mistakes-pass-details summary { cursor: pointer; }
+.mixed-quiz-builder-page .study-mistakes-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: .7rem; margin-block: .85rem; }
+.mixed-quiz-builder-page .study-mistakes-detail-card strong { color: var(--theme-heading); font-size: 1.2rem; }
+.mixed-quiz-builder-page .study-mistakes-detail-card span { color: var(--theme-muted-text); }
+.mixed-quiz-builder-page .study-mistakes-source-count { margin-block: 1.1rem; padding: .8rem 1rem; border-inline-start: 3px solid var(--theme-accent); background: var(--semantic-section-surface); overflow-wrap: anywhere; }
+.mixed-quiz-builder-page .study-mistakes-preview { width: 100%; table-layout: fixed; border: 1px solid var(--theme-border-soft); border-collapse: collapse; }
+.mixed-quiz-builder-page .study-mistakes-preview caption { text-align: start; padding-block: .65rem; color: var(--theme-muted-text); }
+.mixed-quiz-builder-page .study-mistakes-preview :is(th,td) { padding: .8rem; border-bottom: 1px solid var(--theme-border-soft); text-align: start; vertical-align: top; overflow-wrap: anywhere; }
+.mixed-quiz-builder-page .study-mistakes-preview thead { background: var(--semantic-section-surface); }
+.mixed-quiz-builder-page .study-mistakes-preview thead th:nth-child(1) { width: 25%; }
+.mixed-quiz-builder-page .study-mistakes-preview thead th:nth-child(2) { width: 8rem; white-space: nowrap; overflow-wrap: normal; }
+.mixed-quiz-builder-page .study-mistakes-preview thead th:nth-child(3) { width: auto; }
+.mixed-quiz-builder-page .study-mistakes-preview tbody tr:last-child > * { border-bottom: 0; }
 .mixed-quiz-builder-page .study-mistakes-exclusions { width: 100%; table-layout: fixed; border-collapse: collapse; }
 .mixed-quiz-builder-page .study-mistakes-exclusions :is(th,td) { text-align: start; padding: .75rem; border-bottom: 1px solid var(--theme-border-soft); overflow-wrap: anywhere; vertical-align: top; }
 .mixed-quiz-builder-page .study-mistakes-exclusions thead th:nth-child(2) { width: 7.5rem; white-space: nowrap; overflow-wrap: normal; }
@@ -65,6 +68,7 @@
     .mixed-quiz-builder-page .study-mistakes-preview thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
     .mixed-quiz-builder-page .study-mistakes-preview :is(tbody,tr,th,td) { display: block; width: auto; }
     .mixed-quiz-builder-page .study-mistakes-preview tr { margin-block: .75rem; border: 1px solid var(--theme-border-soft); }
+    .mixed-quiz-builder-page .study-mistakes-preview :is(th,td) { border-bottom: 0; padding: .55rem .75rem; }
     .mixed-quiz-builder-page .study-mistakes-preview [data-label]::before { content: attr(data-label) ": "; font-weight: 700; }
     .mixed-quiz-builder-page .study-mistakes-exclusions :is(thead) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
     .mixed-quiz-builder-page .study-mistakes-exclusions :is(tbody,tr,th,td) { display: block; width: auto; }

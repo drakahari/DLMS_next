@@ -1,0 +1,25 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {"type": "block"},
+    "condition": {
+      "regexFilter": "^wss?://",
+      "resourceTypes": ["websocket"]
+    }
+  },
+  {
+    "id": 2,
+    "priority": 2,
+    "action": {
+      "type": "modifyHeaders",
+      "responseHeaders": [
+        {"header": "content-security-policy", "operation": "append", "value": "worker-src 'none'"}
+      ]
+    },
+    "condition": {
+      "regexFilter": "^https?://",
+      "resourceTypes": ["main_frame", "sub_frame"]
+    }
+  }
+]

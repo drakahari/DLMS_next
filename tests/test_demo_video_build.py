@@ -28,8 +28,10 @@ def copied_project(tmp_path):
     for name in ('NARRATION.md', 'NARRATION_PLAIN.txt', 'video-manifest.json',
                  'v3-additions-manifest.json', 'exam-additions-manifest.json'):
         shutil.copyfile(video.PROJECT / name, project / name)
-    (project / 'captures').symlink_to(video.PROJECT / 'captures', target_is_directory=True)
-    (project / 'exam-additions').symlink_to(video.PROJECT / 'exam-additions', target_is_directory=True)
+    # Independent copies work on Windows without a symlink privilege and keep
+    # each mutation/drift assertion scoped to this disposable fixture.
+    shutil.copytree(video.PROJECT / 'captures', project / 'captures')
+    shutil.copytree(video.PROJECT / 'exam-additions', project / 'exam-additions')
     return project
 
 
@@ -55,7 +57,7 @@ def test_cuts_and_editorial_durations(manifest):
 @pytest.mark.parametrize('line_break', ['', '<br>', '<br/>', '<br />'])
 def test_editorial_html_line_breaks(copied_project, manifest, line_break):
     path = copied_project / 'NARRATION.md'
-    path.write_text(path.read_text().replace('<br>', line_break))
+    path.write_text(path.read_text(encoding="utf-8").replace('<br>', line_break), encoding="utf-8")
     parsed = video.production_manifest(copied_project)
     assert parsed['scenes'] == manifest['scenes']
 
@@ -69,14 +71,14 @@ def test_editorial_html_line_breaks(copied_project, manifest, line_break):
 ])
 def test_editorial_drift_is_rejected(copied_project, filename, old, new, error):
     path = copied_project / filename
-    path.write_text(path.read_text().replace(old, new, 1))
+    path.write_text(path.read_text(encoding="utf-8").replace(old, new, 1), encoding="utf-8")
     with pytest.raises(video.BuildError, match=error):
         video.production_manifest(copied_project)
 
 
 def test_capture_hash_drift_rejected(copied_project):
     path = copied_project / 'video-manifest.json'
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     data[0]['sha256'] = '0' * 64
     video.write_json(path, data)
     with pytest.raises(video.BuildError, match='changed screenshot'):
@@ -85,7 +87,7 @@ def test_capture_hash_drift_rejected(copied_project):
 
 def test_v3_capture_hash_drift_rejected(copied_project):
     path = copied_project / 'v3-additions-manifest.json'
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     data['scenes'][0]['sha256'] = '0' * 64
     video.write_json(path, data)
     with pytest.raises(video.BuildError, match='changed screenshot'):
@@ -97,7 +99,7 @@ def test_exam_capture_hash_and_sequence(copied_project, manifest):
     start = next(i for i, scene in enumerate(main) if scene['id'] == 11)
     assert [s['id'] for s in main[start:start + 5]] == [11, '011A', '011B', '011C', 12]
     path = copied_project / 'exam-additions-manifest.json'
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     data['scenes'][1]['sha256'] = '0' * 64
     video.write_json(path, data)
     with pytest.raises(video.BuildError, match='changed screenshot'):
@@ -107,16 +109,16 @@ def test_exam_capture_hash_and_sequence(copied_project, manifest):
 def test_exports_are_exact_and_repeatable(tmp_path, manifest):
     for cut, count in [('main', 40), ('long', 41)]:
         destination = video.export_pack(manifest, cut, tmp_path)
-        index = json.loads((destination / 'index.json').read_text())
+        index = json.loads((destination / 'index.json').read_text(encoding="utf-8"))
         assert len(list(destination.glob('*.txt'))) == count
         assert len(index['scenes']) == count
         before = {p.name: p.read_bytes() for p in destination.iterdir()}
         for scene in video.select_scenes(manifest, cut):
-            assert (destination / scene['text_filename']).read_text() == scene['narration'] + '\n'
+            assert (destination / scene['text_filename']).read_text(encoding="utf-8") == scene['narration'] + '\n'
             assert scene['audio_filename'] == f"{video.scene_label(scene['id'])}.wav"
         video.export_pack(manifest, cut, tmp_path)
         assert before == {p.name: p.read_bytes() for p in destination.iterdir()}
-    assert json.loads((tmp_path / 'production-manifest.json').read_text()) == manifest
+    assert json.loads((tmp_path / 'production-manifest.json').read_text(encoding="utf-8")) == manifest
 
 
 def test_missing_prerequisites(monkeypatch):
@@ -247,7 +249,7 @@ def test_subprocess_paths_with_spaces(monkeypatch):
 
     monkeypatch.setattr(video.subprocess, 'run', fake_run)
     video.run(['ffprobe', Path('/tmp/narrator takes/001.wav')])
-    assert seen[0][0][-1] == '/tmp/narrator takes/001.wav'
+    assert seen[0][0][-1] == str(Path('/tmp/narrator takes/001.wav'))
     assert 'shell' not in seen[0][1]
     assert seen[0][1]['timeout'] == 600
 
@@ -297,7 +299,7 @@ def test_real_media_smoke(tmp_path, manifest):
     assert all(value['input_i'] != '-inf' for value in report['loudness_measurement'].values())
     data = video.verify_output(output, rows, media, narrated=True, mux_subtitles=True)
     assert len(data['streams']) == 3
-    assert output.with_suffix('.srt').read_text() == video.subtitles(rows)
+    assert output.with_suffix('.srt').read_text(encoding="utf-8") == video.subtitles(rows)
     assert not list(output.parent.glob('.render-*'))
     # Every decoded frame in a static slot must be identical, including the
     # former fade boundaries. Lossy I/P/B quantization used to shimmer here.
@@ -331,7 +333,7 @@ def test_real_media_smoke(tmp_path, manifest):
 def test_audition_export_exact_repeatable(tmp_path, manifest):
     before_manifest = json.dumps(manifest, sort_keys=True)
     destination = video.export_audition(manifest, tmp_path / 'work with spaces')
-    index = json.loads((destination / 'manifest.json').read_text())
+    index = json.loads((destination / 'manifest.json').read_text(encoding="utf-8"))
     assert index['scene_order'] == [1, 13, 14]
     assert index['total_words'] == 69
     assert index['target_seconds'] == 35
@@ -340,7 +342,7 @@ def test_audition_export_exact_repeatable(tmp_path, manifest):
     for scene in index['scenes']:
         authoritative = authoritative_by_id[scene['id']]
         assert scene == authoritative
-        assert (destination / scene['text_filename']).read_text() == authoritative['narration'] + '\n'
+        assert (destination / scene['text_filename']).read_text(encoding="utf-8") == authoritative['narration'] + '\n'
         assert scene['audio_filename'] == f"{video.scene_label(scene['id'])}.wav"
     before = {p.name: p.read_bytes() for p in destination.iterdir() if p.is_file()}
     video.export_audition(manifest, tmp_path / 'work with spaces')

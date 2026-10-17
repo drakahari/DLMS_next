@@ -21,6 +21,10 @@
 <main class="dashboard-main content-packs-main">
 <header class="dashboard-header"><button class="dashboard-menu-button" id="menuButton" type="button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false"><svg class="dlms-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#menu"></use></svg></button><div><div class="medical-eyebrow">{{ 'AI STUDY PACK WORKFLOW' if ai_workflow else 'CONTENT PACK IMPORT' }}</div><h1>Validate Study Pack</h1><p>DLMS independently checks the ZIP before anything is installed.</p></div></header>
 
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}<div class="content-pack-flashes">{% for category, message in messages %}<div class="flash {{ category }}" {% if category == 'error' %}role="alert"{% else %}role="status" aria-live="polite"{% endif %}>{{ message }}</div>{% endfor %}</div>{% endif %}
+{% endwith %}
+
 {% if ai_workflow %}
 <ol class="study-pack-workflow-steps" aria-label="AI Study Pack workflow">
 <li class="is-complete">Configure</li><li class="is-complete">Generate Prompt</li><li class="is-complete">Bring Back ZIP</li><li class="is-current">Validate</li><li>Install</li><li>Study</li>

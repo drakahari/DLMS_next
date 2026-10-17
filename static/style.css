@@ -3193,6 +3193,13 @@ a.settings-hub-card:active {
     background: var(--semantic-error-surface, rgba(121,24,38,.25));
 }
 
+.portable-import-progress {
+    padding: 16px 20px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+.portable-import-progress p { margin: 6px 0 0; }
+
 .portable-bundle-summary {
     margin: 0;
 }
@@ -4181,35 +4188,33 @@ a.settings-hub-card:active {
     max-width: 660px;
 }
 
-.history-table-page .history-study-navigation {
-    margin: 1rem 0 0;
+.history-table-header .history-study-navigation {
+    margin: 18px 0 0;
+    max-width: none;
 }
 
-.history-table-page .history-study-navigation a {
+.history-study-navigation a {
     display: inline-flex;
     align-items: center;
     min-height: 44px;
-    max-width: 100%;
-    box-sizing: border-box;
-    padding: .6rem .85rem;
-    border: 1px solid var(--semantic-secondary-control-border);
+    padding: 8px 13px;
+    border: 1px solid var(--theme-border-soft);
     border-radius: var(--theme-control-radius, 9px);
-    background: var(--semantic-secondary-control-surface);
-    color: var(--semantic-secondary-control-text);
+    background: var(--semantic-secondary-control-surface, var(--theme-surface-2));
+    color: var(--theme-heading);
+    font-size: 16px;
     font-weight: 600;
-    font-size: 1rem;
     line-height: 1.4;
     text-decoration: none;
-    overflow-wrap: anywhere;
 }
 
-.history-table-page .history-study-navigation a:hover {
-    background: var(--semantic-secondary-control-hover);
-    border-color: var(--theme-accent-text);
+.history-study-navigation a:hover {
+    border-color: var(--theme-accent);
+    background: var(--theme-surface-2);
 }
 
-.history-table-page .history-study-navigation a:focus {
-    outline: 3px solid var(--theme-focus-ring, var(--theme-accent-text));
+.history-study-navigation a:focus-visible {
+    outline: 3px solid var(--theme-focus-ring, var(--theme-accent));
     outline-offset: 3px;
 }
 
@@ -4225,10 +4230,7 @@ a.settings-hub-card:active {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
-}
-
-.history-table-page .history-table-stats {
-    margin-block: 1rem;
+    margin-block: 8px 12px;
 }
 
 .history-table-stat {
@@ -16312,3 +16314,16 @@ h1, h2, h3 {
 }
 .learning-scope-page .learning-scope-guidance {display:grid;gap:8px;margin:12px 0 0;padding-left:20px;line-height:1.5;}
 .learning-scope-page .learning-scope-return {display:flex;flex-wrap:wrap;margin-bottom:20px;}
+
+/* The compact Dashboard header must reserve its collapsed navigation target.
+   Scoped to the home Dashboard: other page headers and sidebar behavior stay
+   unchanged, including at browser zoom where the CSS viewport becomes narrow. */
+@media (max-width: 820px) {
+    .dashboard-shell > .dashboard-main[data-home-dashboard] > .dashboard-header {
+        min-height: 64px;
+        padding: 6px 0 16px 58px;
+    }
+    .dashboard-main[data-home-dashboard] .dashboard-header > .dashboard-menu-button {
+        top: 6px;
+    }
+}

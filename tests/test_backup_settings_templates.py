@@ -69,7 +69,7 @@ class BackupSettingsTemplateTests(unittest.TestCase):
 
     def test_get_renders_forms_recent_backups_banners_and_escaped_filenames(self):
         names = [
-            'DLMS-backup-20260921-120000-pre-reset-<img onerror="attack">.zip',
+            'DLMS-backup-20260921-120000-pre-reset-image&name.zip',
             "DLMS-backup-20260921-110000-pre-restore.zip",
             "DLMS-backup-20260921-100000-rollback-safety.zip",
             "DLMS-backup-20260921-090000-semantic-safety.zip",
@@ -126,7 +126,7 @@ class BackupSettingsTemplateTests(unittest.TestCase):
         inventory = render_template.call_args.kwargs["recent_backups"]
         self.assertEqual(names[:5], [item["name"] for item in inventory])
         self.assertEqual(
-            ["Pre-reset &lt;img Onerror=&#34;attack&#34;&gt;", "Pre-restore", "Rollback Safety", "Semantic Safety", "Manual"],
+            ["Pre-reset Image&amp;name", "Pre-restore", "Rollback Safety", "Semantic Safety", "Manual"],
             [str(escape(item["label"])) for item in inventory],
         )
         self.assertRegex(inventory[0]["created_iso"], r"^2023-11-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$")
@@ -154,13 +154,30 @@ class BackupSettingsTemplateTests(unittest.TestCase):
         self.assertNotIn("Delete backup", page)
 
     def test_long_backup_name_remains_visible_and_escaped(self):
-        name = "DLMS-backup-20260921-120000-pre-reset-" + "very-long-label-" * 8 + "<&>.zip"
+        name = "DLMS-backup-20260921-120000-pre-reset-" + "very-long-label-" * 8 + "&'name'.zip"
         (self.backups / name).write_bytes(b"backup")
         page = self.client.get("/settings/backup").get_data(as_text=True)
         escaped = str(escape(name))
         self.assertGreaterEqual(page.count(escaped), 2)  # visible text and optional title
         self.assertNotIn(name, page)
         self.assertIn("overflow-wrap", (Path(dlms.__file__).parent / "static" / "storage-health.css").read_text())
+
+    def test_backup_view_escapes_hostile_inventory_metadata_without_invalid_disk_names(self):
+        # Exercise literal HTML/quote escaping without trying to create a name
+        # forbidden by Windows. Real inventory/ordering remains tested above.
+        name = 'DLMS-backup-20260921-120000-pre-reset-<img onerror="attack">.zip'
+        label = dlms._backup_service.backup_display_label(name)
+        self.assertEqual(label, 'Pre-reset <img Onerror="attack">')
+        inventory = [{"name": name, "label": label, "size": "1 B",
+                      "created": "Nov 14, 2023 04:13 PM", "created_iso": "2023-11-14T16:13:20-06:00"}]
+        with mock.patch.object(dlms, '_settings_recent_backups', return_value=inventory):
+            response = self.client.get('/settings/backup')
+        self.assertEqual(response.status_code, 200)
+        page = response.get_data(as_text=True)
+        self.assertIn(str(escape(name)), page)
+        self.assertIn(str(escape(label)), page)
+        self.assertNotIn(name, page)
+        self.assertNotIn(label, page)
 
     def test_backup_download_success_and_failure_view_keep_existing_contracts(self):
         archive = self.backups / "DLMS-backup.zip"

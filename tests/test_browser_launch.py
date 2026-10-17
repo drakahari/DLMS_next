@@ -10,6 +10,7 @@ from dlms import browser_launch as browser
 
 
 @pytest.mark.parametrize("original", [None, "", "/host/lib:/app/usr/lib:/frozen/lib"])
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX absolute-path/library-loader semantics; Windows association/environment checks are in tests/webview2/test_windows_browser_handoff.py')
 def test_child_environment_restores_host_paths_without_mutating_runtime(original):
     environment = {
         "LD_LIBRARY_PATH": "/frozen:/app/usr/lib:/host/lib",
@@ -63,6 +64,7 @@ def test_desktop_dispatch_uses_child_environment(frozen):
     assert dict(os.environ) == before
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX shell/exec fixture; Windows native association/helper process checks are in tests/webview2/test_windows_browser_handoff.py')
 def test_browser_override_real_shell_child(frozen, monkeypatch, tmp_path):
     # Exercise exec/environment propagation, not just a mocked Popen call.
     output = tmp_path / "environment"

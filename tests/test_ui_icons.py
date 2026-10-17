@@ -26,12 +26,12 @@ class UiIconTests(unittest.TestCase):
         self.assertIn("settings", symbols)
         self.assertIn("learning", symbols)
         self.assertIn("other", symbols)
-        self.assertNotRegex(sprite.read_text(), r'(?:href|src)="(?:https?:)?//|<script|<image|<text')
+        self.assertNotRegex(sprite.read_text(encoding="utf-8"), r'(?:href|src)="(?:https?:)?//|<script|<image|<text')
 
         references = 0
         for folder in (ROOT / "templates", ROOT / "static"):
             for path in (*folder.rglob("*.html"), *folder.rglob("*.js")):
-                page = path.read_text()
+                page = path.read_text(encoding="utf-8")
                 for symbol in re.findall(r'<use href="' + SPRITE_URL + r'([^"#]+)"', page):
                     if symbol == "${icon}":
                         continue  # nav-normalize.js fills this from fixed local IDs below.
@@ -93,7 +93,7 @@ class UiIconTests(unittest.TestCase):
                 )
 
     def test_client_navigation_uses_same_local_sprite(self):
-        source = (ROOT / "static" / "nav-normalize.js").read_text()
+        source = (ROOT / "static" / "nav-normalize.js").read_text(encoding="utf-8")
         self.assertIn('href="/static/icons.svg#${icon}"', source)
         self.assertIn('aria-hidden="true" focusable="false"', source)
         self.assertIn("item('settings','/settings','settings','Settings')", source)
@@ -124,7 +124,7 @@ class UiIconTests(unittest.TestCase):
         self.assertNotIn('⚙️', client.get("/settings").get_data(as_text=True))
 
     def test_icon_colors_follow_theme_variables(self):
-        css = (ROOT / "static" / "style.css").read_text()
+        css = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
         self.assertIn("--icon-blue: var(--theme-accent-text", css)
         # New themes may supply chart/icon hues; preserve both original branches.
         self.assertIn("--icon-green: var(--theme-chart-6, light-dark(#176c4e, #70e7b4))", css)

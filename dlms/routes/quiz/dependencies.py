@@ -51,6 +51,7 @@ class QuizBundleDependencies:
     multipart_overhead_bytes: Dependency
     print_message: Dependency
     preflight_export: Dependency | None = None
+    import_progress: Dependency | None = None
 
 
 @dataclass(frozen=True)

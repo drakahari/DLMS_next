@@ -71,16 +71,80 @@
   document.getElementById('clearMarkSelection').onclick = () => { selected.clear(); render(); };
   const pendingKey = `dlms.markAction.${root.dataset.generation}.${root.dataset.scope}`;
   let pending = null, busy = false;
+  let desktopContext = null, desktopChecked = false, desktopBlocked = false;
+  function samePayload(a,b) {
+    const stable=value=>Array.isArray(value)?value.map(stable):value&&typeof value==='object'?
+      Object.fromEntries(Object.keys(value).sort().map(key=>[key,stable(value[key])])):value;
+    return JSON.stringify(stable(a))===JSON.stringify(stable(b));
+  }
   let exportUrl = null;
   window.addEventListener('pagehide', event => { if (!event.persisted && exportUrl) URL.revokeObjectURL(exportUrl); });
   try { pending=JSON.parse(sessionStorage.getItem(pendingKey) || 'null'); } catch (_) { /* Preserve existing storage. */ }
+  const sessionRecord=pending;
+  if(pending?.context&&pending?.payload) pending=pending.payload;
   if (pending) { retry.hidden=false; status.textContent='A previous request needs confirmation. Retry the same request before starting another quiz.'; }
-  async function run() {
-    if (busy || !pending) return;
-    busy = true; retry.hidden = true; status.textContent = 'Saving your request…';
+  function envelope() { return {kind: pending.action === 'save' ? 'review_save' : 'review_generate',
+    payload: pending.data, context: desktopContext}; }
+  async function desktopCall(path, value) {
+    const response=await fetch('/_desktop/request/'+path,{method:'POST',headers:{'Content-Type':'application/json',
+      'X-DLMS-Recovery-Client':'1','X-CSRFToken':document.querySelector('[name=csrf-token]').content},
+      body:JSON.stringify(value),cache:'no-store'});
+    const result=await response.json();
+    if(!response.ok) throw new Error(result.error||'Desktop recovery requires inspection.');
+    return result;
+  }
+  function clearPending() {
+    if(desktopContext) localStorage.removeItem(pendingKey);
+    sessionStorage.removeItem(pendingKey); pending=null;
+  }
+  async function checkDesktopRecovery() {
     try {
-      const response = await fetch(`/api/review-marks/${pending.action}`, {method: 'POST', headers: {'Content-Type':'application/json','X-CSRFToken':document.querySelector('[name=csrf-token]').content}, body:JSON.stringify(pending.data)});
-      if (!response.ok) { const error = await response.json(); document.getElementById('uncertainMarkHelp').hidden=!error.uncertain; if (response.status < 500 && !error.uncertain) { pending=null; sessionStorage.removeItem(pendingKey); } throw new Error(error.error || 'The request failed. Your marks are retained.'); }
+      const contextResponse=await fetch('/_desktop/request/context',{headers:{'X-DLMS-Recovery-Client':'1'},cache:'no-store'});
+      if(contextResponse.status===404) return;
+      if(!contextResponse.ok) throw new Error('Desktop recovery context is unavailable.');
+      desktopContext=(await contextResponse.json()).context;
+      let local=null, localUnavailable=false;
+      try {local=JSON.parse(localStorage.getItem(pendingKey)||'null');}
+      catch(_) {localUnavailable=true;}
+      if(local && sessionRecord && !samePayload(local,sessionRecord)) throw new Error('Conflicting browser request evidence needs inspection.');
+      const browser=local||sessionRecord;
+      const response=await fetch('/_desktop/request/list',{headers:{'X-DLMS-Recovery-Client':'1'},cache:'no-store'});
+      if(!response.ok) throw new Error('Accepted Desktop requests cannot be checked.');
+      const records=(await response.json()).records.filter(item=>item.kind==='review_generate'||
+        (item.kind==='review_save'&&item.payload.action==='unmark'));
+      if(records.length>1) throw new Error('Multiple Review requests need inspection. No request was replayed.');
+      if(localUnavailable && !records.length) throw new Error('Browser request storage is unavailable; no new Review action was sent.');
+      if(browser?.context) {
+        if(!samePayload(browser.context,desktopContext)) throw new Error('Review browser evidence belongs to another Desktop dataset; it was not replayed.');
+        pending=browser.payload;
+      } else if(browser && browser.action!=='anki' && !records.length) {
+        throw new Error('Unbound older Review evidence needs inspection; it was not relabeled.');
+      }
+      if(records.length) {
+        const recovered={action:records[0].kind==='review_save'?'save':'generate',data:records[0].payload};
+        if(pending && !samePayload(pending,recovered)) throw new Error('Conflicting Review request evidence needs inspection.');
+        pending=recovered;
+      }
+    } catch(error) {desktopBlocked=true;status.textContent=error.message+' No request was replayed.';}
+    finally {desktopChecked=true;if(pending&&!desktopBlocked){retry.hidden=false;status.textContent='A retained Review request needs confirmation. Retry its original ID before starting another.';}}
+  }
+  async function run() {
+    if (busy || !pending || !desktopChecked || desktopBlocked) return;
+    busy = true; retry.hidden = true; status.textContent = 'Saving your request…';
+    let confirmedSaved=false;
+    try {
+      let response=null, result=null;
+      if(desktopContext && pending.action!=='anki') {
+        const original=envelope(), current=await desktopCall('status',original);
+        if(current.state==='committed') result=current.result||{url:current.url,title:'Marked practice',location:'Quiz Library → Generated Practice'};
+        else if(current.state==='absent'||current.state==='retryable') result=await desktopCall('action',original);
+        else throw new Error(`Original Review request is ${current.state}. Check saved marks or Generated Practice before further action.`);
+        confirmedSaved=true;
+        await desktopCall('ack',original);
+      } else {
+        response=await fetch(`/api/review-marks/${pending.action}`, {method: 'POST', headers: {'Content-Type':'application/json','X-CSRFToken':document.querySelector('[name=csrf-token]').content}, body:JSON.stringify(pending.data)});
+        if (!response.ok) { const error = await response.json(); document.getElementById('uncertainMarkHelp').hidden=!error.uncertain; if (response.status < 500 && !error.uncertain) { clearPending(); } throw new Error(error.error || 'The request failed. Your marks are retained.'); }
+      }
       if (pending.action === 'anki') {
         const blob = await response.blob();
         if (exportUrl) URL.revokeObjectURL(exportUrl);
@@ -90,19 +154,21 @@
         link.click();
         status.textContent='Anki package exported. Save it if your browser asks, or use Download Anki package. Your marks remain saved.';
       } else {
-        const result = await response.json();
-        if (pending.action === 'save') { sessionStorage.removeItem(key); sessionStorage.removeItem(pendingKey); location.reload(); return; }
+        result=result||await response.json();
+        if (pending.action === 'save') { sessionStorage.removeItem(key); clearPending(); location.reload(); return; }
         const container=document.getElementById('markPracticeResult'); container.replaceChildren();
         const text=document.createElement('p'); text.textContent=`${result.title} · ${result.location}`;
         const open=document.createElement('a'); open.href=result.url; open.textContent='Open focused quiz'; container.append(text,open);
         status.textContent='Focused quiz ready. Your marks remain saved. Finish Review covers only this practice set.';
       }
-      pending=null; sessionStorage.removeItem(pendingKey);
-    } catch (error) { status.textContent=error.message+(pending ? ` Retry the same ${pending.data.ids.length}-question request; changing checkboxes does not change that retry.` : ''); retry.hidden=!pending; }
+      clearPending();
+    } catch (error) { status.textContent=confirmedSaved ?
+      `Result saved, but recovery cleanup failed: ${error.message} Keep the original request ID for verification.` :
+      error.message+(pending ? ' The original request ID and selection were retained. Check the saved result before retrying.' : ''); retry.hidden=!pending; }
     finally { busy=false; }
   }
   function start(action, ids=[...selected]) {
-    if (busy) return;
+    if (busy || !desktopChecked || desktopBlocked) return;
     if (pending) { status.textContent='Retry the outstanding request before starting another action. Your selection is retained.'; return; }
     if (!ids.length) { status.textContent='Select at least one question.'; return; }
     const operation=action==='generate'?'practice':action;
@@ -112,7 +178,9 @@
       const prepared={action,data:{request_id:requestId(),generation:root.dataset.generation,revision:Number(root.dataset.revision),ids,...(action==='save'?{action:'unmark'}:{})}};
       // Persist before sending. If storage fails, do not send an action whose
       // identity could be lost on reload and accidentally repeated.
-      sessionStorage.setItem(pendingKey,JSON.stringify(prepared));
+      const browserRecord=desktopContext&&action!=='anki'?{context:desktopContext,payload:prepared}:prepared;
+      sessionStorage.setItem(pendingKey,JSON.stringify(browserRecord));
+      if(desktopContext && action!=='anki') localStorage.setItem(pendingKey,JSON.stringify(browserRecord));
       pending=prepared;
       run();
     } catch (error) {
@@ -120,6 +188,7 @@
     }
   }
   document.getElementById('separateMarkRequest').onclick=()=>{
+    if(desktopContext) {status.textContent='Desktop request evidence must be resolved before a separate Review action.';return;}
     if (busy || !pending || !confirm('Start a separate request only after checking Generated Practice and allowing interrupted work to recover at normal startup. The earlier quiz may already exist. Continue?')) return;
     sessionStorage.setItem(pendingKey+'.previous',JSON.stringify(pending));
     sessionStorage.removeItem(pendingKey); pending=null; retry.hidden=true;
@@ -132,4 +201,5 @@
   document.getElementById('unmarkSelected').onclick=()=>start('save');
   root.querySelectorAll('[data-unmark]').forEach(button=>button.onclick=()=>start('save',[button.dataset.unmark]));
   render();
+  checkDesktopRecovery();
 })();

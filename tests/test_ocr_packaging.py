@@ -123,7 +123,7 @@ class OCRPackagingContractTests(unittest.TestCase):
                 self.assertIn(missing.name, str(raised.exception))
 
     @unittest.skipIf(os.name == "nt", "POSIX execute bits do not apply on Windows")
-    def test_non_executable_or_empty_resources_fail_the_build_contract(self):
+    def test_non_executable_resource_fails_the_build_contract(self):
         with tempfile.TemporaryDirectory(prefix="dlms-ocr-invalid-bundle-") as temp:
             root = Path(temp)
             executable = self._write_complete_bundle(root)
@@ -136,7 +136,10 @@ class OCRPackagingContractTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "not executable"):
                     collect_tesseract_bundle(required=True)
 
-            executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
+    def test_empty_resource_fails_the_build_contract_on_every_platform(self):
+        with tempfile.TemporaryDirectory(prefix="dlms-ocr-empty-bundle-") as temp:
+            root = Path(temp)
+            self._write_complete_bundle(root)
             (root / "tessdata" / "eng.traineddata").write_bytes(b"")
             with mock.patch.dict(
                 os.environ,

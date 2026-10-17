@@ -1,4 +1,5 @@
 """Isolated Exam Plan persistence, calendar, evidence, scope and retry contracts."""
+from contextlib import closing
 import copy
 import json
 import json
@@ -32,7 +33,7 @@ class ExamPlanTests(unittest.TestCase):
                 'calendar_timezone': 'America/Chicago', 'folders': ['uncategorized'], **changes}
 
     def create(self, **changes):
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             opts = dlms._exam_plan_options(conn.cursor())
             config = self.config(**changes)
             preview = plans.summary(conn.cursor(), dict(config=config, revision=0, snapshot={}), **opts)
@@ -41,7 +42,7 @@ class ExamPlanTests(unittest.TestCase):
                               expected_dashboard=plans.dashboard_selection(conn.cursor()))
 
     def report(self, pid, now=None):
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             return plans.summary(conn.cursor(), plans.get(conn.cursor(), pid), **dlms._exam_plan_options(conn.cursor()), now=now)
 
     def request_data(self, pid, **changes):
@@ -52,7 +53,7 @@ class ExamPlanTests(unittest.TestCase):
         """Visibility/pace of an Exam Plan never removes eligible ordinary review."""
         now = datetime(2026, 10, 16, 18, tzinfo=timezone.utc)
         pid = self.create(visible=True, weekdays=list(range(7)))
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             original = plans.get(conn.cursor(), pid)['config']
             for changes in ({}, {'paused': True}, {'exam_date': '2026-10-16'}, {'visible': False}):
                 with self.subTest(changes=changes):
@@ -91,7 +92,7 @@ class ExamPlanTests(unittest.TestCase):
 
     def test_validation_persistence_conflicts_and_failed_write(self):
         pid = self.create()
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             original = plans.get(conn.cursor(), pid)
             generation = plans.state(conn.cursor())['generation']
             for change in ({'minutes': True}, {'pace': float('nan')}, {'weekdays': []}, {'calendar_timezone': '../UTC'}, {'exam_date':'2026-02-30'}, {'folders': []}, {'pace_low': 5}):
@@ -123,17 +124,17 @@ class ExamPlanTests(unittest.TestCase):
         self.assertEqual(r['stats']['today'], 0)
         # Restart/read and portable database copy cannot replay historical facts.
         copy_path = Path(dlms.DB_PATH).with_name('restored.db')
-        with dlms.get_db() as conn, sqlite3.connect(copy_path) as backup:
+        with closing(dlms.get_db()) as conn, conn, closing(sqlite3.connect(copy_path)) as backup, backup:
             conn.backup(backup)
         dlms.bootstrap_database(str(copy_path))
-        with sqlite3.connect(copy_path) as conn:
+        with closing(sqlite3.connect(copy_path)) as conn, conn:
             self.assertEqual(conn.execute('SELECT count(*) FROM learning_events').fetchone()[0], 0)
             self.assertEqual(conn.execute('SELECT count(*) FROM exam_plans').fetchone()[0], 1)
 
     def test_edit_and_scope_changes_are_visible(self):
         self.save(self.payload(1)); self.finish(1)
         pid = self.create()
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("UPDATE questions SET question_text='Materially edited' WHERE quiz_id=?", (self.quiz_id,))
         r = self.report(pid)
         self.assertEqual(r['stats']['reviewed'], 0)
@@ -146,7 +147,7 @@ class ExamPlanTests(unittest.TestCase):
 
     def test_exclusion_missing_artifact_and_csrf(self):
         pid = self.create()
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             opts = dlms._exam_plan_options(conn.cursor()); opts['excluded'] = ['uncategorized']
             r = plans.summary(conn.cursor(), plans.get(conn.cursor(), pid), **opts)
             self.assertEqual(r['stats']['total'], 1)
@@ -166,7 +167,7 @@ class ExamPlanTests(unittest.TestCase):
         self.assertEqual(again.json['url'], first.json['url'])
         self.assertTrue(again.json['replayed'])
         self.assertEqual(self.client.post(url, json={**data, 'count':2}, headers=self.headers).status_code, 409)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute("SELECT count(*) FROM quizzes WHERE generation_kind='adaptive_study'").fetchone()[0], 1)
             generated = conn.execute('SELECT * FROM questions WHERE quiz_id != ?', (self.quiz_id,)).fetchone()
             source = conn.execute('SELECT question_uid FROM questions WHERE quiz_id=?', (self.quiz_id,)).fetchone()[0]
@@ -192,7 +193,7 @@ class ExamPlanTests(unittest.TestCase):
         for route in ('/exam-plans', '/exam-plans/new', f'/exam-plans/{pid}', f'/exam-plans/{pid}/edit'):
             response = self.client.get(route)
             self.assertEqual(response.status_code, 200, route)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             generation = plans.state(conn.cursor())['generation']
             plans.control(conn, pid, 'pause', 1, generation)
             self.assertTrue(plans.get(conn.cursor(), pid)['config']['paused'])
@@ -201,12 +202,12 @@ class ExamPlanTests(unittest.TestCase):
             self.assertIsNone(plans.state(conn.cursor())['active_plan_id'])
 
     def test_old_database_additive_migration(self):
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             for table in ('exam_plan_actions','exam_plan_state','exam_plans'):
                 conn.execute('DROP TABLE '+table)
             conn.execute('UPDATE schema_meta SET version=4')
         dlms.bootstrap_database(dlms.DB_PATH)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute('SELECT count(*) FROM quizzes').fetchone()[0],1)
             self.assertEqual(conn.execute('SELECT count(*) FROM exam_plans').fetchone()[0],0)
             self.assertEqual(conn.execute('SELECT count(*) FROM study_sessions').fetchone()[0],1)
@@ -224,7 +225,7 @@ class ExamPlanTests(unittest.TestCase):
                                    questionOrdinal=ordinal, questionType='choice', wasCorrect=correct, selected=['A' if correct else 'C'], kind='response')
                     response = self.save(payload)
                     self.assertEqual(response.status_code,200,response.json)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute('UPDATE learning_events SET occurred_at=? WHERE session_id=?', (stamp,prefix))
         return sequence
 
@@ -271,23 +272,23 @@ class ExamPlanTests(unittest.TestCase):
         data = self.request_data(pid); data.update(mode='missed',count=3)
         response = self.client.post(f'/api/exam-plans/{pid}/generate',json=data,headers=self.headers)
         self.assertEqual(response.status_code,200,response.json)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             ids = {row[0] for row in conn.execute('SELECT source_question_uid FROM questions WHERE is_generated_copy=1')}
             mistakes = {row[0] for row in conn.execute('SELECT question_uid FROM questions WHERE quiz_id=? AND question_number<=4',(qid,))}
             self.assertEqual(len(ids),3); self.assertTrue(ids <= mistakes)
 
     def test_scope_preview_race_and_deleted_generated_replay(self):
         pid=self.create(); data=self.request_data(pid)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("UPDATE questions SET explanation='Changed revision' WHERE quiz_id=?",(self.quiz_id,))
         url=f'/api/exam-plans/{pid}/generate'
         self.assertEqual(self.client.post(url,json=data,headers=self.headers).status_code,409)
         data=self.request_data(pid)
         self.assertEqual(self.client.post(url,json=data,headers=self.headers).status_code,200)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("DELETE FROM quizzes WHERE generation_kind='adaptive_study'")
         self.assertEqual(self.client.post(url,json=data,headers=self.headers).status_code,409)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute("SELECT count(*) FROM quizzes WHERE generation_kind='adaptive_study'").fetchone()[0],0)
 
     def test_timezone_package_without_system_database_and_date_only_evidence(self):
@@ -299,7 +300,7 @@ class ExamPlanTests(unittest.TestCase):
         finally:
             zoneinfo.reset_tzpath()
         pid=self.create(); self.save(self.payload(1))
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("UPDATE learning_events SET occurred_at='2026-10-16'")
         self.assertEqual(self.report(pid,datetime(2026,10,16,18,tzinfo=timezone.utc))['stats']['today'],0)
 
@@ -311,34 +312,34 @@ class ExamPlanTests(unittest.TestCase):
         stage.mkdir()
         for name in ('config','data'):
             shutil.copytree(Path(dlms.APP_DATA_DIR)/name,stage/name)
-        with dlms.get_db() as source, sqlite3.connect(stage/'results.db') as target:
+        with closing(dlms.get_db()) as source, source, closing(sqlite3.connect(stage/'results.db')) as target, target:
             source.backup(target)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             old=plans.state(conn.cursor())['generation']
         dlms._prepare_staged_restore_database(str(stage))
-        with sqlite3.connect(stage/'results.db') as conn:
+        with closing(sqlite3.connect(stage/'results.db')) as conn, conn:
             conn.row_factory=sqlite3.Row
             self.assertNotEqual(plans.state(conn.cursor())['generation'],old)
             self.assertEqual(plans.get(conn.cursor(),pid)['config']['name'],'CISM')
             self.assertEqual(conn.execute('SELECT count(*) FROM learning_events').fetchone()[0],0)
             self.assertEqual(conn.execute('SELECT count(*) FROM study_sessions WHERE completed_at IS NOT NULL').fetchone()[0],1)
         # Simulate a real older backup: no new tables, unchanged Study facts.
-        with sqlite3.connect(stage/'results.db') as conn:
+        with closing(sqlite3.connect(stage/'results.db')) as conn, conn:
             for table in ('exam_plan_actions','exam_plan_state','exam_plans'):
                 conn.execute('DROP TABLE '+table)
             conn.execute('UPDATE schema_meta SET version=4')
         dlms._prepare_staged_restore_database(str(stage))
-        with sqlite3.connect(stage/'results.db') as conn:
+        with closing(sqlite3.connect(stage/'results.db')) as conn, conn:
             self.assertEqual(conn.execute('SELECT count(*) FROM exam_plans').fetchone()[0],0)
             self.assertEqual(conn.execute('SELECT count(*) FROM study_sessions WHERE completed_at IS NOT NULL').fetchone()[0],1)
 
     def test_invalid_stored_plan_not_rewritten_and_restore_rejects_it(self):
         pid=self.create()
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute('UPDATE exam_plans SET config_json=? WHERE id=?', ('{"name":"retained"}',pid))
         self.assertEqual(self.client.get('/exam-plans').status_code,200)
         self.assertIn(b'unsupported',self.client.get('/exam-plans/'+pid).data)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute('SELECT config_json FROM exam_plans').fetchone()[0],'{"name":"retained"}')
             with self.assertRaises(ValueError):
                 plans.validate_restored_plans(conn)
@@ -347,7 +348,7 @@ class ExamPlanTests(unittest.TestCase):
         pid=self.create(); data=self.request_data(pid); url=f'/api/exam-plans/{pid}/generate'
         with mock.patch.object(dlms,'_write_staged_quiz_json',side_effect=OSError('fixture failure')):
             self.assertEqual(self.client.post(url,json=data,headers=self.headers).status_code,503)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute('SELECT count(*) FROM quizzes').fetchone()[0],1)
             self.assertEqual(conn.execute('SELECT state FROM exam_plan_actions').fetchone()[0],'retryable')
         # A fully rolled-back operation can safely retry the same ID.
@@ -360,12 +361,12 @@ class ExamPlanTests(unittest.TestCase):
         self.assertEqual(self.report(pid)['stats']['reviewed'],0)
         self.assertEqual(self.report(pid)['plan']['config']['name'],'CISM')
         dlms._full_data_reset_core()
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute('SELECT count(*) FROM exam_plans').fetchone()[0],0)
 
     def test_multiple_plans_active_pointer_and_pause_hide_are_independent(self):
         first=self.create(); second=self.create(name='Second certification')
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             generation=plans.state(conn.cursor())['generation']
             self.assertEqual(plans.state(conn.cursor())['active_plan_id'],second)
             plans.control(conn,first,'activate',1,generation,expected_dashboard=plans.dashboard_selection(conn.cursor()))
@@ -380,24 +381,24 @@ class ExamPlanTests(unittest.TestCase):
 
     def test_unavailable_pack_and_unsupported_question_are_not_published(self):
         pid=self.create()
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute('UPDATE questions SET media_json=? WHERE quiz_id=?',(json.dumps({'image_url':'/content-packs/never-installed/assets/image.png'}),self.quiz_id))
         with mock.patch.object(dlms,'get_content_pack',return_value=None):
             r=self.report(pid)
             self.assertEqual(r['stats']['unavailable'],1)
             self.assertEqual(r['selected'],[])
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("UPDATE questions SET media_json='{}',question_type='unsupported' WHERE quiz_id=?",(self.quiz_id,))
         self.assertEqual(self.report(pid)['stats']['unavailable'],1)
 
     def test_complete_answer_after_midnight_in_same_session_earns_daily_credit(self):
         self.study_questions(self.quiz_id,count=1,stamp='2026-10-15T15:00:00+00:00',prefix='overnight')
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             session=dict(conn.execute("SELECT * FROM study_sessions WHERE id='overnight'").fetchone())
         payload=dict(contract=2,quizId=self.quiz_id,sessionId='overnight',owner='overnight-owner',generation=session['generation'],assessmentRevision=session['assessment_revision'],
                      sequence=2,eventId='overnight-new-response',questionOrdinal=1,questionType='choice',wasCorrect=True,selected=['A'],kind='response')
         self.assertEqual(self.save(payload).status_code,200)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("UPDATE learning_events SET occurred_at='2026-10-16T15:00:00+00:00' WHERE attempt_id='overnight-new-response'")
         pid=self.create()
         r=self.report(pid,datetime(2026,10,16,18,tzinfo=timezone.utc))
@@ -411,7 +412,7 @@ class ExamPlanTests(unittest.TestCase):
         self.assertEqual(self.report(pid)['stats']['total'],2)
         self.assertEqual(len(self.report(pid)['candidates']),2)
         # Legacy ranking can group text, but plans must still account for each row.
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute('UPDATE questions SET question_uid=NULL,canonical_question_uid=NULL')
         r=self.report(pid)
         self.assertEqual(r['stats']['total'],2)
@@ -433,7 +434,7 @@ class ExamPlanTests(unittest.TestCase):
             results=list(pool.map(lambda _:reserve(),range(2)))
         self.assertEqual(sum(result is None for result in results),1)
         self.assertEqual(next(result['state'] for result in results if result),'pending')
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute('SELECT count(*) FROM exam_plan_actions').fetchone()[0],1)
 
     def test_past_exam_does_not_remove_current_overdue_work(self):
@@ -447,7 +448,7 @@ class ExamPlanTests(unittest.TestCase):
         self.assertEqual(r['selected'],[])
 
     def finish_session(self, quiz_id, session_id, sequence):
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             session = dict(conn.execute('SELECT * FROM study_sessions WHERE id=?', (session_id,)).fetchone())
         response = self.client.post('/api/study/finish', json=dict(
             quizId=quiz_id, sessionId=session_id, owner=session_id+'-owner',
@@ -477,7 +478,7 @@ class ExamPlanTests(unittest.TestCase):
         data = self.request_data(pid); data.update(mode='missed', count=10)
         response = self.client.post(f'/api/exam-plans/{pid}/generate', json=data, headers=self.headers)
         self.assertEqual(response.status_code, 200, response.json)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             generated = conn.execute('SELECT quiz_id FROM exam_plan_actions').fetchone()[0]
             source_ids = {r[0] for r in conn.execute('SELECT source_question_uid FROM questions WHERE quiz_id=?', (generated,))}
             missed_ids = {r[0] for r in conn.execute('SELECT question_uid FROM questions WHERE quiz_id=? AND question_number<=25', (qid,))}
@@ -490,7 +491,7 @@ class ExamPlanTests(unittest.TestCase):
         self.assertEqual(after['stats']['full'], 1)
         self.assertEqual(after['stats']['focused'], 1)
         self.assertEqual(len(after['missed']), 25)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             continuity = dlms._study_service.regular_continuity(conn.cursor(), dlms.load_registry(),
                 data_folder=dlms.DATA_FOLDER, quiz_folder=dlms.QUIZ_FOLDER, artifact_names=dlms._quiz_artifact_names)
             self.assertEqual(continuity['quiz_id'], qid)
@@ -532,7 +533,7 @@ class ExamPlanTests(unittest.TestCase):
         with mock.patch.object(plans,'summary',return_value=report):
             response = self.client.post(f'/api/exam-plans/{pid}/generate',json=data,headers=self.headers)
         self.assertEqual(response.status_code,200,response.json)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             source = conn.execute('SELECT source_question_uid FROM questions WHERE is_generated_copy=1').fetchone()[0]
             expected = conn.execute('SELECT question_uid FROM questions WHERE quiz_id=?',(self.quiz_id,)).fetchone()[0]
             self.assertEqual(source,expected)
@@ -564,7 +565,7 @@ class ExamPlanTests(unittest.TestCase):
                 else:
                     self.assertEqual(recovered.status_code,409,recovered.json)
                     self.assertIn('explicitly start new work',recovered.json['error'])
-                    with dlms.get_db() as conn:
+                    with closing(dlms.get_db()) as conn, conn:
                         record = conn.execute('SELECT * FROM exam_plan_actions WHERE request_id=?',(data['request_id'],)).fetchone()
                         self.assertIsNone(record['quiz_id'])
                     # Only an explicit new operation after verified recovery publishes.
@@ -573,7 +574,7 @@ class ExamPlanTests(unittest.TestCase):
 
     def test_schema_five_failure_is_atomic_and_retry_preserves_study(self):
         self.save(self.payload(1,correct=False)); self.finish(1)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             for table in ('exam_plan_actions','exam_plan_state','exam_plans'):
                 conn.execute('DROP TABLE '+table)
             conn.execute('UPDATE schema_meta SET version=4')
@@ -584,13 +585,13 @@ class ExamPlanTests(unittest.TestCase):
         with mock.patch.dict(dlms.DLMS_SCHEMA_MIGRATIONS,{5:failed_migration}):
             with self.assertRaisesRegex(RuntimeError,'schema-five failure'):
                 dlms.bootstrap_database(dlms.DB_PATH)
-        with sqlite3.connect(dlms.DB_PATH) as conn:
+        with closing(sqlite3.connect(dlms.DB_PATH)) as conn, conn:
             self.assertEqual(conn.execute('SELECT version FROM schema_meta').fetchone()[0],4)
             self.assertIsNone(conn.execute("SELECT name FROM sqlite_master WHERE name='exam_plans'").fetchone())
             self.assertNotEqual(conn.execute('SELECT title FROM quizzes').fetchone()[0],'Must roll back')
             self.assertEqual(conn.execute('SELECT count(*) FROM study_sessions WHERE completed_at IS NOT NULL').fetchone()[0],1)
         dlms.bootstrap_database(dlms.DB_PATH)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute('SELECT version FROM schema_meta').fetchone()[0],dlms.DLMS_SCHEMA_VERSION)
             self.assertEqual(conn.execute('SELECT count(*) FROM study_responses').fetchone()[0],1)
 
@@ -620,7 +621,7 @@ class ExamPlanTests(unittest.TestCase):
             with self.subTest(change=change):
                 response = self.client.post(f'/api/exam-plans/{pid}/generate',json={**data,**change},headers=self.headers)
                 self.assertEqual(response.status_code,400,response.json)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute('SELECT count(*) FROM exam_plan_actions').fetchone()[0],0)
             self.assertEqual(conn.execute('SELECT count(*) FROM quizzes').fetchone()[0],1)
 
@@ -639,7 +640,7 @@ class ExamPlanTests(unittest.TestCase):
 
     def test_flat_folder_remap_exclusion_and_source_deletion(self):
         registry = dlms.load_registry(); registry[0]['folder']='CISM'; dlms.save_registry(registry)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             config = self.config(folders=['cism'])
             opts = dlms._exam_plan_options(conn.cursor())
             snapshot = plans.summary(conn.cursor(),dict(config=config,revision=0,snapshot={}),**opts)['snapshot']
@@ -650,12 +651,12 @@ class ExamPlanTests(unittest.TestCase):
         self.assertEqual(report['missing_folders'],['cism'])
         self.assertEqual(report['stats']['total'],0)
         self.assertEqual(self.client.post(f'/api/exam-plans/{pid}/generate',json=before,headers=self.headers).status_code,409)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             plans.save(conn,self.config(folders=['cism renamed']),plan_id=pid,revision=1,generation=report['generation'],known_folders=['cism renamed'])
         remapped = self.report(pid)
         self.assertEqual(remapped['stats']['total'],1)
         self.assertTrue(remapped['changes']['changed'])
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             opts = dlms._exam_plan_options(conn.cursor()); opts['excluded']=['cism renamed']
             excluded = plans.summary(conn.cursor(),plans.get(conn.cursor(),pid),**opts)
             self.assertNotEqual(excluded['fingerprint'],remapped['fingerprint'])
@@ -667,7 +668,7 @@ class ExamPlanTests(unittest.TestCase):
         self.assertTrue(deleted['changes']['removed'])
 
     def form_values(self, pid=None, **changes):
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             plan = plans.get(conn.cursor(),pid) if pid else None
             config = dict(plan['config']) if plan else self.config()
             data = {**config, 'generation':plans.state(conn.cursor())['generation'],
@@ -679,12 +680,12 @@ class ExamPlanTests(unittest.TestCase):
 
     def test_dashboard_choice_is_positive_atomic_and_preserves_pause(self):
         first = self.create(); second = self.create(name='Second',paused=True)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             generation=plans.state(conn.cursor())['generation']
             plans.control(conn,second,'hide',1,generation)
         ordinary=self.form_values(second,name='Second edited')
         self.assertEqual(self.client.post(f'/exam-plans/{second}/edit',data=ordinary,headers=self.headers).status_code,302)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(plans.state(conn.cursor())['active_plan_id'],second)
             self.assertFalse(plans.get(conn.cursor(),second)['config']['visible'])
             self.assertTrue(plans.get(conn.cursor(),second)['config']['paused'])
@@ -692,7 +693,7 @@ class ExamPlanTests(unittest.TestCase):
         show=self.form_values(second,use_dashboard='on')
         self.assertEqual(self.client.post(f'/exam-plans/{second}/edit',data=show,headers=self.headers).status_code,302)
         self.assertEqual(self.client.post(f'/exam-plans/{first}/edit',data=stale,headers=self.headers).status_code,409)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(plans.state(conn.cursor())['active_plan_id'],second)
             self.assertTrue(plans.get(conn.cursor(),second)['config']['visible'])
             self.assertTrue(plans.get(conn.cursor(),second)['config']['paused'])
@@ -700,7 +701,7 @@ class ExamPlanTests(unittest.TestCase):
         self.assertEqual(self.client.post('/exam-plans/new',data=self.form_values(name='Unselected'),headers=self.headers).status_code,302)
         self.assertEqual(self.client.post(f'/exam-plans/{first}/edit',data=self.form_values(first,name='First edited'),headers=self.headers).status_code,302)
         dlms.bootstrap_database(dlms.DB_PATH)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(plans.state(conn.cursor())['active_plan_id'],second)
             self.assertEqual(conn.execute('SELECT count(*) FROM exam_plans').fetchone()[0],3)
         html=self.client.get('/exam-plans/'+second).get_data(as_text=True)
@@ -710,7 +711,7 @@ class ExamPlanTests(unittest.TestCase):
 
     def test_concurrent_dashboard_switches_and_aba_conflict(self):
         first=self.create(); second=self.create(name='Second'); third=self.create(name='Third')
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             token=plans.dashboard_selection(conn.cursor()); generation=plans.state(conn.cursor())['generation']
         barrier=threading.Barrier(2)
         def choose(pid):
@@ -719,7 +720,7 @@ class ExamPlanTests(unittest.TestCase):
         with ThreadPoolExecutor(max_workers=2) as pool:
             result=list(pool.map(choose,(first,second)))
         self.assertEqual(sorted(result),[302,409])
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             active=plans.state(conn.cursor())['active_plan_id']
             original=plans.dashboard_selection(conn.cursor())
             revision=plans.get(conn.cursor(),active)['revision']
@@ -756,7 +757,7 @@ class ExamPlanTests(unittest.TestCase):
         self.publish(title='Excluded bank',questions=extra,kind=None)
         pid=self.create()
         now=datetime(2026,10,16,18,tzinfo=timezone.utc)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             opts=dlms._exam_plan_options(conn.cursor()); plan=plans.get(conn.cursor(),pid)
             all_excluded=plans.summary(conn.cursor(),plan,**{**opts,'excluded':['uncategorized']},now=now)
             self.assertEqual(all_excluded['work_state']['code'],'excluded')
@@ -792,23 +793,23 @@ class ExamPlanTests(unittest.TestCase):
         self.assertIn('/settings/layout#dashboard-panels',html)
         self.assertNotIn('value="acknowledge"',html)
         values=self.form_values(name='Must not switch',use_dashboard='on')
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("CREATE TRIGGER fail_dashboard BEFORE UPDATE ON exam_plan_state BEGIN SELECT RAISE(ABORT,'fixture failure'); END")
         response=self.client.post('/exam-plans/new',data=values,headers=self.headers)
         self.assertEqual(response.status_code,503)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute('SELECT count(*) FROM exam_plans').fetchone()[0],1)
             self.assertEqual(plans.state(conn.cursor())['active_plan_id'],pid)
         self.assertEqual(dlms.load_portal_config(),cfg)
 
     def test_dashboard_token_describes_the_displayed_selection(self):
         first=self.create()
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             shown_state=plans.state(conn.cursor())
             shown_plan=plans.get(conn.cursor(),first)
             original=plans.dashboard_selection(conn.cursor())
         second=self.create(name='Replacement')
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             rendered=plans.dashboard_selection(conn.cursor(),saved=shown_state,selected=shown_plan)
             self.assertEqual(rendered,original)
             self.assertNotEqual(rendered,plans.dashboard_selection(conn.cursor()))
@@ -835,7 +836,7 @@ class ExamPlanTests(unittest.TestCase):
         self.study_questions(self.quiz_id,count=1,prefix='coverage-one')
         self.study_questions(available,count=3,prefix='coverage-three')
         pid=self.create()
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             plan=plans.get(conn.cursor(),pid);plan['config']['folders']=['uncategorized','excluded']
             opts=dlms._exam_plan_options(conn.cursor())
             result=plans.summary(conn.cursor(),plan,**{**opts,'excluded':['excluded']},now=datetime(2026,10,17,18,tzinfo=timezone.utc))
@@ -876,7 +877,7 @@ class ExamPlanTests(unittest.TestCase):
         pid=self.create()
         published=self.client.post(f'/api/exam-plans/{pid}/generate',json=self.request_data(pid),headers=self.headers)
         self.assertEqual(published.status_code,200)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             generated=conn.execute('SELECT id FROM quizzes WHERE generation_kind=\'adaptive_study\'').fetchone()[0]
         other,_=self.publish(title='Independent identical wording',kind=None)
         self.study_questions(generated,count=1,wrong=(1,),prefix='lineage-label')
@@ -884,7 +885,7 @@ class ExamPlanTests(unittest.TestCase):
         report=self.report(pid,datetime(2026,10,19,18,tzinfo=timezone.utc))
         self.assertEqual({item['key']:item['count'] for item in report['breakdown']},{'new':1,'refresh':1})
         self.assertEqual(report['missed'],[])
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             recorded=plans.recorded_answer_sources(conn.cursor(),report['snapshot'])
             source=conn.execute('SELECT id FROM questions WHERE quiz_id=?',(self.quiz_id,)).fetchone()[0]
             independent=conn.execute('SELECT id FROM questions WHERE quiz_id=?',(other,)).fetchone()[0]

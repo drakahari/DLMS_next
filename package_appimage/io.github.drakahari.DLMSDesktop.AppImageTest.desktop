@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=DLMS Desktop (AppImage Test)
+Comment=Separate Local test profiles and explicitly configured Server mode
+Exec=AppRun
+Icon=io.github.drakahari.DLMSDesktop.AppImageTest
+Terminal=false
+Categories=Education;
+StartupWMClass=io.github.drakahari.DLMSDesktop.AppImageTest

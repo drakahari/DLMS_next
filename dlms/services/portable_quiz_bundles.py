@@ -1192,10 +1192,13 @@ def stage_portable_quiz_bundle(
         )
         report = inspect_bundle(archive_path)
         uploaded_name = secure_filename(upload.filename) or "quiz-bundle.zip"
+        with open(archive_path, "rb") as handle:
+            archive_sha256 = hashlib.file_digest(handle, "sha256").hexdigest()
         metadata = {
             "token": token,
             "uploaded_name": uploaded_name[:240],
             "created_at": now().astimezone().isoformat(timespec="seconds"),
+            "archive_sha256": archive_sha256,
             "quiz_count": report["quiz_count"],
             "question_count": report["question_count"],
             "asset_count": report["asset_count"],
@@ -1219,6 +1222,13 @@ def load_staged_portable_quiz_bundle(token, *, staging_folder, inspect_bundle):
         metadata = json.load(handle)
     if not isinstance(metadata, dict) or metadata.get("token") != token:
         raise PortableQuizBundleError("Portable bundle staging metadata is invalid.")
+    expected_sha256 = metadata.get("archive_sha256")
+    if not isinstance(expected_sha256, str) or len(expected_sha256) != 64:
+        raise PortableQuizBundleError("The staged bundle lacks a valid review identity. Upload and review it again.")
+    with open(archive_path, "rb") as handle:
+        current_sha256 = hashlib.file_digest(handle, "sha256").hexdigest()
+    if current_sha256 != expected_sha256:
+        raise PortableQuizBundleError("The staged bundle changed after validation. Upload and review it again.")
     return stage_dir, archive_path, metadata, inspect_bundle(archive_path)
 
 

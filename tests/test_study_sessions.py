@@ -1,4 +1,5 @@
 """Disposable data checks for ordered Study facts, completion and reset boundaries."""
+from contextlib import closing
 import json
 import sqlite3
 import unittest
@@ -100,7 +101,7 @@ class StudySessionTests(unittest.TestCase):
             self.assertIn("sequence is incomplete", response.json["error"])
             self.assertIn("saved history is retained", response.json["error"])
         self.assertIsNone(self.facts()["completed_at"])
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute("SELECT sequence FROM study_responses WHERE session_id='session-one'").fetchall()[0][0], 2)
             before = list(conn.iterdump())
             continuity = study.regular_continuity(conn.cursor(), dlms.load_registry(), data_folder=dlms.DATA_FOLDER,
@@ -138,7 +139,7 @@ class StudySessionTests(unittest.TestCase):
 
     def test_changed_questions_reject_open_page_and_remove_estimate(self):
         self.save(self.payload(1))
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("UPDATE questions SET question_text = 'Changed question' WHERE quiz_id = ?", (self.quiz_id,))
         self.assertEqual(self.save(self.payload(2)).status_code, 409)
         self.assertEqual(self.finish(1).status_code, 409)
@@ -188,7 +189,7 @@ class StudySessionTests(unittest.TestCase):
         source.backup(target)
         source.close(); target.close()
         restore.delete_study_history_core(dlms.DB_PATH)
-        with sqlite3.connect(destination) as conn:
+        with closing(sqlite3.connect(destination)) as conn, conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM study_responses").fetchone()[0], 1)
             self.assertIsNotNone(conn.execute("SELECT completed_at FROM study_sessions").fetchone()[0])
 
@@ -201,7 +202,7 @@ class StudySessionTests(unittest.TestCase):
         report = dlms._validate_dlms_backup(archive)
         dlms._extract_validated_backup(archive, staged, report)
         dlms._prepare_staged_restore_database(str(staged))
-        with sqlite3.connect(staged / "results.db") as conn:
+        with closing(sqlite3.connect(staged / "results.db")) as conn, conn:
             self.assertEqual(conn.execute("SELECT completed_at FROM study_sessions").fetchone()[0], finished)
             self.assertEqual(conn.execute("SELECT was_correct FROM study_responses ORDER BY sequence").fetchall(), [(0,), (1,)])
             self.assertNotEqual(conn.execute("SELECT generation FROM study_state").fetchone()[0], self.generation)
@@ -237,7 +238,7 @@ class StudySessionTests(unittest.TestCase):
                 result = self.client.post("/api/study/finish", json={**first, "sequence": 3}, headers=self.headers)
                 self.assertEqual(result.status_code, 400)
                 # Keep the next disposable iteration's ID distinct.
-                with dlms.get_db() as conn:
+                with closing(dlms.get_db()) as conn, conn:
                     conn.execute("DELETE FROM study_sessions WHERE id = 'replacement'")
 
     def test_complete_wrong_multiple_answer_and_matching_can_finish(self):
@@ -253,11 +254,11 @@ class StudySessionTests(unittest.TestCase):
                 self.assertEqual(result.status_code, 200, result.json)
                 self.assertEqual(result.json["session"]["reviewed"], 1)
                 self.assertFalse(result.json["session"]["observations"]["0"]["first"]["correct"])
-                with dlms.get_db() as conn:
+                with closing(dlms.get_db()) as conn, conn:
                     conn.execute("DELETE FROM study_sessions WHERE id = 'replacement'")
 
     def test_lineage_stays_distinct_and_changed_source_does_not_gain_evidence(self):
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             source_id = conn.execute("SELECT id FROM questions WHERE quiz_id = ?", (self.quiz_id,)).fetchone()[0]
             copied = dlms._question_payload_from_db(conn.cursor(), source_id)
         self.replace_quiz([copied], kind="adaptive_study")
@@ -265,7 +266,7 @@ class StudySessionTests(unittest.TestCase):
         self.assertEqual(self.save(event).status_code, 200)
         self.assertEqual(self.session["purpose"], "focused")
         self.assertEqual(len(self.evidence()), 1)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("UPDATE questions SET question_text = 'Changed source assessment' WHERE id = ?", (source_id,))
         self.assertEqual(self.evidence(), [])
         self.assertEqual(self.facts()["reviewed"], 1)
@@ -291,17 +292,17 @@ class StudySessionTests(unittest.TestCase):
         copied.close()
         result = dlms.bootstrap_database(str(path), require_owned_root=False)
         self.assertEqual(result["from_version"], 3)
-        with sqlite3.connect(path) as conn:
+        with closing(sqlite3.connect(path)) as conn, conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM study_sessions").fetchone()[0], 0)
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0], 1)
 
     def test_content_deletion_cascades_facts_without_touching_other_quizzes(self):
         self.save(self.payload(1))
         other, _ = self.publish(title="Unrelated content", kind=None)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("DELETE FROM quizzes WHERE id = ?", (self.quiz_id,))
         self.assertIsNone(self.facts())
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertIsNotNone(conn.execute("SELECT id FROM quizzes WHERE id = ?", (other,)).fetchone())
 
     def test_legacy_reset_preserves_raw_facts_without_replaying_retry(self):
@@ -310,14 +311,14 @@ class StudySessionTests(unittest.TestCase):
         restore.reset_learning_intelligence_core(dlms.DB_PATH)
         self.assertEqual(self.save(legacy).json["already_recorded"], True)
         self.assertEqual(self.evidence(), [])
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM study_legacy_responses").fetchone()[0], 1)
         page = self.client.get("/study-history").data
         self.assertIn(b"Legacy saved responses", page)
         self.assertIn(b"incorrect response", page)
 
     def test_revision_ignores_lineage_assignment_but_not_answer_changes(self):
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             before = study.assessment_revision(conn.cursor(), self.quiz_id)
             conn.execute("UPDATE questions SET canonical_question_uid='new-lineage' WHERE quiz_id=?", (self.quiz_id,))
             self.assertEqual(study.assessment_revision(conn.cursor(), self.quiz_id), before)
@@ -347,7 +348,7 @@ class StudySessionTests(unittest.TestCase):
         source_quiz = self.quiz_id
         identical_quiz, _ = self.publish(title="Independent identical wording", kind=None)
         self.save(self.payload(1, correct=False)); self.save(self.payload(2))
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             candidates = dlms._adaptive_study_candidates(conn.cursor())
             source = next(c for c in candidates if c["quiz_id"] == source_quiz)
             identical = next(c for c in candidates if c["quiz_id"] == identical_quiz)
@@ -357,7 +358,7 @@ class StudySessionTests(unittest.TestCase):
         generated = self.client.post("/adaptive-study/generate", data={"question_count": "1"}, headers=self.headers)
         self.assertEqual(generated.status_code, 302)
         entry = next(e for e in dlms.load_registry() if generated.location.endswith(dlms._quiz_artifact_names(e)[0]))
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             source_uid = conn.execute("SELECT question_uid FROM questions WHERE quiz_id=?", (source_quiz,)).fetchone()[0]
             self.assertEqual(conn.execute("SELECT source_question_uid FROM questions WHERE quiz_id=?", (entry["id"],)).fetchone()[0], source_uid)
         self.quiz_id = entry["id"]
@@ -366,7 +367,7 @@ class StudySessionTests(unittest.TestCase):
         for sequence, correct in ((1, False), (2, True)):
             result = self.save({**self.payload(sequence, correct=correct), "sessionId": "generated-review", "eventId": f"generated-{sequence}"})
             self.assertEqual(result.status_code, 200, result.json)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             candidates = dlms._adaptive_study_candidates(conn.cursor())
             source = next(c for c in candidates if c["quiz_id"] == source_quiz)
         self.assertEqual(source["evidence"], 2)
@@ -385,7 +386,7 @@ class StudySessionTests(unittest.TestCase):
             event = {**self.payload(1), "sessionId": session_id, "eventId": f"elapsed-event-{number}"}
             self.assertEqual(self.save(event).status_code, 200)
             self.assertTrue(self.save(event).json["already_recorded"])
-            with dlms.get_db() as conn:
+            with closing(dlms.get_db()) as conn, conn:
                 conn.execute("UPDATE learning_events SET occurred_at=? WHERE attempt_id=?", ((start + timedelta(seconds=seconds)).isoformat(), event["eventId"]))
                 schedule = dlms._native_spaced_repetition_schedule(conn.cursor(), now=start + timedelta(seconds=seconds))
             row = next(q for q in schedule["questions"] if q["quiz_id"] == self.quiz_id)
@@ -405,7 +406,7 @@ class StudySessionTests(unittest.TestCase):
             dlms.ensure_db_initialized()
             self.assertTrue(self.facts()["completed_at"])
             self.assertEqual(self.evidence(), [])
-            with dlms.get_db() as conn:
+            with closing(dlms.get_db()) as conn, conn:
                 candidates = dlms._adaptive_study_candidates(conn.cursor())
                 self.assertTrue(all(c["evidence"] == 0 and "recent_miss" not in c["score_components"] for c in candidates))
                 self.assertTrue(all(q["responses"] == 0 and q["schedule_state"] == "unscheduled" for q in dlms._native_spaced_repetition_schedule(conn.cursor())["questions"]))
@@ -435,7 +436,7 @@ class StudySessionTests(unittest.TestCase):
 
     def test_regular_continuity_requires_response_and_resume_does_not_advance_it(self):
         def continuity():
-            with dlms.get_db() as conn:
+            with closing(dlms.get_db()) as conn, conn:
                 return study.regular_continuity(conn.cursor(), dlms.load_registry(), data_folder=dlms.DATA_FOLDER,
                                                 quiz_folder=dlms.QUIZ_FOLDER, artifact_names=dlms._quiz_artifact_names)
         self.assertIsNone(continuity())  # Claim/open alone has no learning progress.
@@ -473,7 +474,7 @@ class StudySessionTests(unittest.TestCase):
         legacy = {"quizId": self.quiz_id, "sessionId": "legacy-session", "eventId": "legacy-id", "questionOrdinal": 1,
                   "questionType": "choice", "selected": ["C"], "wasCorrect": False}
         self.assertEqual(self.save(legacy).status_code, 200)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("INSERT INTO attempts(id,quiz_id,score,total,percent,mode) VALUES ('exam',?,1,1,100,'Exam')", (self.quiz_id,))
             original = tuple(conn.execute("SELECT quiz_id,question_id,attempt_id,session_id,mode,was_correct,response_json,occurred_at FROM learning_events WHERE attempt_id='legacy-id'").fetchone())
             conn.executescript("DROP TABLE study_responses; DROP TABLE study_sessions; DROP TABLE study_state; DROP TABLE study_legacy_responses; UPDATE schema_meta SET version=3;")
@@ -481,7 +482,7 @@ class StudySessionTests(unittest.TestCase):
         staged = Path(dlms.APP_DATA_DIR) / "old-restore"
         dlms._extract_validated_backup(archive, staged, dlms._validate_dlms_backup(archive))
         dlms._prepare_staged_restore_database(str(staged))
-        with sqlite3.connect(staged / "results.db") as conn:
+        with closing(sqlite3.connect(staged / "results.db")) as conn, conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM study_sessions").fetchone()[0], 0)
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM study_responses").fetchone()[0], 0)
             self.assertEqual(conn.execute("SELECT quiz_id,question_id,attempt_id,session_id,mode,was_correct,response_json,occurred_at FROM study_legacy_responses").fetchone(), original)
@@ -490,7 +491,7 @@ class StudySessionTests(unittest.TestCase):
 
     def test_explicit_delete_route_has_recoverable_backup_and_preserves_boundaries(self):
         self.save(self.payload(1)); self.finish(1)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("INSERT INTO attempts(id,quiz_id,score,total,percent,mode) VALUES ('exam',?,1,1,100,'Exam')", (self.quiz_id,))
             conn.execute("INSERT INTO learning_events(event_type,quiz_id,attempt_id,mode,was_correct) VALUES ('exam_answer',?,'exam','Exam',1)", (self.quiz_id,))
         settings = Path(dlms.PORTAL_CONFIG)
@@ -499,7 +500,7 @@ class StudySessionTests(unittest.TestCase):
         result = self.client.post("/api/delete_study_history", json={"confirmation": "DELETE STUDY HISTORY"}, headers=self.headers)
         self.assertEqual(result.status_code, 200, result.json)
         self.assertIsNone(self.facts())
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM attempts").fetchone()[0], 1)
             self.assertEqual(conn.execute("SELECT event_type FROM learning_events").fetchone()[0], 'exam_answer')
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0], 1)
@@ -509,7 +510,7 @@ class StudySessionTests(unittest.TestCase):
         staged = Path(dlms.APP_DATA_DIR) / 'delete-recovery'
         dlms._extract_validated_backup(str(archives[0]), staged, dlms._validate_dlms_backup(str(archives[0])))
         dlms._prepare_staged_restore_database(str(staged))
-        with sqlite3.connect(staged / 'results.db') as conn:
+        with closing(sqlite3.connect(staged / 'results.db')) as conn, conn:
             self.assertIsNotNone(conn.execute("SELECT completed_at FROM study_sessions WHERE id='session-one'").fetchone()[0])
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM study_responses").fetchone()[0], 1)
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM attempts").fetchone()[0], 1)

@@ -39,7 +39,11 @@ class RepositoryAutomationTests(unittest.TestCase):
             "-r requirements-build.txt",
         )
         self.assertIn("python -m pip check", text)
-        self.assertIn('-m "not browser"', text)
+        self.assertIn('tools/run_consolidation_checks.py application', text)
+        runner = (ROOT / 'tools/run_consolidation_checks.py').read_text(encoding='utf-8')
+        self.assertIn("'-m', 'not browser'", runner)
+        self.assertIn("(ROOT / 'tests').glob('test_*.py')", runner)
+        self.assertNotIn('desktop_test_scope', runner)
         self.assertIn("git diff --check", text)
         self.assertIn("tests/test_release_package_verification.py", text)
         self.assertIn("git status --porcelain --untracked-files=all", text)

@@ -32,7 +32,7 @@ def test_phase2_selection_and_protected_definitions(monkeypatch):
     monkeypatch.syspath_prepend(str(ROOT / 'tools'))
     import build_documentation_videos as batch
     index, videos, catalog = batch.load_series()
-    state = json.loads((batch.SERIES / 'editorial-status.json').read_text())
+    state = json.loads((batch.SERIES / 'editorial-status.json').read_text(encoding="utf-8"))
     phase2 = [v for v in videos if v['id'] in state['phase2_candidates']]
     assert [v['id'] for v in phase2] == state['phase2_candidates']
     chosen = batch.select(videos, 'image-and-hotspot-authoring,reset-and-maintenance')
@@ -42,6 +42,9 @@ def test_phase2_selection_and_protected_definitions(monkeypatch):
         assert len([s for s in video['scenes'] if s.get('chapter')]) >= 3
         assert all(s['audio_filename'] == s['id'] + '.wav' for s in video['scenes'])
     for name, expected in state['approved_definition_sha256'].items():
-        assert hashlib.sha256((ROOT / name).read_bytes()).hexdigest() == expected
+        # These pins describe Git's canonical LF text, including on a checkout
+        # that materializes CRLF. Retain every non-line-ending byte in the pin.
+        definition = (ROOT / name).read_bytes().replace(b'\r\n', b'\n')
+        assert hashlib.sha256(definition).hexdigest() == expected
     assert set(state['required_topic_coverage']) == {str(i) for i in range(1, 10)}
     assert all(identifier in state['phase2_candidates'] for identifier in state['required_topic_coverage'].values())

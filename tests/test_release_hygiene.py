@@ -337,7 +337,8 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertIn('codesign_identity=None', spec)
 
         self.assertIn("DLMS-3.3.0-macos-arm64.zip", readme)
-        self.assertIn("DLMS-3.2.2-macos-arm64.zip", getting_started)
+        self.assertIn("DLMS-3.3.0-macos-arm64.zip", getting_started)
+        self.assertNotIn("DLMS-3.2.2-macos-arm64.zip", getting_started)
         for document in (readme, getting_started):
             self.assertIn("DLMS.app", document)
             self.assertIn("Control-click", document)

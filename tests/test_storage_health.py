@@ -1,5 +1,6 @@
 """Storage visibility and preflight must preserve data and recovery semantics."""
 import inspect
+import os
 from unittest.mock import Mock
 
 import pytest
@@ -26,14 +27,19 @@ def test_report_sizes_missing_directories_and_no_mutation(tmp_path):
     assert groups["Backups"] == 7
     assert groups["Content / Study Packs"] == 5
     assert not report["partial"]
-    assert {str(p.relative_to(tmp_path)): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()} == files
+    assert {p.relative_to(tmp_path).as_posix(): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()} == files
     assert storage.storage_snapshot(tmp_path / "missing")["bytes"] == 0
     assert not (tmp_path / "missing").exists()
 
 
 def test_scan_bounded_and_does_not_follow_symlinks(tmp_path):
     (tmp_path / "file").write_bytes(b"abc")
-    (tmp_path / "loop").symlink_to(tmp_path, target_is_directory=True)
+    try:
+        (tmp_path / "loop").symlink_to(tmp_path, target_is_directory=True)
+    except OSError as exc:
+        if os.name == 'nt' and exc.winerror == 1314:
+            pytest.skip('Windows symlink privilege unavailable; native junction refusal is covered in tests/windows/test_native.py')
+        raise
     report = storage.storage_snapshot(tmp_path)
     assert report["bytes"] == 3 and report["partial"]
     assert storage.storage_snapshot(tmp_path, max_entries=0)["partial"]

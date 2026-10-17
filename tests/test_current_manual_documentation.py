@@ -48,7 +48,7 @@ class CurrentManualDocumentationTests(unittest.TestCase):
     def test_manual_relative_destinations_anchors_and_images(self):
         sources = [*MANUAL.glob('*.md'), ROOT / 'README.md', ROOT / 'docs/help-screenshots.md', ROOT / 'docs/releases/3.3.0.md']
         for path in sources:
-            text = path.read_text()
+            text = path.read_text(encoding="utf-8")
             for match in re.finditer(r'(!?)\[([^]\n]*)\]\(([^)\n]+)\)', text):
                 image, alt, target = match.groups()
                 url = urlsplit(target.strip('<>'))
@@ -61,7 +61,7 @@ class CurrentManualDocumentationTests(unittest.TestCase):
                 with self.subTest(source=path.name, target=target):
                     self.assertTrue(destination.exists(), target)
                     if url.fragment and destination.suffix == '.md':
-                        self.assertIn(unquote(url.fragment), markdown_anchors(destination.read_text()))
+                        self.assertIn(unquote(url.fragment), markdown_anchors(destination.read_text(encoding="utf-8")))
                     if image:
                         self.assertTrue(alt.strip(), 'Images need a meaningful alternative')
 
@@ -94,8 +94,8 @@ class CurrentManualDocumentationTests(unittest.TestCase):
                         self.assertTrue((ROOT / image['src'].lstrip('/')).is_file())
 
     def test_every_destructive_action_has_help_scope_and_backup_exceptions(self):
-        help_text = html.unescape((ROOT / 'static/help-maintenance.html').read_text())
-        action_page = html.unescape((ROOT / 'templates/settings/reset-remove.html').read_text())
+        help_text = html.unescape((ROOT / 'static/help-maintenance.html').read_text(encoding="utf-8"))
+        action_page = html.unescape((ROOT / 'templates/settings/reset-remove.html').read_text(encoding="utf-8"))
         # The same visible workflow must be discoverable in the safety guide.
         for label in ('Clear Saved Results from Database and Dashboard', 'Reset Learning Intelligence',
                       'Delete Study History', 'Reset Quiz Library & Results', 'Clear Imported / Source Content',
@@ -110,19 +110,19 @@ class CurrentManualDocumentationTests(unittest.TestCase):
         self.assertIn('does not create an automatic recovery backup', help_text)
 
     def test_current_coverage_sources_exist(self):
-        coverage = (MANUAL / 'UPDATE-COVERAGE-3.3.0.md').read_text()
+        coverage = (MANUAL / 'UPDATE-COVERAGE-3.3.0.md').read_text(encoding="utf-8")
         for source in re.findall(r'`((?:app\.py|dlms/|templates/|static/)[^`]*)`', coverage):
             with self.subTest(source=source):
                 self.assertTrue(list(ROOT.glob(source)), source)
-        index = (MANUAL / 'README.md').read_text()
+        index = (MANUAL / 'README.md').read_text(encoding="utf-8")
         for guide in ('exam-plans.md', 'certifications-and-training.md', 'UPDATE-COVERAGE-3.3.0.md'):
             self.assertIn(guide, index)
 
     def test_study_mistakes_task_navigation_and_safety_reference(self):
-        chapter = (MANUAL / '05-quiz-library-and-organization.md').read_text()
+        chapter = (MANUAL / '05-quiz-library-and-organization.md').read_text(encoding="utf-8")
         section = chapter.split('### Make a mix from Study mistakes', 1)[1].split('## Review possible duplicates', 1)[0]
-        index = (MANUAL / 'README.md').read_text()
-        help_page = (ROOT / 'static/help-quizzes.html').read_text()
+        index = (MANUAL / 'README.md').read_text(encoding="utf-8")
+        help_page = (ROOT / 'static/help-quizzes.html').read_text(encoding="utf-8")
         help_section = help_page.split('id="study-mistakes"', 1)[1].split('</section>', 1)[0]
         self.assertIn('05-quiz-library-and-organization.md#make-a-mix-from-study-mistakes', index)
         self.assertEqual(help_page.count('id="study-mistakes"'), 1)

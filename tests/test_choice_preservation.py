@@ -1,4 +1,5 @@
 """Explicit order, preservation/readiness separation and stale answer contracts."""
+from contextlib import closing
 import copy
 import hashlib
 import json
@@ -52,7 +53,7 @@ class ChoicePreservationTests(unittest.TestCase):
                 before={r['id'] for r in dlms.load_registry()}
                 self.fixture._import_bytes(data)
                 imported=next(r['id'] for r in dlms.load_registry() if r['id'] not in before)
-                with dlms.get_db() as c:
+                with closing(dlms.get_db()) as c, c:
                     question=c.execute('SELECT id FROM questions WHERE quiz_id=?',(imported,)).fetchone()[0]
                     payload=dlms._question_payload_from_db(c.cursor(),question)
                     self.assertEqual(q['choices'],payload['choices'])
@@ -85,12 +86,12 @@ class ChoicePreservationTests(unittest.TestCase):
         matching=self.fixture._matching()
         self.assertEqual('matching',matching['type'])
         qid=self.fixture._seed('Malformed matching','matching-bad.html',[matching])
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             qi=c.execute('SELECT id FROM questions WHERE quiz_id=?',(qid,)).fetchone()[0]
             c.execute("UPDATE matching_pairs SET verification_json='broken JSON' WHERE question_id=?",(qi,))
             c.commit()
         other=self.fixture._seed('Malformed media','media-bad.html',[self.quiz()])
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             c.execute("UPDATE questions SET media_json='[]' WHERE quiz_id=?",(other,));c.commit()
             report=dlms._preflight_portable_quiz_export(c.cursor(),dlms.load_registry(),[qid,other])
         self.assertEqual(2,report['blocked_quizzes'])
@@ -103,7 +104,7 @@ class ChoicePreservationTests(unittest.TestCase):
         qid=self.fixture._seed('Invalid source number','source-number.html',[self.quiz()])
         for value in (2.5, True, 0, -1, '2'):
             with self.subTest(value=value):
-                with dlms.get_db() as c:
+                with closing(dlms.get_db()) as c, c:
                     c.execute('UPDATE questions SET media_json=? WHERE quiz_id=?',(json.dumps({'source_number':value}),qid));c.commit()
                     report=dlms._preflight_portable_quiz_export(c.cursor(),dlms.load_registry(),[qid])
                 self.assertEqual(1,report['blocked_quizzes'])
@@ -114,11 +115,11 @@ class ChoicePreservationTests(unittest.TestCase):
     def test_warning_confirmation_is_bound_to_displayed_selection_and_issues(self):
         ready=self.fixture._seed('Ready','ready.html',[self.quiz()])
         warning=self.fixture._seed('Needs review','warning.html',[self.quiz(flags=(False,False,False))])
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             old=dlms._preflight_portable_quiz_export(c.cursor(),dlms.load_registry(),[ready])
         response=self.client.post('/quiz-bundles/export',data={'quiz_ids':[ready,warning],'export_action':'preserve','warning_snapshot':old['signature']},headers=self.headers)
         self.assertEqual('text/html',response.mimetype);self.assertIn('No correct answer is marked',response.text)
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             displayed=dlms._preflight_portable_quiz_export(c.cursor(),dlms.load_registry(),[ready,warning])
             c.execute("UPDATE questions SET question_text='' WHERE quiz_id=?",(warning,));c.commit()
         response=self.client.post('/quiz-bundles/export',data={'quiz_ids':[ready,warning],'export_action':'preserve','warning_snapshot':displayed['signature']},headers=self.headers)
@@ -131,7 +132,7 @@ class ChoicePreservationTests(unittest.TestCase):
         q=self.quiz();q['image_url']='/quiz-assets/missing/picture.png'
         second=copy.deepcopy(q);second['number']=2
         c=self.fixture._seed('Missing images','block-c.html',[q,second])
-        with dlms.get_db() as connection:
+        with closing(dlms.get_db()) as connection, connection:
             report=dlms._preflight_portable_quiz_export(connection.cursor(),dlms.load_registry(),[a,b,c])
         self.assertEqual((2,1),(report['warning_quizzes'],report['blocked_quizzes']))
         self.assertEqual([a,b,c],[x['quiz_id'] for x in report['quizzes']])
@@ -148,7 +149,7 @@ class ChoicePreservationTests(unittest.TestCase):
         self.assertIn('/edit_quiz/'+str(a),html)
         warning_only=self.client.post('/quiz-bundles/export',data={'quiz_ids':[a,b]},headers=self.headers)
         self.assertEqual(200,warning_only.status_code);self.assertIn('Selection check',warning_only.text)
-        with dlms.get_db() as connection:
+        with closing(dlms.get_db()) as connection, connection:
             signature=dlms._preflight_portable_quiz_export(connection.cursor(),dlms.load_registry(),[a,b])['signature']
         confirmed=self.client.post('/quiz-bundles/export',data={'quiz_ids':[a,b],'export_action':'preserve','warning_snapshot':signature},headers=self.headers)
         self.assertEqual('application/zip',confirmed.mimetype);confirmed.close()
@@ -160,7 +161,7 @@ class ChoicePreservationTests(unittest.TestCase):
         self.assertTrue(status['readiness']['actual_labels_required'])
         entry=next(x for x in dlms.load_registry() if x['id']==qid)
         _,name=dlms._quiz_artifact_names(entry)
-        raw=(Path(dlms.DATA_FOLDER)/name).read_text()
+        raw=(Path(dlms.DATA_FOLDER)/name).read_bytes().decode('utf-8')
         seed='\0'.join(['quiz-recovery-v1','1',str(qid),'/data/'+name,'90',raw])
         fingerprint='sha256:'+hashlib.sha256(seed.encode()).hexdigest()
         claim={'quizId':qid,'sessionId':'labels-session','owner':'labels-owner','generation':status['generation'],'fingerprint':fingerprint,'variants':{}}
@@ -177,7 +178,7 @@ class ChoicePreservationTests(unittest.TestCase):
         self.assertEqual(400,self.client.post('/record_attempt',json=attempt,headers=self.headers).status_code)
         attempt['answerEncoding']=quiz_readiness.ANSWER_ENCODING
         self.assertEqual(200,self.client.post('/record_attempt',json=attempt,headers=self.headers).status_code)
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             saved=c.execute("SELECT response_json FROM learning_events WHERE attempt_id=? AND event_type='exam_answer'",('actual-d-exam',)).fetchone()
             self.assertEqual(['D'],json.loads(saved[0])['selected'])
             self.assertEqual(1,c.execute('SELECT was_correct FROM study_responses WHERE session_id=?',('labels-session',)).fetchone()[0])
@@ -187,13 +188,13 @@ class ChoicePreservationTests(unittest.TestCase):
         qid,html=dlms._publish_quiz('Preserved duplicate',[q])
         response=self.client.get('/quizzes/'+html)
         self.assertEqual(409,response.status_code);self.assertIn('Review and edit',response.text)
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             with self.assertRaisesRegex(ValueError,'needs review'):quiz_readiness.require_ready(c.cursor(),qid)
         for path,payload in [('/api/study/session',{'quizId':qid,'sessionId':'blocked','owner':'owner','generation':self.client.get(f'/api/study/quiz/{qid}').json['generation'],'fingerprint':'unused','variants':{}}),('/record_attempt',{'quizId':qid,'attemptId':'blocked'})]:
             self.assertEqual(400,self.client.post(path,json=payload,headers=self.headers).status_code)
         with self.assertRaisesRegex(ValueError,'needs review'):
             dlms._publish_quiz('No silent omission',[q],generation_kind='smart_review')
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             self.assertEqual(0,c.execute('SELECT count(*) FROM study_responses').fetchone()[0])
             self.assertEqual(0,c.execute('SELECT count(*) FROM attempts').fetchone()[0])
 
@@ -206,7 +207,7 @@ class ChoicePreservationTests(unittest.TestCase):
                      'choices': [{'label': 'A', 'text': 'Control', 'is_correct': True}]}
         ready, html = dlms._publish_quiz('Supported hotspot', [runtime], [canonical])
         incomplete, blocked_html = dlms._publish_quiz('Incomplete canonical row', [runtime])
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             self.assertTrue(quiz_readiness.quiz_readiness(c.cursor(), ready)['ready'])
             issues = quiz_readiness.quiz_readiness(c.cursor(), incomplete)['issues']
             self.assertEqual(['A choice question needs between 1 and 26 choices.',
@@ -216,7 +217,7 @@ class ChoicePreservationTests(unittest.TestCase):
                                          (incomplete,)).fetchone()[0])
         self.assertEqual(200, self.client.get('/quizzes/' + html).status_code)
         self.assertEqual(409, self.client.get('/quizzes/' + blocked_html).status_code)
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             self.assertEqual(0, c.execute('SELECT count(*) FROM study_responses').fetchone()[0])
             self.assertEqual(0, c.execute('SELECT count(*) FROM attempts').fetchone()[0])
 
@@ -226,7 +227,7 @@ class ChoicePreservationTests(unittest.TestCase):
         for choice in sample['choices']:
             choice['text'] = choice['text'].strip()
         qid, _ = dlms._publish_quiz('Repair sample', [sample])
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             question = c.execute('SELECT id FROM questions WHERE quiz_id=?', (qid,)).fetchone()[0]
             rows = c.execute('SELECT id,label,text,is_correct,choice_order FROM choices WHERE question_id=? ORDER BY choice_order', (question,)).fetchall()
         page = self.client.get(f'/edit_quiz/{qid}').text
@@ -239,7 +240,7 @@ class ChoicePreservationTests(unittest.TestCase):
             form[f'label_{row[0]}'] = row[1]
         response = self.client.post(f'/edit_quiz/{qid}', data=form, headers=self.headers)
         self.assertEqual(302, response.status_code)
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             after = c.execute('SELECT id,label,text,is_correct,choice_order FROM choices WHERE question_id=? ORDER BY choice_order', (question,)).fetchall()
             self.assertEqual(5, len(after))
             self.assertEqual([tuple(r) for r in rows], [tuple(r) for r in after[:3]])
@@ -253,7 +254,7 @@ class ChoicePreservationTests(unittest.TestCase):
             form[f'choice_{row[0]}'] = row[2] or 'Explicit new answer'
             form[f'label_{row[0]}'] = row[1]
         self.client.post(f'/edit_quiz/{qid}', data=form, headers=self.headers)
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             self.assertEqual([tuple(r) for r in after], [tuple(r) for r in c.execute('SELECT id,label,text,is_correct,choice_order FROM choices WHERE question_id=? ORDER BY choice_order', (question,))])
         entry = next(e for e in dlms.load_registry() if e['id'] == qid)
         self.assertEqual(409, self.client.get('/quizzes/' + entry['html']).status_code)
@@ -265,7 +266,7 @@ class ChoiceMigrationTests(unittest.TestCase):
         self.path=Path(self.temp.name)/'results.db'
         sql=Path('init.sql').read_text().replace('    choice_order INTEGER,\n','').replace('VALUES (1, 12);','VALUES (1, 10);')
         sql=sql.replace('CREATE UNIQUE INDEX IF NOT EXISTS idx_choices_order ON choices(question_id, choice_order);','')
-        with sqlite3.connect(self.path) as c:
+        with closing(sqlite3.connect(self.path)) as c, c:
             c.executescript(sql)
             c.execute("INSERT INTO quizzes(id,title,source_file) VALUES(1,'Migration sample','migration.html')")
             c.execute("INSERT INTO questions(id,quiz_id,question_number,question_text) VALUES(1,1,1,'Sample'),(2,1,2,'Sample'),(3,1,3,'Sample')")
@@ -276,7 +277,7 @@ class ChoiceMigrationTests(unittest.TestCase):
     def test_migration_preserves_values_tie_order_and_repeated_startup(self):
         result=dlms.bootstrap_database(str(self.path),require_owned_root=False)
         self.assertEqual(10,result['from_version']);self.assertEqual(dlms.DLMS_SCHEMA_VERSION,result['version'])
-        with database.get_db(self.path) as c:
+        with closing(database.get_db(self.path)) as c, c:
             self.assertEqual(self.before,[tuple(r) for r in c.execute('SELECT id,question_id,label,text,is_correct FROM choices ORDER BY id')])
             for qid,expected in [(1,['A','B','C','D','R']),(2,['A','B','C','D']),(3,['A','A','B'])]:
                 rows=c.execute('SELECT id,label,choice_order FROM choices WHERE question_id=? ORDER BY choice_order,id',(qid,)).fetchall()
@@ -287,10 +288,10 @@ class ChoiceMigrationTests(unittest.TestCase):
 
     def test_migration_keeps_assessment_and_mark_question_revisions(self):
         old = schema10_revision_reference
-        with database.get_db(self.path) as c:
+        with closing(database.get_db(self.path)) as c, c:
             before=(old.assessment_revision(c.cursor(),1),[old.question_revision(c.cursor(),q) for q in (1,2,3)])
         dlms.bootstrap_database(str(self.path),require_owned_root=False)
-        with database.get_db(self.path) as c:
+        with closing(database.get_db(self.path)) as c, c:
             after=(study_sessions.assessment_revision(c.cursor(),1),[study_sessions.question_revision(c.cursor(),q) for q in (1,2,3)])
         self.assertEqual(before,after)
 
@@ -298,11 +299,11 @@ class ChoiceMigrationTests(unittest.TestCase):
         dlms.bootstrap_database(str(self.path),require_owned_root=False)
         for definition in ('CREATE INDEX idx_choices_order ON choices(question_id,choice_order)',
                            'CREATE UNIQUE INDEX idx_choices_order ON choices(id)'):
-            with sqlite3.connect(self.path) as c:
+            with closing(sqlite3.connect(self.path)) as c, c:
                 c.execute('DROP INDEX idx_choices_order');c.execute(definition)
             with self.assertRaisesRegex(RuntimeError,'choice order index'):
                 dlms.bootstrap_database(str(self.path),require_owned_root=False)
-            with sqlite3.connect(self.path) as c:
+            with closing(sqlite3.connect(self.path)) as c, c:
                 c.execute('DROP INDEX idx_choices_order')
                 c.execute('CREATE UNIQUE INDEX idx_choices_order ON choices(question_id,choice_order)')
 
@@ -310,14 +311,14 @@ class ChoiceMigrationTests(unittest.TestCase):
         def fail(c):choice_schema.migrate(c);raise RuntimeError('interrupted migration')
         with mock.patch.dict(dlms.DLMS_SCHEMA_MIGRATIONS,{11:fail}):
             with self.assertRaisesRegex(RuntimeError,'interrupted'):dlms.bootstrap_database(str(self.path),require_owned_root=False)
-        with sqlite3.connect(self.path) as c:
+        with closing(sqlite3.connect(self.path)) as c, c:
             self.assertEqual(10,c.execute('SELECT version FROM schema_meta').fetchone()[0])
             self.assertNotIn('choice_order',[r[1] for r in c.execute('pragma table_info(choices)')])
             self.assertEqual(self.before,c.execute('SELECT id,question_id,label,text,is_correct FROM choices ORDER BY id').fetchall())
         script="import sqlite3,os,sys;from dlms.persistence.choice_schema import migrate;c=sqlite3.connect(sys.argv[1]);c.execute('BEGIN IMMEDIATE');migrate(c);os._exit(37)"
         child=subprocess.run([sys.executable,'-c',script,str(self.path)],timeout=15)
         self.assertEqual(37,child.returncode)
-        with sqlite3.connect(self.path) as c:self.assertEqual(10,c.execute('SELECT version FROM schema_meta').fetchone()[0])
+        with closing(sqlite3.connect(self.path)) as c, c:self.assertEqual(10,c.execute('SELECT version FROM schema_meta').fetchone()[0])
         self.assertEqual('migrated',dlms.bootstrap_database(str(self.path),require_owned_root=False)['status'])
 
     def test_schema_ten_reader_refuses_upgraded_database_without_changes(self):

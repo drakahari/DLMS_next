@@ -1,4 +1,5 @@
 """Disposable marks, source identity, independent actions and additive storage."""
+from contextlib import closing
 import json
 import sqlite3
 import uuid
@@ -41,7 +42,7 @@ class ReviewMarkTests(unittest.TestCase):
         return response.json
 
     def rows(self, quiz=None):
-        with dlms.get_db() as conn:return marks.catalog(conn.cursor(),dlms._exam_plan_options(conn.cursor()),quiz)
+        with closing(dlms.get_db()) as conn, conn:return marks.catalog(conn.cursor(),dlms._exam_plan_options(conn.cursor()),quiz)
 
     def action_data(self,ids=None):
         c=self.context()
@@ -66,7 +67,7 @@ class ReviewMarkTests(unittest.TestCase):
         self.assertEqual(result.status_code,200,result.json)
         again=self.client.post('/api/review-marks/generate',json=d,headers=self.headers)
         self.assertEqual(result.json['url'],again.json['url']);self.assertTrue(again.json['replayed'])
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             source=conn.execute('SELECT question_uid FROM questions WHERE quiz_id=?',(self.quiz_id,)).fetchone()[0]
             q=conn.execute('SELECT q.*,z.generation_kind FROM questions q JOIN quizzes z ON z.id=q.quiz_id WHERE z.generation_kind=?',('marked_practice',)).fetchone()
             self.assertEqual(q['source_question_uid'],source); generated=q['quiz_id']
@@ -82,16 +83,16 @@ class ReviewMarkTests(unittest.TestCase):
 
     def test_excluded_unsupported_changed_deleted_and_renamed(self):
         self.mark(); registry=dlms.load_registry();registry[0]['title']='Renamed';registry[0]['folder']='Later';dlms.save_registry(registry)
-        with dlms.get_db() as conn:conn.execute("UPDATE quizzes SET title='Renamed' WHERE id=?",(self.quiz_id,))
+        with closing(dlms.get_db()) as conn, conn:conn.execute("UPDATE quizzes SET title='Renamed' WHERE id=?",(self.quiz_id,))
         self.assertEqual(self.rows()[0]['title'],'Renamed');self.assertEqual(self.rows()[0]['folder'],'Later')
         with mock.patch.object(dlms,'get_excluded_learning_folders',return_value=['Later']):
             self.assertIn('Learning Scope',self.rows()[0]['practice_reason']);self.assertEqual(self.rows()[0]['anki_reason'],'')
             self.assertEqual(self.client.post('/api/review-marks/generate',json=self.action_data(),headers=self.headers).status_code,409)
         matching,_=self.publish(title='Matching',questions=[self.matching()],kind=None);self.mark(matching)
         self.assertIn('text choice',self.rows(matching)[0]['anki_reason']);self.assertEqual(self.rows(matching)[0]['practice_reason'],'')
-        with dlms.get_db() as conn:conn.execute("UPDATE questions SET question_text='Edited' WHERE quiz_id=?",(self.quiz_id,))
+        with closing(dlms.get_db()) as conn, conn:conn.execute("UPDATE questions SET question_text='Edited' WHERE quiz_id=?",(self.quiz_id,))
         self.assertIn('changed',self.rows(self.quiz_id)[0]['practice_reason'])
-        with dlms.get_db() as conn:conn.execute('DELETE FROM quizzes WHERE id=?',(self.quiz_id,))
+        with closing(dlms.get_db()) as conn, conn:conn.execute('DELETE FROM quizzes WHERE id=?',(self.quiz_id,))
         self.assertIn('deleted',self.rows(self.quiz_id)[0]['practice_reason'])
 
     def test_concurrent_and_failed_adoption_preserve_legacy(self):
@@ -112,14 +113,14 @@ class ReviewMarkTests(unittest.TestCase):
         restore.reset_learning_intelligence_core(dlms.DB_PATH)
         self.assertEqual(self.rows(),oldrows)
         copy=Path(dlms.DB_PATH).with_name('backup.db')
-        with dlms.get_db() as conn,sqlite3.connect(copy) as backup:conn.backup(backup)
+        with closing(dlms.get_db()) as conn, conn,closing(sqlite3.connect(copy)) as backup, backup:conn.backup(backup)
         dlms.bootstrap_database(str(copy))
-        with sqlite3.connect(copy) as conn:
+        with closing(sqlite3.connect(copy)) as conn, conn:
             conn.row_factory=sqlite3.Row;marks.validate_restored_marks(conn)
             self.assertEqual(conn.execute('SELECT count(*) FROM review_marks WHERE marked=1').fetchone()[0],1)
-        with dlms.get_db() as conn:review_mark_schema.invalidate(conn)
+        with closing(dlms.get_db()) as conn, conn:review_mark_schema.invalidate(conn)
         self.assertEqual(self.client.post('/api/review-marks/generate',json=d,headers=self.headers).status_code,409)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute('DROP TABLE review_mark_actions');conn.execute('DROP TABLE review_marks');conn.execute('DROP TABLE review_mark_state');conn.execute('UPDATE schema_meta SET version=5')
         dlms.bootstrap_database(dlms.DB_PATH)
         self.assertEqual(self.rows(),[])
@@ -127,7 +128,7 @@ class ReviewMarkTests(unittest.TestCase):
 
     def test_changed_answers_cannot_adopt_old_page(self):
         d=self.mark_data()
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("UPDATE choices SET is_correct=0 WHERE label='A'")
             conn.execute("UPDATE choices SET is_correct=1 WHERE label='C'")
         self.assertEqual(self.client.post('/api/review-marks/save',json=d,headers=self.headers).status_code,409)
@@ -136,10 +137,10 @@ class ReviewMarkTests(unittest.TestCase):
 
     def test_write_failure_and_publication_rollback_retry(self):
         d=self.mark_data()
-        with dlms.get_db() as conn:conn.execute("CREATE TRIGGER fail_mark BEFORE INSERT ON review_marks BEGIN SELECT RAISE(ABORT,'simulated write failure'); END")
+        with closing(dlms.get_db()) as conn, conn:conn.execute("CREATE TRIGGER fail_mark BEFORE INSERT ON review_marks BEGIN SELECT RAISE(ABORT,'simulated write failure'); END")
         self.assertEqual(self.client.post('/api/review-marks/save',json=d,headers=self.headers).status_code,503)
         self.assertEqual(self.rows(),[])
-        with dlms.get_db() as conn:conn.execute('DROP TRIGGER fail_mark')
+        with closing(dlms.get_db()) as conn, conn:conn.execute('DROP TRIGGER fail_mark')
         self.assertEqual(self.client.post('/api/review-marks/save',json=d,headers=self.headers).status_code,200)
         request=self.action_data()
         with mock.patch.object(dlms,'build_quiz_html',side_effect=OSError('simulated publication failure')):
@@ -161,7 +162,7 @@ class ReviewMarkTests(unittest.TestCase):
             self.assertEqual(self.client.post('/api/review-marks/generate',json=d,headers=self.headers).status_code,503)
         response=self.client.post('/api/review-marks/generate',json=d,headers=self.headers)
         self.assertEqual(response.status_code,409);self.assertTrue(response.json['uncertain'])
-        with dlms.get_db() as conn:self.assertEqual(conn.execute("SELECT count(*) FROM quizzes WHERE generation_kind='marked_practice'").fetchone()[0],1)
+        with closing(dlms.get_db()) as conn, conn:self.assertEqual(conn.execute("SELECT count(*) FROM quizzes WHERE generation_kind='marked_practice'").fetchone()[0],1)
 
     def test_anki_package_contains_exact_supported_selection_and_no_unmark(self):
         import io,zipfile
@@ -172,7 +173,7 @@ class ReviewMarkTests(unittest.TestCase):
         self.assertEqual(response.status_code,200)
         with zipfile.ZipFile(io.BytesIO(response.data)) as package:
             path=Path(dlms.DB_PATH).with_name('exported-anki.db');path.write_bytes(package.read('collection.anki2'))
-        with sqlite3.connect(path) as conn:
+        with closing(sqlite3.connect(path)) as conn, conn:
             notes=conn.execute('SELECT flds FROM notes').fetchall()
             self.assertEqual(len(notes),1)
             self.assertIn('Choose both expected answers.',notes[0][0]);self.assertIn('A. Alpha<br>B. Beta',notes[0][0])
@@ -192,17 +193,17 @@ class ReviewMarkTests(unittest.TestCase):
         self.assertEqual(len(set(found)),57)
         generated=self.client.post('/api/review-marks/generate',json=self.action_data(found),headers=self.headers)
         self.assertEqual(generated.status_code,200,generated.json)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute("SELECT count(*) FROM questions q JOIN quizzes z ON z.id=q.quiz_id WHERE z.generation_kind='marked_practice'").fetchone()[0],57)
 
     def test_study_deletion_retains_marks_migration_failure_is_atomic(self):
         self.mark();restore.delete_study_history_core(dlms.DB_PATH);self.assertEqual(len(self.rows()),1)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute('DROP TABLE review_mark_actions');conn.execute('DROP TABLE review_marks');conn.execute('DROP TABLE review_mark_state');conn.execute('UPDATE schema_meta SET version=5')
         original=review_mark_schema.STATEMENTS
         with mock.patch.object(review_mark_schema,'STATEMENTS',(original[0],'invalid migration statement')):
             with self.assertRaises(sqlite3.Error):dlms.bootstrap_database(dlms.DB_PATH)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute('SELECT version FROM schema_meta').fetchone()[0],5)
             self.assertIsNone(conn.execute("SELECT name FROM sqlite_master WHERE name='review_mark_state'").fetchone())
             self.assertIsNotNone(conn.execute('SELECT id FROM quizzes WHERE id=?',(self.quiz_id,)).fetchone())
@@ -214,7 +215,7 @@ class ReviewMarkTests(unittest.TestCase):
         request=self.action_data()
         response=self.client.post('/api/review-marks/generate',json=request,headers=self.headers)
         self.assertEqual(response.status_code,409);self.assertIn('identical questions',response.json['error'])
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             qid=conn.execute('SELECT id FROM questions WHERE quiz_id=?',(duplicate,)).fetchone()[0]
             conn.execute("UPDATE questions SET media_json=? WHERE id=?",(json.dumps({'image_url':'/quiz-assets/missing.png'}),qid))
             revision=study.question_revision(conn.cursor(),qid)
@@ -232,7 +233,7 @@ class ReviewMarkTests(unittest.TestCase):
         self.mark()
         check=subprocess.run([sys.executable,'-c',"import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); print(c.execute('SELECT count(*) FROM review_marks WHERE marked=1').fetchone()[0])",dlms.DB_PATH],capture_output=True,text=True,check=True)
         self.assertEqual(check.stdout.strip(),'1')
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("UPDATE review_marks SET question_revision='invalid'")
             with self.assertRaises(ValueError):marks.validate_restored_marks(conn)
             conn.rollback()
@@ -246,20 +247,20 @@ class ReviewMarkTests(unittest.TestCase):
         staged=Path(dlms.APP_DATA_DIR)/'marks-restore'
         dlms._extract_validated_backup(archive,staged,dlms._validate_dlms_backup(archive))
         dlms._prepare_staged_restore_database(str(staged))
-        with sqlite3.connect(staged/'results.db') as conn:
+        with closing(sqlite3.connect(staged/'results.db')) as conn, conn:
             self.assertEqual(conn.execute('SELECT count(*) FROM review_marks WHERE marked=1').fetchone()[0],1)
             self.assertNotEqual(conn.execute('SELECT generation FROM review_mark_state').fetchone()[0],generation)
             self.assertEqual(conn.execute('SELECT count(*) FROM learning_events').fetchone()[0],0)
             self.assertEqual(conn.execute('SELECT count(*) FROM study_responses').fetchone()[0],2)
             self.assertIsNotNone(conn.execute('SELECT completed_at FROM study_sessions').fetchone()[0])
         # A real older portable backup has no marks, but retains factual Study data.
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             for table in ('review_mark_actions','review_marks','review_mark_state'):conn.execute('DROP TABLE '+table)
             conn.execute('UPDATE schema_meta SET version=5')
         old,_=dlms._create_dlms_backup('old-marks-test');oldstaged=Path(dlms.APP_DATA_DIR)/'old-marks-restore'
         dlms._extract_validated_backup(old,oldstaged,dlms._validate_dlms_backup(old))
         dlms._prepare_staged_restore_database(str(oldstaged))
-        with sqlite3.connect(oldstaged/'results.db') as conn:
+        with closing(sqlite3.connect(oldstaged/'results.db')) as conn, conn:
             self.assertEqual(conn.execute('SELECT count(*) FROM review_marks').fetchone()[0],0)
             self.assertEqual(conn.execute('SELECT count(*) FROM study_responses').fetchone()[0],2)
             self.assertEqual(conn.execute('SELECT count(*) FROM learning_events').fetchone()[0],0)
@@ -286,24 +287,24 @@ class ReviewMarkTests(unittest.TestCase):
         for mutation in ('DELETE FROM review_mark_state', "UPDATE review_mark_state SET generation='invalid'", 'UPDATE review_mark_state SET revision=-1'):
             with self.subTest(mutation=mutation):
                 copy=Path(dlms.APP_DATA_DIR)/'invalid-state.db'
-                with dlms.get_db() as source,sqlite3.connect(copy) as target: source.backup(target)
-                with sqlite3.connect(copy) as conn:conn.execute(mutation)
+                with closing(dlms.get_db()) as source, source,closing(sqlite3.connect(copy)) as target, target: source.backup(target)
+                with closing(sqlite3.connect(copy)) as conn, conn:conn.execute(mutation)
                 before=copy.read_bytes()
                 with self.assertRaisesRegex(RuntimeError,'state is incomplete or invalid'):
                     dlms.bootstrap_database(str(copy))
                 self.assertEqual(copy.read_bytes(),before)
-                with sqlite3.connect(copy) as conn:self.assertEqual(conn.execute('SELECT count(*) FROM review_marks').fetchone()[0],1)
+                with closing(sqlite3.connect(copy)) as conn, conn:self.assertEqual(conn.execute('SELECT count(*) FROM review_marks').fetchone()[0],1)
                 copy.unlink()
 
     def test_schema_six_crash_and_validation_failure_preserve_all_old_rows(self):
         import subprocess,sys,os
         self.save(self.payload(1,correct=False));self.save(self.payload(2));self.finish(2)
         restore.reset_learning_intelligence_core(dlms.DB_PATH)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             for table in ('review_mark_actions','review_marks','review_mark_state'):conn.execute('DROP TABLE '+table)
             conn.execute('UPDATE schema_meta SET version=5')
         def contents():
-            with dlms.get_db() as conn:
+            with closing(dlms.get_db()) as conn, conn:
                 names=[r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
                 return {name:sorted([tuple(row) for row in conn.execute('SELECT * FROM "'+name+'"')],key=repr) for name in names if name!='schema_meta'}
         before=contents()
@@ -315,7 +316,7 @@ d.bootstrap_database(sys.argv[1],schema_version=6,legacy_schema_version=1,legacy
 """
         run=subprocess.run([sys.executable,'-c',script,dlms.DB_PATH],cwd=Path(dlms.__file__).parent,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'},capture_output=True,text=True,timeout=15)
         self.assertEqual(run.returncode,73,run.stderr);self.assertEqual(contents(),before)
-        with dlms.get_db() as conn:self.assertEqual(conn.execute('SELECT version FROM schema_meta').fetchone()[0],5)
+        with closing(dlms.get_db()) as conn, conn:self.assertEqual(conn.execute('SELECT version FROM schema_meta').fetchone()[0],5)
         with mock.patch.object(dlms,'_validate_current_database_schema',side_effect=RuntimeError('validation interrupted')):
             with self.assertRaisesRegex(RuntimeError,'validation interrupted'):dlms.bootstrap_database(dlms.DB_PATH)
         self.assertEqual(contents(),before)
@@ -375,7 +376,7 @@ d.bootstrap_database(sys.argv[1],schema_version=6,legacy_schema_version=1,legacy
             self.assertEqual(response.json['practice']['excluded'],1)
             self.assertIn('Learning Scope',response.json['practice']['reasons'][0]['reason'])
             self.assertEqual(self.client.post('/api/review-marks/generate',json=d,headers=self.headers).status_code,409)
-        with dlms.get_db() as conn:conn.execute("UPDATE questions SET question_text='Revised source' WHERE quiz_id=?",(self.quiz_id,))
+        with closing(dlms.get_db()) as conn, conn:conn.execute("UPDATE questions SET question_text='Revised source' WHERE quiz_id=?",(self.quiz_id,))
         response=self.client.post('/api/review-marks/preview',json=d,headers=self.headers)
         self.assertEqual(response.json['anki']['excluded'],1)
         self.assertIn('changed',response.json['anki']['reasons'][0]['reason'])
@@ -393,7 +394,7 @@ d.bootstrap_database(sys.argv[1],schema_version=6,legacy_schema_version=1,legacy
         self.assertTrue(before[0]['url'])
         self.assertIn('image or hotspot',before[0]['practice_reason'])
         self.assertIn('text choice',before[0]['anki_reason'])
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("UPDATE choices SET text='Different target' WHERE question_id IN (SELECT id FROM questions WHERE quiz_id=?)",(qid,))
         rejected=self.client.post('/api/review-marks/context',json=dict(quiz_id=qid,fingerprint=self.fingerprint(qid)),headers=self.headers)
         self.assertEqual(rejected.status_code,409)

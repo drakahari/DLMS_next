@@ -10,8 +10,8 @@ def test_original_sample_matches_manual_and_parses_both_answer_types(monkeypatch
     monkeypatch.syspath_prepend(str(ROOT / 'tools'))
     import documentation_video_parsing as capture
     from dlms.parsing.quiz_text import parse_questions
-    source = capture.SAMPLE.read_text().strip()
-    manual = (ROOT / 'docs/user-manual/04-creating-and-importing-content.md').read_text()
+    source = capture.SAMPLE.read_text(encoding="utf-8").strip()
+    manual = (ROOT / 'docs/user-manual/04-creating-and-importing-content.md').read_text(encoding="utf-8")
     assert source in manual
     cleaned = '\n'.join(line for line in source.splitlines() if 'practice copy' not in line.lower())
     questions = parse_questions(cleaned)

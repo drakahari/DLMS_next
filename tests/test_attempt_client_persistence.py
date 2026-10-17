@@ -31,7 +31,11 @@ def test_exam_attempt_is_awaited_and_requires_server_success_acknowledgement():
         SCRIPT.read_text(encoding="utf-8"), "savePendingExamAttempt"
     )
 
-    assert 'const response = await fetch("/record_attempt"' in save
+    assert 'persistDesktopOrWebAction("exam", pending.payload,' in save
+    assert '"/record_attempt", fetch)' in save
+    helper = _function_block(SCRIPT.read_text(encoding="utf-8"), "persistDesktopOrWebAction")
+    assert 'return webFetch(webUrl' in helper
+    assert 'return fetch("/_desktop/recovery/action"' in helper
     assert "!response.ok" in save
     assert "data.ok !== true" in save
     assert 'String(data.attempt_id || "") !== String(pending.attemptId)' in save
@@ -45,7 +49,8 @@ def test_review_action_is_only_rendered_for_a_durably_saved_attempt():
     assert "const persistenceAction = saved" in render
     assert "Review This Attempt" in render
     assert "Retry Saving Attempt" in render
-    assert "this attempt was not saved" in render
+    assert "not confirmed as retained or saved" in render
+    assert "retained for Desktop recovery" in render
 
 
 def test_retry_reuses_pending_attempt_payload_and_id():
@@ -56,6 +61,8 @@ def test_retry_reuses_pending_attempt_payload_and_id():
 
     assert "pendingExamAttempt = {" in submit
     assert "payload: attemptPayload" in submit
-    assert "body: JSON.stringify(pending.payload)" in save
+    helper = _function_block(source, "persistDesktopOrWebAction")
+    assert "body: JSON.stringify(payload)" in helper
+    assert "body: JSON.stringify({kind, payload, fingerprint: quizContentFingerprint})" in helper
     assert "pendingExamAttempt = null" in save
     assert "void savePendingExamAttempt()" in retry
