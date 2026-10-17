@@ -1,3 +1,25 @@
+# Source acquisition archive is verified, recorded, then removed locally.
+source_snapshot.tar.gz
+.dlms-git/
+__pycache__/
+*.pyc
+.venv/
+.gate1/
+venv/
+build/
+dist/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+.env
+.env.*
+*.log
+*.mp4
+*.mov
+*.webm
+
+# Public application ignores, retained during private consolidation.
 # ----------------------------
 # PyInstaller artifacts
 # ----------------------------
@@ -6,6 +28,9 @@ build/
 *.spec
 !DLMS.spec
 !DLMS-OCR-Probe.spec
+!package_windows/DLMS-Desktop.spec
+!package_windows_webview2/DLMS-Desktop-WebView2.spec
+!package_macos/DLMS-Desktop.spec
 .ocr-bundle/
 
 # Local release artifacts (never commit)

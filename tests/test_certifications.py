@@ -1,4 +1,5 @@
 """Disposable credential data, atomic migrations, attachments and manual AI boundaries."""
+from contextlib import closing
 import copy
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
@@ -24,17 +25,17 @@ class CertificationTests(foundation.unittest.TestCase):
     fingerprint=foundation.StudySessionTests.fingerprint
 
     def request(self,action,data=None,**kw):
-        with dlms.get_db() as c:state=cert.state(c.cursor())
+        with closing(dlms.get_db()) as c, c:state=cert.state(c.cursor())
         return dict(request_id=uuid.uuid4().hex,action=action,data=data or {},**state,**kw)
 
     def apply(self,payload,uploads=None):
-        with dlms.get_db() as c:return cert.apply(c,payload,uploads)
+        with closing(dlms.get_db()) as c, c:return cert.apply(c,payload,uploads)
 
     def create(self,name='Earned sample'):
         return self.apply(self.request('certification',dict(name=name,issuer='Example issuer',earned='2025-06-01')))['id']
 
     def cycle(self,cid):
-        with dlms.get_db() as c:return cert.detail(c.cursor(),cid)['cycles'][0]
+        with closing(dlms.get_db()) as c, c:return cert.detail(c.cursor(),cid)['cycles'][0]
 
     @staticmethod
     def png():
@@ -53,16 +54,16 @@ class CertificationTests(foundation.unittest.TestCase):
         with self.assertRaisesRegex(cert.Conflict,'already has'):
             self.apply(self.request('allocation',dict(hours=6,submitted=5,accepted=3),cycle_id=cycle['id'],training_id=tid))
         self.apply(self.request('training',dict(name='Workshop',completed='2026-09-01',hours=9),id=tid))
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             self.assertEqual(cert.detail(c.cursor(),cid)['cycles'][0]['totals'],dict(hours=6,submitted=5,accepted=3))
         newer=self.apply(self.request('cycle',dict(start='2026-10-01',expiration='2029-10-01',required=20,unit='CEUs'),certification_id=cid))
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             detail=cert.detail(c.cursor(),cid)
             self.assertEqual(len(detail['cycles']),2)
             self.assertEqual(detail['cycles'][0]['totals'],dict(hours=0,submitted=0,accepted=0))
             before={table:[tuple(r) for r in c.execute('SELECT * FROM '+table)] for table in (*cert.TABLES,'certification_attachments')}
         restore.reset_learning_intelligence_core(dlms.DB_PATH)
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             self.assertEqual(before,{table:[tuple(r) for r in c.execute('SELECT * FROM '+table)] for table in before})
         dlms.bootstrap_database(dlms.DB_PATH)
         self.assertEqual(self.cycle(cid)['data']['start'],'2026-10-01')
@@ -80,9 +81,9 @@ class CertificationTests(foundation.unittest.TestCase):
             try:return self.apply(p)['ok']
             except cert.Conflict:return False
         with ThreadPoolExecutor(2) as pool:self.assertEqual(sorted(pool.map(run,[two,three])),[False,True])
-        with dlms.get_db() as c:certification_schema.invalidate(c)
+        with closing(dlms.get_db()) as c, c:certification_schema.invalidate(c)
         with self.assertRaisesRegex(cert.Conflict,'predates a restore'):self.apply(d)
-        with dlms.get_db() as c:self.assertEqual(len(cert.collection(c.cursor())),2)
+        with closing(dlms.get_db()) as c, c:self.assertEqual(len(cert.collection(c.cursor())),2)
 
     def test_upload_validation_missing_shared_evidence_and_delete_boundaries(self):
         for content in (b'',b'<svg onload="evil()"/>',b'<html>script</html>',self.pdf(True),b'%PDF-broken',b'x'*(cert.MAX_ATTACHMENT_BYTES+1)):
@@ -92,7 +93,7 @@ class CertificationTests(foundation.unittest.TestCase):
         d=self.request('certification',dict(name='A',issuer='I',earned='2025-01-01'))
         cid=self.apply(d,{'badge':self.png()})['id']
         self.assertEqual(self.apply(d,{'badge':self.png()})['id'],cid)
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             record=cert.get(c.cursor(),'certifications',cid);ref=record['data']['badge']
         other=self.apply(self.request('certification',{**record['data'],'name':'B'}))['id']
         no=self.client.get('/certifications/remove/certifications/'+cid)
@@ -100,34 +101,34 @@ class CertificationTests(foundation.unittest.TestCase):
         with self.assertRaises(ValueError):self.apply(self.request('delete',id=cid,table='certifications',confirm=False))
         self.apply(self.request('delete',id=cid,table='certifications',confirm=True))
         self.assertEqual(self.client.get('/certifications/attachments/'+ref).status_code,200)
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             c.execute('DELETE FROM certification_attachments WHERE id=?',(ref,))
         self.assertEqual(self.client.get('/certifications/attachments/'+ref).status_code,404)
         self.assertEqual(self.client.get('/certifications/'+other).status_code,200)
-        with dlms.get_db() as c:self.assertEqual(c.execute('SELECT COUNT(*) FROM quizzes').fetchone()[0],1)
+        with closing(dlms.get_db()) as c, c:self.assertEqual(c.execute('SELECT COUNT(*) FROM quizzes').fetchone()[0],1)
 
     def test_prompt_excludes_notes_attachment_ids_and_unselected_information(self):
         cid=self.create();cycle=self.cycle(cid)
         tid=self.apply(self.request('training',dict(name='Training',completed='2026-01-01',provider='Provider',hours=5,notes='PRIVATE NOTES')),{'certificate':self.pdf()})['id']
         aid=self.apply(self.request('allocation',dict(hours=5,submitted=3,accepted=2,notes='PRIVATE ALLOCATION'),cycle_id=cycle['id'],training_id=tid))['id']
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             prompt=cert.curated_prompt(c.cursor(),cid,cycle['id'],[aid],'Could this qualify?',include_certification=True,include_cycle=True)
             self.assertIn('Training',prompt);self.assertNotIn('PRIVATE',prompt);self.assertNotIn(tid,prompt);self.assertNotIn(aid,prompt)
             minimal=cert.curated_prompt(c.cursor(),cid,cycle['id'],[],'General guidance')
             self.assertNotIn('Earned sample',minimal);self.assertNotIn('selected_training',minimal)
             before=list(c.iterdump())
         self.assertEqual(self.client.post('/certifications/'+cid+'/ai',data=dict(cycle=cycle['id'],question='My question'),headers=self.headers).status_code,200)
-        with dlms.get_db() as c:self.assertEqual(list(c.iterdump()),before)
+        with closing(dlms.get_db()) as c, c:self.assertEqual(list(c.iterdump()),before)
 
     def test_invalid_forms_and_failed_write_preserve_existing_records(self):
         cid=self.create()
         for data in (dict(name='',issuer='I',earned='2025-01-01'),dict(name='A',issuer='I',earned='2026-02-30'),dict(name='A',issuer='I',earned='2025-1-1')):
             with self.assertRaises(ValueError):self.apply(self.request('certification',data,id=cid),{'badge':self.png()})
-        with dlms.get_db() as c:self.assertEqual(c.execute('SELECT COUNT(*) FROM certification_attachments').fetchone()[0],0)
+        with closing(dlms.get_db()) as c, c:self.assertEqual(c.execute('SELECT COUNT(*) FROM certification_attachments').fetchone()[0],0)
         payload=self.request('certification',dict(name='Changed',issuer='I',earned='2025-01-01'),id=cid)
         with mock.patch.object(cert,'normalize',side_effect=sqlite3.OperationalError('disk failure')):
             with self.assertRaises(sqlite3.Error):self.apply(payload,{'badge':self.png()})
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             self.assertEqual(cert.get(c.cursor(),'certifications',cid)['data']['name'],'Earned sample')
             self.assertEqual(c.execute('SELECT COUNT(*) FROM certification_attachments').fetchone()[0],0)
         self.assertEqual(self.apply(payload)['id'],cid)
@@ -135,8 +136,8 @@ class CertificationTests(foundation.unittest.TestCase):
 
     def test_schema_seven_migration_failure_rerun_and_older_binary(self):
         path=Path(dlms.APP_DATA_DIR)/'schema6.db'
-        with dlms.get_db() as source,sqlite3.connect(path) as target:source.backup(target)
-        with sqlite3.connect(path) as c:
+        with closing(dlms.get_db()) as source, source,closing(sqlite3.connect(path)) as target, target:source.backup(target)
+        with closing(sqlite3.connect(path)) as c, c:
             for table in reversed(tuple(certification_schema.COLUMNS)):c.execute('DROP TABLE '+table)
             c.execute('UPDATE schema_meta SET version=6')
             old=list(c.iterdump())
@@ -144,7 +145,7 @@ class CertificationTests(foundation.unittest.TestCase):
             certification_schema.migrate(c);raise RuntimeError('interrupted migration')
         with mock.patch.dict(dlms.DLMS_SCHEMA_MIGRATIONS,{7:fail}):
             with self.assertRaisesRegex(RuntimeError,'interrupted'):dlms.bootstrap_database(str(path))
-        with sqlite3.connect(path) as c:self.assertEqual(list(c.iterdump()),old)
+        with closing(sqlite3.connect(path)) as c, c:self.assertEqual(list(c.iterdump()),old)
         result=dlms.bootstrap_database(str(path));self.assertEqual(result['from_version'],6)
         self.assertEqual(dlms.bootstrap_database(str(path))['status'],'current')
         raw=path.read_bytes()
@@ -163,11 +164,11 @@ class CertificationTests(foundation.unittest.TestCase):
         with zipfile.ZipFile(file) as z:
             member=next(n for n in z.namelist() if n.endswith('/results.db'))
             restored=Path(dlms.APP_DATA_DIR)/'roundtrip.db';restored.write_bytes(z.read(member))
-        with sqlite3.connect(restored) as c:
+        with closing(sqlite3.connect(restored)) as c, c:
             cert.validate_restored(c)
             self.assertEqual(c.execute('SELECT COUNT(*) FROM certification_attachments').fetchone()[0],2)
             c.execute("UPDATE certification_attachments SET content=?",(b'<svg/>',))
-        with sqlite3.connect(restored) as c:
+        with closing(sqlite3.connect(restored)) as c, c:
             with self.assertRaisesRegex(ValueError,'checksum'):cert.validate_restored(c)
 
     def test_dashboard_visibility_settings_reachability_and_no_query_when_hidden(self):
@@ -190,19 +191,19 @@ class CertificationTests(foundation.unittest.TestCase):
         dlms._extract_validated_backup(backup,str(stage),report)
         dlms._validate_staged_backup_semantics(str(stage),manifest)
         dlms._prepare_staged_restore_database(str(stage))
-        with sqlite3.connect(stage/'results.db') as c:
+        with closing(sqlite3.connect(stage/'results.db')) as c, c:
             c.row_factory=sqlite3.Row
             self.assertEqual(cert.detail(c.cursor(),cid)['cycles'][0]['data']['required'],20)
             self.assertEqual(c.execute('SELECT COUNT(*) FROM certification_attachments').fetchone()[0],1)
             with self.assertRaisesRegex(cert.Conflict,'predates a restore'):cert.apply(c,old_request)
         # A pre-feature schema 6 backup is migrated only in the disposable stage.
         old_stage=Path(dlms.APP_DATA_DIR)/'old-staged-copy';shutil.copytree(stage,old_stage)
-        with sqlite3.connect(old_stage/'results.db') as c:
+        with closing(sqlite3.connect(old_stage/'results.db')) as c, c:
             for table in reversed(tuple(certification_schema.COLUMNS)):c.execute('DROP TABLE '+table)
             c.execute('UPDATE schema_meta SET version=6')
         result=dlms._prepare_staged_restore_database(str(old_stage))
         self.assertEqual(result['bootstrap']['from_version'],6)
-        with sqlite3.connect(old_stage/'results.db') as c:
+        with closing(sqlite3.connect(old_stage/'results.db')) as c, c:
             self.assertEqual(c.execute('SELECT COUNT(*) FROM certifications').fetchone()[0],0)
             self.assertEqual(c.execute('SELECT COUNT(*) FROM quizzes').fetchone()[0],1)
 
@@ -240,7 +241,7 @@ class CertificationTests(foundation.unittest.TestCase):
 
     def test_http_content_limits_origin_and_attachment_collision_preserve_records(self):
         cid=self.apply(self.request('certification',dict(name='Preserved',issuer='I',earned='2025-01-01')),{'badge':self.png()})['id']
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             record=cert.get(conn.cursor(),'certifications',cid)
             before=list(conn.iterdump())
         payload=self.request('certification',{**record['data'],'name':'Replacement'},id=cid)
@@ -258,7 +259,7 @@ class CertificationTests(foundation.unittest.TestCase):
             self.assertIn(self.client.get('/certifications/attachments/'+path).status_code,(400,404))
         with mock.patch.object(cert.uuid,'uuid4',return_value=uuid.UUID(record['data']['badge'])):
             with self.assertRaises(sqlite3.IntegrityError):self.apply(payload,{'badge':self.png()})
-        with dlms.get_db() as conn:self.assertEqual(list(conn.iterdump()),before)
+        with closing(dlms.get_db()) as conn, conn:self.assertEqual(list(conn.iterdump()),before)
 
     def test_prompt_default_restore_and_visibility_scopes_remain_independent(self):
         cfg=dlms.load_portal_config();cfg['ai_prompt_template']='Unrelated explanation';cfg['dashboard_card_visibility']['certifications']=False;cfg['study_area_visibility']['it']=False
@@ -285,8 +286,8 @@ class CertificationTests(foundation.unittest.TestCase):
     def test_interrupted_schema_seven_migration_and_restart_keep_facts(self):
         import subprocess,sys,os
         path=Path(dlms.APP_DATA_DIR)/'interrupted6.db'
-        with dlms.get_db() as source,sqlite3.connect(path) as target:source.backup(target)
-        with sqlite3.connect(path) as c:
+        with closing(dlms.get_db()) as source, source,closing(sqlite3.connect(path)) as target, target:source.backup(target)
+        with closing(sqlite3.connect(path)) as c, c:
             for table in reversed(tuple(certification_schema.COLUMNS)):c.execute('DROP TABLE '+table)
             c.execute('UPDATE schema_meta SET version=6');before=list(c.iterdump())
         script="""import os,sys
@@ -297,7 +298,7 @@ d.bootstrap_database(sys.argv[1],schema_version=7,legacy_schema_version=1,legacy
 """
         run=subprocess.run([sys.executable,'-c',script,str(path)],cwd=Path(dlms.__file__).parent,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'},capture_output=True,text=True,timeout=15)
         self.assertEqual(run.returncode,73,run.stderr)
-        with sqlite3.connect(path) as c:self.assertEqual(list(c.iterdump()),before)
+        with closing(sqlite3.connect(path)) as c, c:self.assertEqual(list(c.iterdump()),before)
         self.assertEqual(dlms.bootstrap_database(str(path))['version'],dlms.DLMS_SCHEMA_VERSION)
         cid=self.create('Survives app restart')
         script="""import app,sys
@@ -329,7 +330,7 @@ finally:c.close()
     def test_form_read_snapshot_cannot_pair_old_fields_with_new_revision(self):
         import re
         cid=self.create()
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             c.execute('PRAGMA journal_mode=WAL')
             old=cert.state(c.cursor())
         original=cert.get; changed=False
@@ -347,7 +348,7 @@ finally:c.close()
         self.assertEqual(int(re.search(rb'name="revision" value="(\d+)"',response.data)[1]),old['revision'])
         stale=dict(action='certification',data=dict(name='Old form',issuer='I',earned='2025-06-01'),id=cid,request_id=uuid.uuid4().hex,**old)
         with self.assertRaises(cert.Conflict):self.apply(stale)
-        with dlms.get_db() as c:self.assertEqual(cert.get(c.cursor(),'certifications',cid)['data']['name'],'Concurrent update')
+        with closing(dlms.get_db()) as c, c:self.assertEqual(cert.get(c.cursor(),'certifications',cid)['data']['name'],'Concurrent update')
 
     def test_restore_lock_precedes_connection_and_rejects_waiting_stale_save(self):
         import threading
@@ -376,16 +377,16 @@ finally:c.close()
                 self.assertTrue(attempted.wait(5),'Save did not reach the restore lock')
                 self.assertEqual(opened,[],'Connection opened before restore completed')
                 # Restore rotates this generation before releasing the shared lock.
-                with dlms.get_db() as conn:certification_schema.invalidate(conn)
+                with closing(dlms.get_db()) as conn, conn:certification_schema.invalidate(conn)
             finally:lock.release()
             self.assertEqual(future.result(timeout=5).status_code,409)
-        with dlms.get_db() as conn:self.assertEqual(cert.collection(conn.cursor()),[])
+        with closing(dlms.get_db()) as conn, conn:self.assertEqual(cert.collection(conn.cursor()),[])
         for conn in opened:
             with self.assertRaises(sqlite3.ProgrammingError):conn.execute('SELECT 1')
 
     def test_import_relationships_do_not_trust_declared_constraints(self):
         for case in ('orphan-cycle','orphan-allocation','duplicate-allocation','conflicting-date'):
-            with self.subTest(case=case),sqlite3.connect(':memory:') as conn:
+            with self.subTest(case=case),closing(sqlite3.connect(':memory:')) as conn, conn:
                 conn.row_factory=sqlite3.Row;certification_schema.migrate(conn)
                 # Same columns, but an untrusted import omitted its constraints.
                 conn.execute('DROP TABLE certification_allocations')
@@ -406,7 +407,7 @@ finally:c.close()
 
     def test_import_valid_rows_cannot_hide_missing_deletion_or_uniqueness_rules(self):
         for defect in ('missing-cycle-parent', 'restrict-cycle-delete', 'missing-allocation-parent', 'missing-unique'):
-            with self.subTest(defect=defect), sqlite3.connect(':memory:') as conn:
+            with self.subTest(defect=defect), closing(sqlite3.connect(':memory:')) as conn, conn:
                 conn.row_factory=sqlite3.Row
                 certification_schema.migrate(conn)
                 conn.execute('DROP TABLE certification_allocations')
@@ -429,13 +430,13 @@ finally:c.close()
         first,second=self.create('First'),self.create('Second')
         tid=self.apply(self.request('training',dict(name='Shared workshop',completed='2026-01-01',hours=8)),{'certificate':self.pdf()})['id']
         cycles=[self.cycle(cid) for cid in (first,second)]
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             learning_before={t:[tuple(r) for r in conn.execute('SELECT * FROM '+t)] for t in ('study_sessions','study_responses','learning_events')}
         for cycle in cycles:
             self.apply(self.request('allocation',dict(hours=6,submitted=5,accepted=2.5),cycle_id=cycle['id'],training_id=tid))
         self.apply(self.request('training',dict(name='Shared workshop',completed='2026-01-01',hours=10),id=tid))
         self.apply(self.request('delete',table='certifications',id=first,confirm=True))
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(cert.detail(conn.cursor(),second)['cycles'][0]['totals'],dict(hours=6,submitted=5,accepted=2.5))
             self.assertEqual(conn.execute('SELECT count(*) FROM certification_allocations').fetchone()[0],1)
             self.assertEqual(conn.execute('SELECT count(*) FROM certification_training').fetchone()[0],1)
@@ -451,10 +452,10 @@ finally:c.close()
                 payload=self.request(kind,data,id=record_id,cycle_id=cycle['id'],training_id=tid)
                 form=dict(kind=kind,record_id=record_id,request_id=payload['request_id'],generation=payload['generation'],revision=payload['revision'],
                           cycle_id=cycle['id'],training_id=tid,**{'field_'+key:value for key,value in data.items()})
-                with dlms.get_db() as conn:before=list(conn.iterdump())
+                with closing(dlms.get_db()) as conn, conn:before=list(conn.iterdump())
                 response=self.client.post('/certifications/save',data=form,headers=self.headers)
                 self.assertEqual(response.status_code,400)
-                with dlms.get_db() as conn:self.assertEqual(before,list(conn.iterdump()))
+                with closing(dlms.get_db()) as conn, conn:self.assertEqual(before,list(conn.iterdump()))
 
     def test_unified_current_details_two_attachments_and_separate_early_renewal(self):
         payload=self.request('certification',dict(name='Credential',issuer='Issuer',earned='2020-01-01',expiration='2027-06-01'),edit_current=True)
@@ -462,13 +463,13 @@ finally:c.close()
         self.assertEqual(self.apply(payload,{'badge':self.png(),'certificate':self.pdf()}),saved)
         cid=saved['id'];first=self.cycle(cid)
         self.assertEqual(first['data']['start'],'','Unknown effective start must not be invented from earned date')
-        with dlms.get_db() as conn:badge=cert.get(conn.cursor(),'certifications',cid)['data']['badge']
+        with closing(dlms.get_db()) as conn, conn:badge=cert.get(conn.cursor(),'certifications',cid)['data']['badge']
         document=first['data']['certificate'];self.assertNotEqual(badge,document)
         edit=self.request('certification',dict(name='Credential',issuer='Issuer',earned='2020-01-01',badge=badge,**{**first['data'],'expiration':'2027-07-01'}),id=cid,cycle_id=first['id'],edit_current=True)
         self.apply(edit,{'badge':self.png()})
         current=self.cycle(cid);self.assertEqual(current['id'],first['id']);self.assertEqual(current['data']['certificate'],document)
         renewal=self.apply(self.request('cycle',dict(start='2027-05-01',renewed='2027-04-01',expiration='2030-07-01'),certification_id=cid))
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             periods=cert.detail(conn.cursor(),cid)['cycles']
             self.assertEqual(len(periods),2);self.assertEqual(periods[0]['id'],renewal['id'])
             self.assertEqual(periods[0]['data']['certificate'],'');self.assertEqual(periods[1]['data']['certificate'],document)
@@ -485,11 +486,11 @@ finally:c.close()
         form=dict(kind='certification',edit_current='yes',request_id=request['request_id'],generation=request['generation'],revision=request['revision'],field_name='Entered title',field_issuer='Issuer',field_earned='2025-01-01',field_expiration='2024-01-01')
         failed=self.client.post('/certifications/save',data={**form,'badge':(BytesIO(self.png()),'badge.png'),'certificate':(BytesIO(self.pdf()),'official.pdf')},headers=self.headers)
         self.assertEqual(failed.status_code,400);self.assertIn('Entered title',failed.get_data(as_text=True))
-        with dlms.get_db() as conn:self.assertEqual(conn.execute('SELECT count(*) FROM certification_attachments').fetchone()[0],0)
+        with closing(dlms.get_db()) as conn, conn:self.assertEqual(conn.execute('SELECT count(*) FROM certification_attachments').fetchone()[0],0)
         form['field_expiration']='2028-01-01'
         response=self.client.post('/certifications/save',data={**form,'badge':(BytesIO(self.png()),'badge.png'),'certificate':(BytesIO(self.pdf()),'official.pdf')},headers=self.headers)
         self.assertEqual(response.status_code,303)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             row=cert.collection(conn.cursor())[0];period=cert.detail(conn.cursor(),row['id'])['cycles'][0]
             self.assertEqual(conn.execute('SELECT count(*) FROM certification_attachments').fetchone()[0],2)
         edit=self.client.get('/certifications/'+row['id']+'/edit').get_data(as_text=True)
@@ -501,9 +502,9 @@ finally:c.close()
         cid=self.apply(self.request('certification',dict(name='A',issuer='I',earned='2020-01-01',expiration='2025-01-01')),{'badge':self.png()})['id']
         first=self.cycle(cid)
         self.apply(self.request('cycle',dict(expiration='2028-01-01'),certification_id=cid));current=self.cycle(cid)
-        with dlms.get_db() as conn:data=cert.get(conn.cursor(),'certifications',cid)['data']
+        with closing(dlms.get_db()) as conn, conn:data=cert.get(conn.cursor(),'certifications',cid)['data']
         self.apply(self.request('certification',{**data,**current['data'],'non_expiring':'yes','expiration':''},id=cid,cycle_id=current['id'],edit_current=True,use_badge_certificate=True))
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             periods=cert.detail(conn.cursor(),cid)['cycles']
             self.assertEqual(periods[0]['data']['certificate'],data['badge'])
             self.assertEqual(periods[1]['data']['expiration'],'2025-01-01')
@@ -514,8 +515,8 @@ finally:c.close()
         path=Path(dlms.APP_DATA_DIR)/'v7-copy.db'
         cid=self.create();first=self.cycle(cid)
         self.apply(self.request('cycle',dict(start='2026-01-01',expiration='2029-01-01'),certification_id=cid))
-        with dlms.get_db() as source,sqlite3.connect(path) as conn:source.backup(conn)
-        with sqlite3.connect(path) as conn:
+        with closing(dlms.get_db()) as source, source,closing(sqlite3.connect(path)) as conn, conn:source.backup(conn)
+        with closing(sqlite3.connect(path)) as conn, conn:
             conn.execute('DROP INDEX certification_period_order')
             conn.execute('ALTER TABLE certification_cycles DROP COLUMN period_order')
             conn.execute('UPDATE schema_meta SET version=7')
@@ -523,9 +524,9 @@ finally:c.close()
         def fail(conn):certification_schema.migrate_periods(conn);raise RuntimeError('interrupted period migration')
         with mock.patch.dict(dlms.DLMS_SCHEMA_MIGRATIONS,{8:fail}):
             with self.assertRaisesRegex(RuntimeError,'interrupted'):dlms.bootstrap_database(str(path))
-        with sqlite3.connect(path) as conn:self.assertEqual(list(conn.iterdump()),before)
+        with closing(sqlite3.connect(path)) as conn, conn:self.assertEqual(list(conn.iterdump()),before)
         self.assertEqual(dlms.bootstrap_database(str(path))['from_version'],7)
-        with sqlite3.connect(path) as conn:
+        with closing(sqlite3.connect(path)) as conn, conn:
             conn.row_factory=sqlite3.Row
             rows=cert.detail(conn.cursor(),cid)['cycles']
             self.assertEqual([r['period_order'] for r in rows],[2,1]);self.assertEqual(rows[1]['id'],first['id'])
@@ -537,7 +538,7 @@ finally:c.close()
 
     def test_feature_visibility_preserves_data_counts_and_independent_preferences(self):
         cid=self.create();cfg=dlms.load_portal_config();cfg['certification_display_count']='all';dlms._atomic_write_json(dlms.PORTAL_CONFIG,cfg)
-        with dlms.get_db() as conn:before=list(conn.iterdump())
+        with closing(dlms.get_db()) as conn, conn:before=list(conn.iterdump())
         choices={**{'dashboard_card_'+k:'on' for k,v in cfg['dashboard_card_visibility'].items() if v},**{'study_area_'+k:'on' for k,v in cfg['study_area_visibility'].items() if v},'certifications_visibility_present':'yes'}
         self.assertEqual(self.client.post('/settings/layout/save',data=choices,headers=self.headers).status_code,302)
         with mock.patch.object(dlms,'_certifications_dashboard',side_effect=AssertionError('hidden query')):
@@ -549,12 +550,12 @@ finally:c.close()
         self.client.post('/settings/layout/save',data={**choices,'show_certifications':'on'},headers=self.headers)
         self.assertTrue(dlms.load_portal_config()['show_certifications'])
         self.assertIn('id="myCertifications"',self.client.get('/').get_data(as_text=True))
-        with dlms.get_db() as conn:self.assertEqual(list(conn.iterdump()),before)
+        with closing(dlms.get_db()) as conn, conn:self.assertEqual(list(conn.iterdump()),before)
     def test_custom_issuer_shared_library_unknown_rules_and_portfolio_privacy(self):
         a=self.apply(self.request('certification',dict(name='River stewardship',issuer='Independent Watershed Guild',earned='2025-06-01',version='Field standard 9',notes='PRIVATE ID 12345')))['id']
         b=self.create('Second earned credential');one=self.cycle(a);two=self.cycle(b)
         activity=self.apply(self.request('training',dict(name='Stream survey',provider='Community college',completed='2026-06-10',hours=8,course_url='https://example.org/course',topics='Water sampling',notes='PRIVATE MEDICAL NOTE')),{'certificate':self.pdf()})['id']
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             self.assertIsNone(cert.detail(c.cursor(),a)['cycles'][0]['progress']['remaining'])
             prompt=cert.portfolio_prompt(c.cursor(),[a,b],[activity],'Which rules apply?')
         for secret in ('PRIVATE',a,b,activity,one['id'],'certificate.pdf'):self.assertNotIn(secret,prompt)
@@ -564,7 +565,7 @@ finally:c.close()
         with self.assertRaisesRegex(cert.Conflict,'already has'):
             self.apply(self.request('allocation',dict(hours=1),cycle_id=one['id'],training_id=activity))
         self.apply(self.request('training',dict(name='Stream survey',completed='2026-06-10',hours=10),id=activity))
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             self.assertEqual(sum(r['data']['hours'] for r in cert.records(c.cursor(),'certification_training')),10)
             self.assertEqual(self.cycle(a)['totals']['accepted'],2)
             cert.validate_restored(c)
@@ -600,7 +601,7 @@ finally:c.close()
         a=self.create('Higher credential');b=self.apply(self.request('certification',dict(name='Earlier achievement',issuer='Custom Guild',earned='2025-06-01',expiration='2026-06-01')))['id']
         rel=dict(target=b,trigger='earning',rule='https://example.org/renewal',checked='2026-10-07',conditions='Only version 2 after issuer confirmation')
         payload=self.request('relationship',rel,id=a);first=self.apply(payload);self.assertEqual(first,self.apply(payload))
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             self.assertEqual(cert.get(c.cursor(),'certifications',b)['data'].get('relationships',[]),[])
             self.assertIn('earned achievement retained',next(r for r in cert.collection(c.cursor()) if r['id']==b)['status'])
         original=self.cycle(b)
@@ -610,7 +611,7 @@ finally:c.close()
         self.assertEqual(self.cycle(b)['totals']['accepted'],0)
         self.assertEqual(self.cycle(b)['data']['renewal_source']['name'],'Higher credential')
         self.apply(self.request('relationship',rel,id=a,remove_relationship=True,confirm=True))
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             self.assertEqual(len(cert.detail(c.cursor(),b)['cycles']),2)
             self.assertEqual(cert.get(c.cursor(),'certification_cycles',original['id'])['data']['expiration'],'2026-06-01')
             cert.validate_restored(c)
@@ -626,7 +627,7 @@ finally:c.close()
         stage=Path(dlms.APP_DATA_DIR)/'portfolio-stage';stage.mkdir()
         report=dlms._validate_dlms_backup(backup);dlms._extract_validated_backup(backup,str(stage),report);dlms._validate_staged_backup_semantics(str(stage),manifest);dlms._prepare_staged_restore_database(str(stage))
         db=next(stage.rglob('results.db'))
-        with sqlite3.connect(db) as c:
+        with closing(sqlite3.connect(db)) as c, c:
             c.row_factory=sqlite3.Row;cert.validate_restored(c)
             self.assertEqual(c.execute('SELECT COUNT(*) FROM certification_attachments').fetchone()[0],2)
             self.assertFalse(cert.detail(c.cursor(),cid)['cycles'][0]['progress']['known'])
@@ -638,7 +639,7 @@ finally:c.close()
     def test_visibility_and_independent_prompts_survive_real_restart(self):
         import os,subprocess,sys
         cid=self.create();cfg=dlms.load_portal_config();cfg.update(certification_display_count='11',certification_sort='name',portfolio_ai_prompt_template='PORTFOLIO {{portfolio_context}}',certification_ai_prompt_template='SINGLE {{certification_context}}')
-        with dlms.get_db() as c:before={t:list(c.execute('SELECT * FROM '+t)) for t in cert.TABLES}
+        with closing(dlms.get_db()) as c, c:before={t:list(c.execute('SELECT * FROM '+t)) for t in cert.TABLES}
         for enabled in (False,True):
             cfg['show_certifications']=enabled;dlms._atomic_write_json(dlms.PORTAL_CONFIG,cfg)
             code="import app,json; c=app.load_portal_config(); print('CHECK:'+json.dumps({k:c[k] for k in ('show_certifications','certification_display_count','certification_sort','portfolio_ai_prompt_template','certification_ai_prompt_template')}))"
@@ -647,7 +648,7 @@ finally:c.close()
             actual=json.loads(next(line[6:] for line in result.stdout.splitlines() if line.startswith('CHECK:')))
             self.assertIs(actual['show_certifications'],enabled);self.assertEqual(actual['certification_display_count'],'11');self.assertEqual(actual['certification_sort'],'name')
             self.assertEqual(actual['portfolio_ai_prompt_template'],cfg['portfolio_ai_prompt_template']);self.assertEqual(actual['certification_ai_prompt_template'],cfg['certification_ai_prompt_template'])
-        with dlms.get_db() as c:self.assertEqual({t:list(c.execute('SELECT * FROM '+t)) for t in cert.TABLES},before)
+        with closing(dlms.get_db()) as c, c:self.assertEqual({t:list(c.execute('SELECT * FROM '+t)) for t in cert.TABLES},before)
         for bad in (None,'false',0,[],{}):
             cfg['show_certifications']=bad;dlms._atomic_write_json(dlms.PORTAL_CONFIG,cfg)
             raw=Path(dlms.PORTAL_CONFIG).read_bytes();self.assertIs(dlms.load_portal_config()['show_certifications'],True)
@@ -662,13 +663,13 @@ finally:c.close()
         for fields in ({'annual_kind':'minimum'}, {'year_basis':'anniversary'}, {'categories':[dict(name='A',minimum=2,cap=1)]}):
             with self.subTest(fields=fields),self.assertRaises(ValueError):cert.normalize('cycle',dict(tracking=fields))
         # Import validation preserves the period-order uniqueness safety boundary.
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             c.execute('DROP INDEX certification_period_order')
             with self.assertRaisesRegex(ValueError,'uniqueness'):cert.validate_restored(c)
 
     def test_unknown_earned_date_is_not_invented_and_known_dates_still_validate(self):
         cid=self.apply(self.request('certification',dict(name='Earned long ago',issuer='Any custom organization',non_expiring='yes')))['id']
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             self.assertEqual(cert.get(c.cursor(),'certifications',cid)['data']['earned'],'')
             self.assertEqual(cert.detail(c.cursor(),cid)['cycles'][0]['data']['start'],'')
             cert.validate_restored(c)
@@ -699,7 +700,7 @@ finally:c.close()
                 annual = progress(cycle)['annual']
                 self.assertEqual([(row['start'], row['end']) for row in annual],
                                  [(start, year+'-06-30'), (year+'-07-01', end)])
-                with dlms.get_db() as conn:
+                with closing(dlms.get_db()) as conn, conn:
                     cert.validate_restored(conn)
 
     def test_fractional_credit_progress_has_exact_two_decimal_arithmetic(self):
@@ -729,7 +730,7 @@ finally:c.close()
         from dlms.services import certification_time
         payload=self.request('training',dict(name='9 h 22 min course',provider='Any provider',completed='2026-10-01',duration_minutes=562,notes='PRIVATE'))
         activity=self.apply(payload)['id']
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             row=cert.get(c.cursor(),'certification_training',activity)['data']
             self.assertEqual(certification_time.label(row),'9 h 22 min')
             self.assertEqual(row['duration_minutes'],562)
@@ -744,7 +745,7 @@ finally:c.close()
         self.assertEqual(self.cycle(a)['totals']['accepted'],0)
         self.assertEqual(self.cycle(a)['duration_label'],'9 h 22 min')
         self.assertEqual(self.cycle(b)['planning']['unknown'],1)
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             self.assertEqual(c.execute('SELECT COUNT(*) FROM certification_allocations').fetchone()[0],2)
             prompt=cert.portfolio_prompt(c.cursor(),[a,b],[activity],'Compare')
             self.assertIn('9 h 22 min',prompt);self.assertIn('562',prompt);self.assertNotIn('PRIVATE',prompt)
@@ -753,7 +754,7 @@ finally:c.close()
         stage=Path(dlms.APP_DATA_DIR)/'minute-stage';stage.mkdir()
         checked=dlms._validate_dlms_backup(backup);dlms._extract_validated_backup(backup,str(stage),checked)
         dlms._validate_staged_backup_semantics(str(stage),manifest);dlms._prepare_staged_restore_database(str(stage))
-        with sqlite3.connect(stage/'results.db') as c:
+        with closing(sqlite3.connect(stage/'results.db')) as c, c:
             c.row_factory=sqlite3.Row
             self.assertEqual(cert.get(c.cursor(),'certification_training',activity)['data']['duration_minutes'],562)
             self.assertEqual(cert.detail(c.cursor(),a)['cycles'][0]['duration_label'],'9 h 22 min')
@@ -762,9 +763,9 @@ finally:c.close()
         a=self.create('A');b=self.create('B');pa=self.cycle(a);pb=self.cycle(b)
         tid=self.apply(self.request('training',dict(name='Course',completed='2026-01-01',duration_minutes=562)))['id']
         bad=self.request('use_training',training_id=tid,entries=[dict(certification_id=a,cycle_id=pa['id'],proposed=5),dict(certification_id=b,cycle_id=pb['id'],proposed='bad')])
-        with dlms.get_db() as c:before=list(c.iterdump())
+        with closing(dlms.get_db()) as c, c:before=list(c.iterdump())
         with self.assertRaises(ValueError):self.apply(bad)
-        with dlms.get_db() as c:self.assertEqual(list(c.iterdump()),before)
+        with closing(dlms.get_db()) as c, c:self.assertEqual(list(c.iterdump()),before)
         good={**bad,'entries':[dict(certification_id=a,cycle_id=pa['id'],proposed=5),dict(certification_id=b,cycle_id=pb['id'],proposed=4)]}
         result=self.apply(good);self.assertEqual(result,self.apply(good))
         with self.assertRaises(cert.Conflict):self.apply({**good,'entries':[good['entries'][0]]})
@@ -780,13 +781,13 @@ finally:c.close()
 
     def test_duration_forms_validate_and_preserve_legacy_decimals(self):
         tid=self.apply(self.request('training',dict(name='Old',completed='2026-01-01',hours=9.37)))['id']
-        with dlms.get_db() as c:original=cert.get(c.cursor(),'certification_training',tid)['data']
+        with closing(dlms.get_db()) as c, c:original=cert.get(c.cursor(),'certification_training',tid)['data']
         edit=self.client.get('/certifications/training/'+tid+'/edit').get_data(as_text=True)
         self.assertIn('value="22.2"',edit)
         req=self.request('training')
         form=dict(kind='training',record_id=tid,request_id=req['request_id'],generation=req['generation'],revision=req['revision'],field_name='Old',field_completed='2026-01-01',duration_hours='9',duration_minutes='22.2')
         self.assertEqual(self.client.post('/certifications/save',data=form,headers=self.headers).status_code,303)
-        with dlms.get_db() as c:self.assertEqual(cert.get(c.cursor(),'certification_training',tid)['data'],original)
+        with closing(dlms.get_db()) as c, c:self.assertEqual(cert.get(c.cursor(),'certification_training',tid)['data'],original)
         for hours,minutes in [('9','60'),('1.5','2'),('-1','0'),('9','-1'),('nan','0')]:
             with self.subTest(hours=hours,minutes=minutes):
                 req=self.request('training');f={**form,'record_id':'','request_id':req['request_id'],'revision':req['revision'],'duration_hours':hours,'duration_minutes':minutes}
@@ -794,20 +795,20 @@ finally:c.close()
                 self.assertEqual(failed.status_code,400);self.assertIn('value="Old"',failed.get_data(as_text=True))
         req=self.request('training');f={**form,'request_id':req['request_id'],'revision':req['revision'],'duration_minutes':'22'}
         self.assertEqual(self.client.post('/certifications/save',data=f,headers=self.headers).status_code,303)
-        with dlms.get_db() as c:self.assertEqual(cert.get(c.cursor(),'certification_training',tid)['data']['duration_minutes'],562)
+        with closing(dlms.get_db()) as c, c:self.assertEqual(cert.get(c.cursor(),'certification_training',tid)['data']['duration_minutes'],562)
 
     def test_schema_nine_guard_does_not_convert_legacy_values(self):
         tid=self.apply(self.request('training',dict(name='Legacy',completed='2026-01-01',hours=9.37)))['id']
         path=Path(dlms.APP_DATA_DIR)/'schema8.db'
-        with dlms.get_db() as source,sqlite3.connect(path) as target:source.backup(target)
-        with sqlite3.connect(path) as c:
+        with closing(dlms.get_db()) as source, source,closing(sqlite3.connect(path)) as target, target:source.backup(target)
+        with closing(sqlite3.connect(path)) as c, c:
             c.execute('UPDATE schema_meta SET version=8');before=list(c.iterdump())
         def fail(c):certification_schema.migrate_minutes(c);raise RuntimeError('guard migration interruption')
         with mock.patch.dict(dlms.DLMS_SCHEMA_MIGRATIONS,{9:fail}):
             with self.assertRaisesRegex(RuntimeError,'interruption'):dlms.bootstrap_database(str(path))
-        with sqlite3.connect(path) as c:self.assertEqual(list(c.iterdump()),before)
+        with closing(sqlite3.connect(path)) as c, c:self.assertEqual(list(c.iterdump()),before)
         self.assertEqual(dlms.bootstrap_database(str(path))['version'],dlms.DLMS_SCHEMA_VERSION)
-        with sqlite3.connect(path) as c:
+        with closing(sqlite3.connect(path)) as c, c:
             c.row_factory=sqlite3.Row
             self.assertEqual(cert.get(c.cursor(),'certification_training',tid)['data']['hours'],9.37)
             self.assertNotIn('duration_minutes',cert.get(c.cursor(),'certification_training',tid)['data'])
@@ -841,7 +842,7 @@ finally:c.close()
         self.assertEqual(results[0],results[1])
         self.assertEqual(len(self.cycle(cid)['allocations']),1)
         self.assertEqual(self.cycle(cid)['planning']['accepted'],5)
-        with dlms.get_db() as c:certification_schema.invalidate(c)
+        with closing(dlms.get_db()) as c, c:certification_schema.invalidate(c)
         with self.assertRaisesRegex(cert.Conflict,'predates a restore'):self.apply(request)
         self.assertEqual(len(self.cycle(cid)['allocations']),1)
 
@@ -904,7 +905,7 @@ finally:c.close()
         period=self.cycle(cid)
         tid=self.apply(self.request('training',dict(name='Reviewed course',completed='2026-10-01',duration_minutes=562,hours=9.37)))['id']
         aid=self.apply(self.request('allocation',dict(hours=9,submitted=9,accepted=9),cycle_id=period['id'],training_id=tid))['id']
-        with dlms.get_db() as c:allocation=cert.get(c.cursor(),'certification_allocations',aid)
+        with closing(dlms.get_db()) as c, c:allocation=cert.get(c.cursor(),'certification_allocations',aid)
         identity=self.request('certification',dict(name='CySA+ updated',expiration='2028-07-01',required=999,policy='https://evil.invalid'),
                               id=cid,cycle_id=period['id'],edit_current=True,edit_scope='identity')
         self.apply(identity);self.assertEqual(self.apply(identity)['id'],cid)
@@ -917,7 +918,7 @@ finally:c.close()
         now=self.cycle(cid)['data'];expected={**after['data'],'required':30.0,'planning_deadline':'2028-04-01',
                                           'tracking':{**after['data']['tracking'],'requirement_known':True}}
         self.assertEqual(now,expected)
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             self.assertEqual(cert.get(c.cursor(),'certification_allocations',aid),allocation)
             self.assertEqual(cert.get(c.cursor(),'certification_training',tid)['data']['duration_minutes'],562)
             cert.validate_restored(c)
@@ -954,7 +955,7 @@ finally:c.close()
         self.assertEqual(after['expiration'],saved['expiration']);self.assertEqual(after['planning_deadline'],saved['planning_deadline'])
         self.assertEqual(after['required'],40)
         self.assertEqual(after['policy'],'https://example.org/rules')
-        with dlms.get_db() as c:self.assertEqual(c.execute('SELECT COUNT(*) FROM certification_cycles WHERE certification_id=?',(cid,)).fetchone()[0],1)
+        with closing(dlms.get_db()) as c, c:self.assertEqual(c.execute('SELECT COUNT(*) FROM certification_cycles WHERE certification_id=?',(cid,)).fetchone()[0],1)
 
     def test_focused_goal_backup_roundtrip_preserves_legacy_associated_time_and_documents(self):
         cid=self.apply(self.request('certification',dict(name='CySA+ fixture',issuer='Disposable issuer',expiration='2029-10-01')),
@@ -962,13 +963,13 @@ finally:c.close()
         tid=self.apply(self.request('training',dict(name='Course',completed='2026-10-01',duration_minutes=562)),{'certificate':self.pdf()})['id']
         aid=self.apply(self.request('allocation',dict(hours=9,submitted=9,accepted=9),cycle_id=period['id'],training_id=tid))['id']
         self.apply(self.request('cycle',dict(required=40,unit='credits',planning_deadline='2029-09-01'),id=period['id'],certification_id=cid,edit_scope='goal'))
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             before={t:[tuple(r) for r in c.execute('SELECT * FROM '+t+' ORDER BY id')] for t in (*cert.TABLES,'certification_attachments')}
         backup,manifest=dlms._create_dlms_backup('scoped-goal')
         stage=Path(dlms.APP_DATA_DIR)/'goal-stage';stage.mkdir()
         checked=dlms._validate_dlms_backup(backup);dlms._extract_validated_backup(backup,str(stage),checked)
         dlms._validate_staged_backup_semantics(str(stage),manifest);dlms._prepare_staged_restore_database(str(stage))
-        with sqlite3.connect(stage/'results.db') as c:
+        with closing(sqlite3.connect(stage/'results.db')) as c, c:
             c.row_factory=sqlite3.Row;cert.validate_restored(c)
             self.assertEqual(before,{t:[tuple(r) for r in c.execute('SELECT * FROM '+t+' ORDER BY id')] for t in before})
             self.assertEqual(cert.get(c.cursor(),'certification_training',tid)['data']['duration_minutes'],562)
@@ -1052,7 +1053,7 @@ finally:c.close()
         self.apply(self.request('cycle',dict(required=20,unit='hours',annual_goal=10),id=cycle['id'],certification_id=cid,edit_scope='goal'))
         tid=self.apply(self.request('training',dict(name='Planning example',completed='2026-10-01',duration_minutes=562,hours=9.37)))['id']
         self.apply(self.request('allocation',dict(hours=0,duration_minutes=562,proposed=9.37,submitted=0,accepted=0),cycle_id=cycle['id'],training_id=tid))
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             item=cert.detail(c.cursor(),cid)['cycles'][0]
             self.assertEqual(item['data']['tracking']['annual_kind'],'pacing')
             self.assertEqual(item['data']['tracking']['year_basis'],'unknown')
@@ -1075,7 +1076,7 @@ finally:c.close()
         self.assertIn('Planning deadline: <strong>2028-03-12</strong>',summary)
         self.assertIn('· Expires 2028-11-01</summary>',summary)
         self.assertIn('<dt>Renewal deadline (user recorded)</dt><dd>2028-10-01</dd>',summary)
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             prompts=[cert.curated_prompt(c.cursor(),cid,pid,[],'Dates?',include_cycle=True),cert.portfolio_prompt(c.cursor(),[cid],[],'Dates?')]
         for prompt in prompts:
             for value in ('Planning deadline','Renewal deadline (user recorded; not issuer verified)','Expires','2028-03-12','2028-10-01','2028-11-01'):self.assertIn(value,prompt)
@@ -1093,7 +1094,7 @@ finally:c.close()
         self.assertEqual(len({now['data'][k] for k in ('expiration','planning_deadline','renewal_deadline')}),1)
         certdata=now['data'];req=self.request('certification',dict(expiration='',non_expiring='yes'),id=cid,cycle_id=pid,edit_current=True,edit_scope='identity');self.apply(req)
         self.assertEqual(self.cycle(cid)['data'],{**certdata,'expiration':''})
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             self.assertEqual(cert.get(c.cursor(),'certification_training',tid)['data']['duration_minutes'],562)
         for key in ('planning','progress','totals','allocations'):self.assertEqual(self.cycle(cid)[key],before[key])
         save('goal',dict(planning_deadline=''));save('requirements',dict(renewal_deadline=''))
@@ -1106,8 +1107,8 @@ finally:c.close()
     def legacy_date_copy(self, value='2028-09-01'):
         cid=self.apply(self.request('certification',dict(name='Legacy date',issuer='Custom',earned='2025-01-01',expiration='2029-01-01')))['id']
         pid=self.cycle(cid)['id'];path=Path(dlms.APP_DATA_DIR)/('legacy-'+uuid.uuid4().hex+'.db')
-        with dlms.get_db() as source,sqlite3.connect(path) as target:source.backup(target)
-        with sqlite3.connect(path) as c:
+        with closing(dlms.get_db()) as source, source,closing(sqlite3.connect(path)) as target, target:source.backup(target)
+        with closing(sqlite3.connect(path)) as c, c:
             for name in certification_schema.DATE_TRIGGERS:c.execute('DROP TRIGGER '+name)
             data=json.loads(c.execute('SELECT data_json FROM certification_cycles WHERE id=?',(pid,)).fetchone()[0])
             for key in ('planning_deadline','renewal_deadline'):data.pop(key)
@@ -1119,11 +1120,11 @@ finally:c.close()
         import subprocess,sys,os,shutil
         path,cid,pid=self.legacy_date_copy()
         backup=path.with_suffix('.pre-upgrade.db');shutil.copyfile(path,backup)
-        with sqlite3.connect(path) as c:before=list(c.iterdump())
+        with closing(sqlite3.connect(path)) as c, c:before=list(c.iterdump())
         def fail(c):certification_schema.migrate_deadlines(c);raise RuntimeError('interrupted date migration')
         with mock.patch.dict(dlms.DLMS_SCHEMA_MIGRATIONS,{10:fail}),self.assertRaisesRegex(RuntimeError,'interrupted'):
             dlms.bootstrap_database(str(path))
-        with sqlite3.connect(path) as c:self.assertEqual(list(c.iterdump()),before)
+        with closing(sqlite3.connect(path)) as c, c:self.assertEqual(list(c.iterdump()),before)
         script="""import os,sys
 from dlms.persistence import database as d,certification_schema as s
 def crash(c):s.migrate_deadlines(c);os._exit(73)
@@ -1131,9 +1132,9 @@ d.bootstrap_database(sys.argv[1],schema_version=10,legacy_schema_version=1,legac
 """
         run=subprocess.run([sys.executable,'-c',script,str(path)],cwd=Path(dlms.__file__).parent,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'},capture_output=True,text=True,timeout=15)
         self.assertEqual(run.returncode,73,run.stderr)
-        with sqlite3.connect(path) as c:self.assertEqual(list(c.iterdump()),before)
+        with closing(sqlite3.connect(path)) as c, c:self.assertEqual(list(c.iterdump()),before)
         self.assertEqual(dlms.bootstrap_database(str(path))['version'],dlms.DLMS_SCHEMA_VERSION)
-        with sqlite3.connect(path) as c:
+        with closing(sqlite3.connect(path)) as c, c:
             c.row_factory=sqlite3.Row;item=cert.get(c.cursor(),'certification_cycles',pid)['data'];state=cert.state(c.cursor());snapshot=list(c.iterdump())
             self.assertEqual(item['legacy_deadline'],dict(value='2028-09-01',source='cycle.data.renewal',source_schema=9,classification='unresolved'))
             self.assertEqual((item['planning_deadline'],item['renewal_deadline']),('',''))
@@ -1154,11 +1155,11 @@ d.bootstrap_database(sys.argv[1],schema_version=10,legacy_schema_version=1,legac
         self.assertEqual(path.read_bytes(),raw)
         restored=path.with_suffix('.rollback.db');shutil.copyfile(backup,restored)
         self.assertEqual(old_bootstrap(restored)['version'],9)
-        with sqlite3.connect(restored) as c:self.assertEqual(list(c.iterdump()),before)
+        with closing(sqlite3.connect(restored)) as c, c:self.assertEqual(list(c.iterdump()),before)
 
     def test_legacy_date_classification_is_explicit_retry_safe_and_preserved(self):
         path,cid,pid=self.legacy_date_copy();dlms.bootstrap_database(str(path))
-        with sqlite3.connect(path) as c:
+        with closing(sqlite3.connect(path)) as c, c:
             c.row_factory=sqlite3.Row
             def request(data,scope='requirements'):
                 return dict(action='cycle',id=pid,certification_id=cid,edit_scope=scope,data=data,request_id=uuid.uuid4().hex,**cert.state(c.cursor()))
@@ -1180,47 +1181,47 @@ d.bootstrap_database(sys.argv[1],schema_version=10,legacy_schema_version=1,legac
 
     def test_deadline_legacy_backup_validation_and_roundtrip(self):
         path,cid,pid=self.legacy_date_copy()
-        with sqlite3.connect(path) as c:
+        with closing(sqlite3.connect(path)) as c, c:
             before=list(c.iterdump());cert.validate_restored(c);self.assertEqual(list(c.iterdump()),before)
         # Build a real legacy backup archive; validate it read-only, then migrate only staging.
-        with sqlite3.connect(path) as source,dlms.get_db() as target:source.backup(target)
+        with closing(sqlite3.connect(path)) as source, source,closing(dlms.get_db()) as target, target:source.backup(target)
         old_backup,old_manifest=dlms._create_dlms_backup('schema-nine-deadlines')
         old_stage=Path(dlms.APP_DATA_DIR)/'old-deadlines-stage'
         checked=dlms._validate_dlms_backup(old_backup);dlms._extract_validated_backup(old_backup,str(old_stage),checked)
         dlms._validate_staged_backup_semantics(str(old_stage),old_manifest)
         dlms._prepare_staged_restore_database(str(old_stage))
-        with sqlite3.connect(old_stage/'results.db') as c:
+        with closing(sqlite3.connect(old_stage/'results.db')) as c, c:
             c.row_factory=sqlite3.Row
             restored=cert.get(c.cursor(),'certification_cycles',pid)['data']
             self.assertEqual(restored['legacy_deadline']['value'],'2028-09-01')
             self.assertEqual((restored['planning_deadline'],restored['renewal_deadline']),('',''))
         dlms.bootstrap_database(str(path))
-        with sqlite3.connect(path) as source,dlms.get_db() as target:source.backup(target)
+        with closing(sqlite3.connect(path)) as source, source,closing(dlms.get_db()) as target, target:source.backup(target)
         period=self.cycle(cid)
         self.apply(self.request('cycle',dict(planning_deadline='2028-06-01',renewal_deadline='2028-10-01'),id=pid,certification_id=cid))
         before=self.cycle(cid)['data']
         backup,manifest=dlms._create_dlms_backup('distinct-deadlines');stage=Path(dlms.APP_DATA_DIR)/'deadlines-stage'
         checked=dlms._validate_dlms_backup(backup);dlms._extract_validated_backup(backup,str(stage),checked)
         dlms._validate_staged_backup_semantics(str(stage),manifest);dlms._prepare_staged_restore_database(str(stage))
-        with sqlite3.connect(stage/'results.db') as c:
+        with closing(sqlite3.connect(stage/'results.db')) as c, c:
             c.row_factory=sqlite3.Row;cert.validate_restored(c)
             self.assertEqual(cert.get(c.cursor(),'certification_cycles',pid)['data'],before)
         # A forged schema-9 export carrying new fields is rejected, not reinterpreted.
-        with sqlite3.connect(stage/'results.db') as c:
+        with closing(sqlite3.connect(stage/'results.db')) as c, c:
             c.execute('UPDATE schema_meta SET version=9')
             with self.assertRaisesRegex(ValueError,'conflicting deadline'):cert.validate_restored(c)
 
     def test_date_guards_malformed_legacy_and_historical_periods(self):
         path,cid,pid=self.legacy_date_copy('not-a-date')
-        with sqlite3.connect(path) as c:before=list(c.iterdump())
+        with closing(sqlite3.connect(path)) as c, c:before=list(c.iterdump())
         with self.assertRaises(ValueError):dlms.bootstrap_database(str(path))
-        with sqlite3.connect(path) as c:self.assertEqual(list(c.iterdump()),before)
+        with closing(sqlite3.connect(path)) as c, c:self.assertEqual(list(c.iterdump()),before)
         cid=self.apply(self.request('certification',dict(name='History',issuer='Custom',earned='2025-01-01',expiration='2028-01-01',planning_deadline='2027-08-01',renewal_deadline='2027-12-01')))['id']
         old=self.cycle(cid)
         newer=self.apply(self.request('cycle',dict(expiration='2031-01-01',renewal_deadline='2030-12-01'),certification_id=cid))['id']
         self.assertEqual(self.cycle(cid)['data']['planning_deadline'],'')
         self.apply(self.request('cycle',dict(planning_deadline='2027-09-01'),id=old['id'],certification_id=cid,edit_scope='goal'))
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             historical=cert.get(c.cursor(),'certification_cycles',old['id'])
             self.assertEqual(historical['data'],{**old['data'],'planning_deadline':'2027-09-01'})
             self.assertEqual(cert.get(c.cursor(),'certification_cycles',newer)['data']['renewal_deadline'],'2030-12-01')
@@ -1240,7 +1241,7 @@ d.bootstrap_database(sys.argv[1],schema_version=10,legacy_schema_version=1,legac
         tid=self.apply(self.request('training',dict(name='Recorded course',completed='2026-10-01',duration_minutes=562)))['id']
         self.apply(self.request('allocation',dict(hours=9,proposed=10,submitted=9,accepted=9),cycle_id=pid,training_id=tid))
         before=self.cycle(cid)
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             preserved={t:[tuple(r) for r in c.execute('SELECT * FROM '+t+' ORDER BY id')] for t in ('certifications','certification_training','certification_allocations','certification_attachments')}
         req=self.request('cycle',dict(renewal_deadline='2029-10-15'),id=pid,certification_id=cid)
         result=self.apply(req);self.assertEqual(self.apply(req),result)
@@ -1251,13 +1252,13 @@ d.bootstrap_database(sys.argv[1],schema_version=10,legacy_schema_version=1,legac
             self.assertEqual(self.cycle(cid)['data'],expected)
         # An interrupted transaction cannot partially save a date or orphan its evidence.
         req=self.request('cycle',dict(expiration='2029-12-01'),id=pid,certification_id=cid)
-        with dlms.get_db() as c:c.execute("CREATE TRIGGER fail_review_receipt BEFORE INSERT ON certification_actions BEGIN SELECT RAISE(ABORT,'review interruption'); END")
+        with closing(dlms.get_db()) as c, c:c.execute("CREATE TRIGGER fail_review_receipt BEFORE INSERT ON certification_actions BEGIN SELECT RAISE(ABORT,'review interruption'); END")
         with self.assertRaisesRegex(sqlite3.IntegrityError,'review interruption'):self.apply(req)
         self.assertEqual(self.cycle(cid)['data'],expected)
-        with dlms.get_db() as c:c.execute('DROP TRIGGER fail_review_receipt')
+        with closing(dlms.get_db()) as c, c:c.execute('DROP TRIGGER fail_review_receipt')
         self.apply(req);self.assertEqual(self.apply(req)['id'],pid)
         for key in ('planning','progress','totals','allocations'):self.assertEqual(self.cycle(cid)[key],before[key])
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             self.assertEqual({t:[tuple(r) for r in c.execute('SELECT * FROM '+t+' ORDER BY id')] for t in preserved},preserved)
         stale=self.request('cycle',dict(renewal_deadline='2030-01-01'),id=pid,certification_id=cid)
         current=self.request('cycle',dict(planning_deadline='2029-07-01'),id=pid,certification_id=cid)
@@ -1267,7 +1268,7 @@ d.bootstrap_database(sys.argv[1],schema_version=10,legacy_schema_version=1,legac
 
     def test_legacy_classification_form_errors_preserve_provenance_selection_and_guards(self):
         path,cid,pid=self.legacy_date_copy();dlms.bootstrap_database(str(path))
-        with sqlite3.connect(path) as source,dlms.get_db() as target:source.backup(target)
+        with closing(sqlite3.connect(path)) as source, source,closing(dlms.get_db()) as target, target:source.backup(target)
         before=self.cycle(cid)['data']
         for scope in ('requirements',''):
             for choice in ('planning_deadline','renewal_deadline'):

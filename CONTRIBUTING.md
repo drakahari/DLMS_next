@@ -12,7 +12,7 @@ virtual environment and install the runtime plus test runner:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements-test.txt
+python -m pip install -r requirements-test.txt -r requirements-build.txt
 python -m pip check
 ```
 
@@ -27,10 +27,16 @@ Run focused tests for the code you changed, then run the complete non-browser
 suite before submitting a pull request:
 
 ```bash
-python -m pytest -q -p no:cacheprovider -m "not browser"
+python tools/run_consolidation_checks.py application --basetemp /tmp/dlms-new-application-tests
 git diff --check
 python -m pip check
 ```
+
+The runner applies `-m "not browser"` to the canonical application tests. Use a
+fresh temporary path. Desktop Qt contract modules must run in separate processes
+because QCoreApplication and QApplication fixtures cannot share one lifetime.
+See [Desktop validation](docs/desktop-validation.md) for platform contracts and
+the Windows handoff; portable checks do not establish native acceptance.
 
 The release-verifier tests are part of that suite. Packaging-related changes
 should install the canonical build tools and run these focused files for

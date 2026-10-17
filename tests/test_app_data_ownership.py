@@ -92,7 +92,12 @@ class AppDataOwnershipTests(unittest.TestCase):
             self.assertEqual(dlms._require_owned_app_data_root(), str(owned.resolve()))
 
         link = self.root / "source-link"
-        link.symlink_to(Path(dlms.__file__).resolve().parent, target_is_directory=True)
+        try:
+            link.symlink_to(Path(dlms.__file__).resolve().parent, target_is_directory=True)
+        except OSError as exc:
+            if os.name == 'nt' and exc.winerror == 1314:
+                self.skipTest('Windows symlink privilege unavailable; native junction/profile refusal is covered in tests/windows/test_native.py')
+            raise
         with self.assertRaises(dlms.DataRootOwnershipError):
             dlms._validate_destructive_data_root_path(str(link))
 

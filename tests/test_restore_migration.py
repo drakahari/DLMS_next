@@ -1,5 +1,6 @@
 """DLMS-045B staged restore migration and rollback regressions."""
 import json
+from contextlib import closing
 import os
 import sqlite3
 import tempfile
@@ -226,7 +227,7 @@ class RestoreMigrationTests(unittest.TestCase):
         staged.mkdir()
         database = staged / "results.db"
         self._current_database(database)
-        with sqlite3.connect(database) as conn:
+        with closing(sqlite3.connect(database)) as conn:
             before_generation = conn.execute("SELECT generation FROM study_state").fetchone()[0]
         migration = mock.Mock(side_effect=AssertionError("migration must not run"))
 
@@ -235,7 +236,7 @@ class RestoreMigrationTests(unittest.TestCase):
 
         self.assertEqual(result["bootstrap"]["status"], "current")
         self.assertEqual(result["validation"]["version"], dlms.DLMS_SCHEMA_VERSION)
-        with sqlite3.connect(database) as conn:
+        with closing(sqlite3.connect(database)) as conn:
             self.assertNotEqual(conn.execute("SELECT generation FROM study_state").fetchone()[0], before_generation)
         migration.assert_not_called()
 

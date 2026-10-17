@@ -1,4 +1,5 @@
 """Disposable factual-completion and persisted-library-order checks."""
+from contextlib import closing
 
 import unittest
 from pathlib import Path
@@ -34,14 +35,14 @@ class QuizSequenceTests(unittest.TestCase):
         self.save(self.payload(1, correct=False))
         self.assertEqual(self.sequence()['state'], 'unfinished')
         self.complete()
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             before = list(conn.iterdump())
         seq = self.sequence()
         self.assertEqual(seq['next']['quiz_id'], next_id)
         self.assertEqual(seq['next']['folder'], 'Uncategorized')
         self.assertEqual(seq['next']['review_status'], 'No tracked Study review recorded')
         self.client.get(seq['next']['quiz_url'])
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(list(conn.iterdump()), before)
         self.assertEqual(self.sequence()['anchor']['quiz_id'], self.quiz_id)
 
@@ -84,21 +85,21 @@ class QuizSequenceTests(unittest.TestCase):
         target = self.sequence()['next']
         self.assertEqual(target['quiz_id'], earlier)
         self.assertEqual(target['review_status'], 'Tracked review finished for current content')
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("UPDATE questions SET question_text='Substantively revised' WHERE quiz_id=?", (earlier,))
         self.assertEqual(self.sequence()['next']['review_status'], 'Content changed since its saved review')
 
     def test_changed_content_and_gapped_completion_never_advance(self):
         self.publish('Next', kind=None)
         self.complete()
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute('UPDATE questions SET question_text=? WHERE quiz_id=?', ('Edited', self.quiz_id))
         self.assertEqual(self.sequence()['state'], 'changed')
 
     def test_missing_saves_and_artifact_changes_are_explicit(self):
         self.publish('Next', kind=None)
         self.save(self.payload(2))
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("UPDATE study_sessions SET completed_at='2026-01-01T00:00:00Z' WHERE id='session-one'")
         self.assertEqual(self.sequence()['state'], 'incomplete_saves')
         self.save(self.payload(1))
@@ -166,12 +167,12 @@ class QuizSequenceTests(unittest.TestCase):
         next_id, _ = self.publish('Next', kind=None)
         self.publish('Later', kind=None)
         self.complete()
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute('PRAGMA foreign_keys=ON')
             conn.execute('DELETE FROM questions WHERE quiz_id=?', (next_id,))
         self.assertEqual(self.sequence()['state'], 'next_unavailable')
         self.assertEqual(self.sequence()['next']['availability'], 'Quiz has no current questions')
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute('PRAGMA foreign_keys=ON')
             conn.execute('DELETE FROM quizzes WHERE id=?', (next_id,))
         self.assertEqual(self.sequence()['state'], 'next_unavailable')
@@ -181,7 +182,7 @@ class QuizSequenceTests(unittest.TestCase):
         generated, _ = self.publish('Exam Plan — CISM', kind='adaptive_study')
         regular, _ = self.publish('Next regular', kind=None)
         self.complete()
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute('PRAGMA foreign_keys=ON')
             conn.execute('DELETE FROM quizzes WHERE id=?', (generated,))
         # Publishing keeps authoritative generation_kind in the DB. If that
@@ -192,7 +193,7 @@ class QuizSequenceTests(unittest.TestCase):
 
     def test_legacy_answers_never_invent_an_anchor_or_completion(self):
         self.publish('Next', kind=None)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             question = conn.execute('SELECT id FROM questions WHERE quiz_id=?', (self.quiz_id,)).fetchone()[0]
             conn.execute("INSERT INTO study_legacy_responses(quiz_id,question_id,session_id,mode,was_correct,occurred_at) VALUES (?,?,'old','Study',1,'2020-01-01 12:00:00')", (self.quiz_id, question))
         self.assertEqual(self.sequence()['state'], 'empty')

@@ -5,6 +5,17 @@ own learning material.**
 
 **Latest published release: DLMS 3.3.0** · [Download packaged releases](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0)
 
+## Choose your DLMS
+
+**[Compare browser-based DLMS and DLMS Desktop →](docs/choose-your-dlms.md)**
+
+Browser-based DLMS is available now and supports local/offline use as well as
+intentional server hosting. DLMS Desktop adds a dedicated window, managed Local
+startup and an optional connection to an existing server. Desktop builds in this
+private consolidation candidate are not public downloads; macOS Desktop remains
+planned. Both interfaces are supported choices. They do not automatically share
+or synchronize data.
+
 DLMS 3.3.0 includes durable Study history, optional Exam Plans,
 earned-certification and training records, and 26 manually selected themes.
 See the [release notes](docs/releases/3.3.0.md) and

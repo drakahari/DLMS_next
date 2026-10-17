@@ -393,7 +393,8 @@ class LawGuidedWorkflowTemplateTests(unittest.TestCase):
 
         self.assertEqual(200, response.status_code)
         page = response.get_data(as_text=True)
-        stripped = raw.strip()
+        # Accepted raw text is preserved, including leading/trailing separators.
+        preserved = raw
         self.assertIn('<form method="POST" action="/law/import" class="law-form">', page)
         self.assertIn(
             '<label class="law-field law-field-wide" for="lawRawPacketInput">', page
@@ -402,12 +403,12 @@ class LawGuidedWorkflowTemplateTests(unittest.TestCase):
         self.assertIn('<input type="hidden" name="case_name" value="Pending Case">', page)
         self.assertIn('<input type="hidden" name="case_slug" value="pending-case">', page)
         self.assertIn('name="raw_packet" class="law-import-textarea" rows="22"', page)
-        self.assertIn(str(escape(stripped)), page)
+        self.assertIn(str(escape(preserved)), page)
         self.assertNotIn('<script id="rawInjected">', page)
         self.assertEqual(2, page.count("</script>"))
         self.assertEqual(1, page.count("</textarea>"))
-        self.assertIn(f"<span>Lines</span><strong>{len(stripped.splitlines())}</strong>", page)
-        self.assertIn(f"<span>Characters</span><strong>{len(stripped)}</strong>", page)
+        self.assertIn(f"<span>Lines</span><strong>{len(preserved.splitlines())}</strong>", page)
+        self.assertIn(f"<span>Characters</span><strong>{len(preserved)}</strong>", page)
         self.assertIn("<span>Status</span><strong>Ready</strong>", page)
         for action, label in (
             ("save_and_preview", "Save &amp; Preview Case Packet"),
@@ -455,7 +456,7 @@ class LawGuidedWorkflowTemplateTests(unittest.TestCase):
             "/law/imports/saved-packet.txt", redirected.headers["Location"]
         )
         self.assertEqual(
-            [mock.call("1. Case Brief\nFacts", "case")] * 2,
+            [mock.call(common["raw_packet"], "case")] * 2,
             saver.call_args_list,
         )
 

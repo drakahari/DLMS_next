@@ -6,6 +6,9 @@ import os
 from pathlib import Path
 import tempfile
 import threading
+import base64
+import subprocess
+import sys
 import unittest
 from unittest import mock
 
@@ -71,6 +74,61 @@ class LawRawImportPersistenceTests(unittest.TestCase):
             (self.imports / saved).read_text(encoding="utf-8", newline=""),
         )
         self.assertEqual([], list(self.imports.glob(".*.tmp")))
+
+    def test_exact_lf_crlf_mixed_unicode_survives_separate_process_reopen(self):
+        cases = {
+            "lf": "  Café 日本 Ω\nfirst\nlast\n",
+            "crlf": "  Café 日本 Ω\r\nfirst\r\nlast\r\n",
+            "mixed": "  Café 日本 Ω\r\nfirst\nsecond\rthird\r\nlast\n",
+        }
+        script = (
+            "import base64,sys; from dlms.services.law import load_law_raw_packet; "
+            "print(base64.b64encode(load_law_raw_packet(sys.argv[1]).encode('utf-8')).decode('ascii'))"
+        )
+        for name, raw in cases.items():
+            with self.subTest(newlines=name):
+                saved = dlms.save_law_raw_packet(raw, name)
+                path = self.imports / saved
+                self.assertEqual(raw.encode("utf-8"), path.read_bytes())
+                self.assertEqual(raw, dlms._law_service.load_law_raw_packet(str(path)))
+                reopened = subprocess.run(
+                    [sys.executable, "-X", "utf8", "-c", script, str(path)],
+                    cwd=Path(__file__).resolve().parents[1], check=True,
+                    capture_output=True, text=True, timeout=20,
+                )
+                self.assertEqual(raw.encode("utf-8"), base64.b64decode(reopened.stdout.strip()))
+                self.assertEqual([], list(self.imports.glob(".*.tmp")))
+
+    def test_http_save_and_preview_preserve_exact_supplied_packet(self):
+        from dlms.routes import law as law_routes
+        for name, separator in (("lf", "\n"), ("crlf", "\r\n"), ("mixed", "\n\r\n")):
+            raw = "  Café 日本 Ω" + separator + "1. Case Brief" + separator + "Final line  " + separator
+            with self.subTest(newlines=name):
+                client = dlms.app.test_client()
+                response = client.post("/law/import", data={
+                    "csrf_token": csrf_token(client, "/law/import"),
+                    "case_slug": name, "raw_packet": raw, "action": "save_and_preview",
+                })
+                self.assertEqual(302, response.status_code, response.get_data(as_text=True))
+                saved = response.headers["Location"].rsplit("/", 1)[1]
+                path = self.imports / saved
+                self.assertEqual(raw.encode("utf-8"), path.read_bytes())
+                with mock.patch.object(law_routes, "render_template", wraps=law_routes.render_template) as rendered:
+                    preview = client.get(response.headers["Location"])
+                self.assertEqual(200, preview.status_code)
+                self.assertEqual(raw, rendered.call_args.kwargs["raw_packet"])
+                self.assertEqual(len(raw), rendered.call_args.kwargs["char_count"])
+                self.assertEqual(len(raw.splitlines()), rendered.call_args.kwargs["line_count"])
+                self.assertEqual(raw.encode("utf-8"), path.read_bytes())
+
+    def test_whitespace_only_http_packet_is_not_saved(self):
+        client = dlms.app.test_client()
+        response = client.post("/law/import", data={
+            "csrf_token": csrf_token(client, "/law/import"),
+            "raw_packet": " \r\n\t", "action": "save_raw",
+        })
+        self.assertEqual(200, response.status_code)
+        self.assertEqual([], list(self.imports.glob("*.txt")))
 
     def test_atomic_write_and_replace_failures_preserve_target_and_clean_temp(self):
         for failure_point in ("fsync", "replace"):
@@ -221,7 +279,7 @@ class LawRawImportPersistenceTests(unittest.TestCase):
 
     def test_existing_saved_import_remains_readable(self):
         existing = self.imports / "law_import_20200101_000000_legacy.txt"
-        existing.write_text("Legacy packet Ω\n", encoding="utf-8")
+        existing.write_bytes("Legacy packet Ω\n".encode("utf-8"))
 
         self.assertEqual(
             "Legacy packet Ω\n",

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=DLMS Desktop
+Comment=Local DLMS study and exam application
+Exec=@EXECUTABLE@
+Icon=io.github.drakahari.DLMSDesktop
+Terminal=false
+Categories=Education;
+StartupNotify=true

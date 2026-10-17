@@ -124,6 +124,7 @@ def stage_portable_quiz_bundle(dependencies):
 
 def _review_context(dependencies, token, *, error=None):
     _stage_dir, _archive_path, metadata, report = dependencies.load_staged(token)
+    progress = dependencies.import_progress(token) if dependencies.import_progress else None
     connection = dependencies.get_db()
     try:
         existing_titles = [
@@ -134,25 +135,60 @@ def _review_context(dependencies, token, *, error=None):
         ]
     finally:
         connection.close()
+    plans = dependencies.plan_import(report["manifest"], existing_titles)
+    if progress and progress["items"]:
+        if len(progress["items"]) != len(plans):
+            raise ValueError("Accepted import item count differs from the staged bundle")
+        for plan, item in zip(plans, progress["items"]):
+            if plan["bundle_id"] != item["bundle_id"]:
+                raise ValueError("Accepted import item identity differs from the staged bundle")
+            plan["import_title"] = item["title"]
+            plan["renamed"] = item["renamed"]
     return {
         "app_version": dependencies.app_version(),
         "portal_title": dependencies.get_portal_title(),
         "token": token,
         "metadata": metadata,
         "report": report,
-        "plans": dependencies.plan_import(report["manifest"], existing_titles),
+        "plans": plans,
+        "import_progress": progress,
         "error": error,
     }
 
 
+def _unavailable_import_message(dependencies, token):
+    if dependencies.import_progress:
+        try:
+            progress = dependencies.import_progress(token)
+            if progress["state"] != "new":
+                return (f"This accepted import's staged input is unavailable or changed. "
+                        f"{progress['committed']} item(s) have confirmed durable receipts; "
+                        "another publication outcome may still be uncertain. No retry was attempted. Keep the operation evidence and "
+                        "restore the exact reviewed stage before retrying. A new upload is a separate import.")
+        except Exception:
+            return "Accepted import evidence is unavailable or conflicting. A publication outcome may be uncertain; no retry was attempted. Inspect this profile before retrying."
+    return "Portable bundle import session is unavailable or no longer valid."
+
+
 def review_portable_quiz_bundle(dependencies, token):
+    if dependencies.import_progress:
+        try:
+            progress = dependencies.import_progress(token)
+            if progress["state"] == "complete":
+                try:
+                    dependencies.load_staged(token)
+                except FileNotFoundError:
+                    flash(f"This import already completed: {progress['committed']} quizzes. No new copies were created.", "success")
+                    return redirect(url_for("quiz.portable_quiz_bundles"))
+        except Exception:
+            pass
     try:
         context = _review_context(dependencies, token)
     except Exception as exc:
         dependencies.print_message(
             f"[PORTABLE QUIZ REVIEW ERROR] {type(exc).__name__}: {exc}"
         )
-        flash("Portable bundle import session is unavailable or no longer valid.", "error")
+        flash(_unavailable_import_message(dependencies, token), "error")
         return redirect(url_for("quiz.portable_quiz_bundles"))
     return render_template("quiz/bundle-review.html", **context)
 
@@ -167,20 +203,38 @@ def confirm_portable_quiz_bundle(dependencies, token):
         dependencies.print_message(
             f"[PORTABLE QUIZ IMPORT ERROR] {type(exc).__name__}: {exc}"
         )
+        progress = None
+        if dependencies.import_progress:
+            try:
+                progress = dependencies.import_progress(token)
+            except Exception:
+                pass
         try:
             context = _review_context(
                 dependencies,
                 token,
-                error="The bundle was not imported. No completed bundle quizzes were kept.",
+                error=(f"{progress['committed']} quizzes have confirmed durable receipts; final stage cleanup is still pending. {exc} Retrying this token will not publish another copy."
+                       if progress and progress["state"] == "complete" else
+                       f"{progress['committed']} of {progress['committed'] + progress['remaining']} quizzes have confirmed durable receipts; "
+                       f"temporary cleanup is still pending. {exc} Retrying this token will not publish another copy."
+                       if progress and progress["state"] == "cleanup_pending" else
+                       f"{progress['committed']} of {progress['committed'] + progress['remaining']} quizzes have confirmed durable receipts; "
+                       f"{progress['remaining']} need reconciliation and may include a committed result. {exc} "
+                       "No new copy will be published unless the earlier outcome is proven."
+                       if progress and progress["remaining"] is not None else
+                       (str(exc) if dependencies.import_progress else
+                        "The bundle was not imported. No completed bundle quizzes were kept.")),
             )
         except Exception:
-            flash("Portable bundle import failed and its staging session is unavailable.", "error")
+            flash(_unavailable_import_message(dependencies, token), "error")
             return redirect(url_for("quiz.portable_quiz_bundles"))
-        return render_template("quiz/bundle-review.html", **context), 500
+        return render_template("quiz/bundle-review.html", **context), 409 if dependencies.import_progress else 500
 
     published = result["published"]
     renamed = sum(bool(item["renamed"]) for item in published)
     message = f"Imported {len(published)} quiz{'zes' if len(published) != 1 else ''}."
+    if result.get("replayed"):
+        message = f"This import already completed: {len(published)} quizzes. No new copies were created."
     if renamed:
         message += f" {renamed} title{'s were' if renamed != 1 else ' was'} renamed to avoid a collision."
     flash(message, "success")
@@ -188,7 +242,11 @@ def confirm_portable_quiz_bundle(dependencies, token):
 
 
 def cancel_portable_quiz_bundle(dependencies, token):
-    dependencies.cancel_staged(token)
+    try:
+        dependencies.cancel_staged(token)
+    except Exception as exc:
+        flash(str(exc) if dependencies.import_progress else "Import cancellation failed; staging was retained.", "error")
+        return redirect(url_for("quiz.review_portable_quiz_bundle", token=token))
     flash("Portable quiz bundle import cancelled; staged files were removed.", "success")
     return redirect(url_for("quiz.portable_quiz_bundles"))
 

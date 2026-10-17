@@ -1,0 +1,3 @@
+# The WebView2 SDK is pinned separately by windows_webview2/build.ps1.
+# Python/native UI/backend/OCR closure stays at the reviewed Windows pins.
+-r ../package_windows/requirements-build-lock.txt

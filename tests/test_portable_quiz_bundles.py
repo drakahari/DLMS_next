@@ -1,9 +1,11 @@
 """DLMS-133 portable quiz bundle export/import and safety regressions."""
+from contextlib import closing
 
 import copy
 import hashlib
 import io
 import json
+import os
 import tempfile
 import unittest
 import zipfile
@@ -418,7 +420,7 @@ class PortableQuizBundleTests(unittest.TestCase):
         quiz=self._seed('Canonical Image Study','image-study.html',[surrogate])
         good=self._seed('Ordinary image choice','ordinary-image.html',[
             self._choice(image_url='/quiz-assets/hotspot/diagram.png')])
-        with dlms.get_db() as connection:
+        with closing(dlms.get_db()) as connection, connection:
             before=list(connection.iterdump())
             report=dlms._preflight_portable_quiz_export(connection.cursor(),dlms.load_registry(),[quiz,good])
             self.assertEqual((0,1),(report['warning_quizzes'],report['blocked_quizzes']))
@@ -441,7 +443,7 @@ class PortableQuizBundleTests(unittest.TestCase):
         surrogate=self._choice('Locate the control [Image hotspot]')
         surrogate['choices']=[dict(label='A',text='Control',is_correct=True)]
         quiz=self._seed('Anatomy database surrogate','anatomy.html',[surrogate])
-        with dlms.get_db() as connection:
+        with closing(dlms.get_db()) as connection, connection:
             report=dlms._preflight_portable_quiz_export(connection.cursor(),dlms.load_registry(),[quiz])
             self.assertEqual(1,report['blocked_quizzes'])
         with self.assertRaisesRegex(bundles.PortableQuizBundleError,'hotspot target geometry'):
@@ -461,7 +463,7 @@ class PortableQuizBundleTests(unittest.TestCase):
                 response=client.post('/quiz-bundles/import',data={'bundle_zip':(io.BytesIO(archive.read_bytes()),'hotspot.zip')},headers=csrf_headers(client,'/quiz-bundles'))
                 self.assertEqual(response.status_code,400)
                 self.assertIn('not a valid, safe DLMS portable quiz bundle',response.get_data(as_text=True))
-                with dlms.get_db() as connection:
+                with closing(dlms.get_db()) as connection, connection:
                     self.assertEqual(1,connection.execute('SELECT count(*) FROM quizzes').fetchone()[0])
                 self.assertEqual([],list(Path(dlms.PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER).iterdir()))
 
@@ -711,7 +713,7 @@ class PortableQuizBundleTests(unittest.TestCase):
                 old_ids = {e['id'] for e in dlms.load_registry()}
                 self._import_bytes(data)
                 imported = next(e['id'] for e in dlms.load_registry() if e['id'] not in old_ids)
-                with dlms.get_db() as c:
+                with closing(dlms.get_db()) as c, c:
                     question_id = c.execute('SELECT id FROM questions WHERE quiz_id=?', (imported,)).fetchone()[0]
                     choices = c.execute('SELECT label,text,is_correct FROM choices WHERE question_id=? ORDER BY label', (question_id,)).fetchall()
                     self.assertEqual([(x['label'], x['text'], int(x['is_correct'])) for x in q['choices']], [tuple(x) for x in choices])
@@ -749,7 +751,7 @@ class PortableQuizBundleTests(unittest.TestCase):
                 finally:
                     root = job.path.parent;job.close();self.assertFalse(root.exists())
         self.assertEqual(386, len(dlms.load_registry()))
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             self.assertEqual(386, c.execute('SELECT COUNT(*) FROM questions').fetchone()[0])
             self.assertEqual(0, c.execute('SELECT COUNT(*) FROM attempts').fetchone()[0])
             self.assertEqual(0, c.execute('SELECT COUNT(*) FROM study_responses').fetchone()[0])
@@ -791,7 +793,7 @@ class PortableQuizBundleTests(unittest.TestCase):
 
     def test_malformed_question_identified_and_unexpected_error_not_leaked(self):
         quiz = self._seed('Malformed sample', 'broken.html', [self._choice()])
-        with dlms.get_db() as c:c.execute('UPDATE choices SET is_correct=0 WHERE question_id IN (SELECT id FROM questions WHERE quiz_id=?)',(quiz,));c.commit()
+        with closing(dlms.get_db()) as c, c:c.execute('UPDATE choices SET is_correct=0 WHERE question_id IN (SELECT id FROM questions WHERE quiz_id=?)',(quiz,));c.commit()
         client = dlms.app.test_client()
         r = client.post('/quiz-bundles/export', data={'quiz_ids':str(quiz)}, headers=csrf_headers(client,'/quiz-bundles'))
         self.assertEqual(200,r.status_code);r.close()
@@ -799,7 +801,7 @@ class PortableQuizBundleTests(unittest.TestCase):
         checked = client.post('/quiz-bundles/export', data={'quiz_ids':str(quiz),'export_action':'check'}, headers=csrf_headers(client,'/quiz-bundles'))
         self.assertIn('No correct answer is marked',checked.get_data(as_text=True))
         self.assertIn('0 blocked',checked.get_data(as_text=True))
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             signature=dlms._preflight_portable_quiz_export(conn.cursor(),dlms.load_registry(),[quiz])['signature']
         with mock.patch.object(dlms,'_build_portable_quiz_download',side_effect=OSError('/secret/absolute/path')):
             r = client.post('/quiz-bundles/export',data={'quiz_ids':str(quiz),'export_action':'preserve','warning_snapshot':signature},headers=csrf_headers(client,'/quiz-bundles'))
@@ -869,7 +871,7 @@ class PortableQuizBundleTests(unittest.TestCase):
         imported = [entry['id'] for entry in dlms.load_registry() if entry['id'] not in old_ids]
         self.assertEqual(3, len(imported))
         paths = []
-        with dlms.get_db() as connection:
+        with closing(dlms.get_db()) as connection, connection:
             for quiz in imported:
                 media = json.loads(connection.execute('SELECT media_json FROM questions WHERE quiz_id=?', (quiz,)).fetchone()[0])
                 path = Path(dlms.QUIZ_ASSET_FOLDER) / media['image_url'].removeprefix('/quiz-assets/')
@@ -882,7 +884,12 @@ class PortableQuizBundleTests(unittest.TestCase):
         Image.new('RGB', (12, 12), 'navy').save(outside)
         link = Path(dlms.QUIZ_ASSET_FOLDER) / 'sample' / 'linked.png'
         link.parent.mkdir()
-        link.symlink_to(outside)
+        try:
+            link.symlink_to(outside)
+        except OSError as exc:
+            if os.name == 'nt' and exc.winerror == 1314:
+                self.skipTest('Windows symlink privilege unavailable; native file-selection junction refusal is covered in tests/webview2/test_file_selection.py')
+            raise
         quiz = self._seed('Linked image', 'linked.html', [self._choice(image_url='/quiz-assets/sample/linked.png')])
         from dlms.services.portable_quiz_exports import ExportSelectionError
         with self.assertRaises(ExportSelectionError) as caught:

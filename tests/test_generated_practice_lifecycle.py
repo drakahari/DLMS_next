@@ -77,7 +77,7 @@ class GeneratedPracticeLifecycleTests(unittest.TestCase):
     def fingerprint(self, quiz_id):
         entry = next(item for item in dlms.load_registry() if item["id"] == quiz_id)
         _, json_name = dlms._quiz_artifact_names(entry)
-        raw = (Path(dlms.DATA_FOLDER) / json_name).read_text(encoding="utf-8")
+        raw = (Path(dlms.DATA_FOLDER) / json_name).read_bytes().decode("utf-8")
         identity = "\0".join((
             "quiz-recovery-v1", "1", str(quiz_id), f"/data/{json_name}",
             str(entry.get("exam_minutes") or 90), raw,

@@ -376,6 +376,19 @@ def validate_quiz_publication_journal(
     if owned_logo is not None:
         safe_name(owned_logo, label="publication-owned logo", pattern=logo_re)
 
+    managed = journal.get("desktop_import")
+    if managed is not None:
+        if not isinstance(managed, dict) or set(managed) != {"token", "item", "identity", "archive_sha256", "profile_uuid", "epoch"}:
+            raise ValueError("managed publication identity is malformed")
+        if (not isinstance(managed["token"], str) or not re.fullmatch(r"[0-9a-f]{32}", managed["token"])
+                or not isinstance(managed["item"], int) or isinstance(managed["item"], bool) or managed["item"] < 0
+                or not isinstance(managed["identity"], str) or not re.fullmatch(r"[0-9]{10,}_[0-9a-f]{8}", managed["identity"])
+                or not isinstance(managed["archive_sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", managed["archive_sha256"])):
+            raise ValueError("managed publication identity is invalid")
+        import uuid
+        uuid.UUID(managed["profile_uuid"])
+        uuid.UUID(managed["epoch"])
+
     paths = {
         "stage": safe_target(staging_root(), stage_name, label="staging directory"),
         "json": safe_target(data_folder, json_name, label="JSON artifact"),
@@ -510,6 +523,7 @@ def reconcile_quiz_publication_journal(
     remove_journal,
     update_journal,
     rollback_publication,
+    managed_outcome=None,
     open_file=open,
     json_module=json,
     islink=os.path.islink,
@@ -531,6 +545,10 @@ def reconcile_quiz_publication_journal(
         and current_db_status == "match"
         and artifacts_valid(journal, paths)
     ):
+        if journal.get("desktop_import") is not None:
+            if managed_outcome is None:
+                raise ValueError("managed publication needs its Desktop outcome recorder")
+            managed_outcome(journal, "committed", paths)
         if not remove_path(paths["stage"]):
             return "failed"
         if not remove_journal(journal_path.removesuffix(".tmp")):
@@ -549,6 +567,10 @@ def reconcile_quiz_publication_journal(
         return "failed"
     if not rollback_publication(journal, paths):
         return "failed"
+    if journal.get("desktop_import") is not None:
+        if managed_outcome is None:
+            raise ValueError("managed publication needs its Desktop outcome recorder")
+        managed_outcome(journal, "rolled_back", paths)
     if not remove_journal(journal_path):
         return "failed"
     return "rolled_back"
@@ -677,6 +699,11 @@ def publish_quiz(
     generation_kind=None,
     publication_record=None,
     publication_rollback=None,
+    managed_item=None,
+    managed_outcome=None,
+    managed_checkpoint=None,
+    artifact_identity=None,
+    registry_folder=None,
     generated_artifact_names,
     staging_root,
     normalize_ordinals,
@@ -726,7 +753,11 @@ def publish_quiz(
         runtime_questions, db_questions
     )
 
-    html_name, json_name = generated_artifact_names(filename_prefix)
+    if managed_item is not None and (managed_outcome is None or artifact_identity is None):
+        raise ValueError("managed publication requires an outcome recorder and artifact identity")
+    html_name, json_name = generated_artifact_names(
+        filename_prefix, artifact_identity=artifact_identity
+    ) if artifact_identity is not None else generated_artifact_names(filename_prefix)
     asset_bucket = re.sub(r"[^A-Za-z0-9_.-]+", "_", splitext(html_name)[0])[:120]
     publication_staging_root = staging_root()
     makedirs(publication_staging_root, exist_ok=True)
@@ -776,6 +807,8 @@ def publish_quiz(
         "registry": {"html": html_name, "attempted": False, "published": False},
         "owned_logo": owned_logo,
     }
+    if managed_item is not None:
+        journal["desktop_import"] = managed_item
     try:
         write_journal(journal_path, journal)
     except Exception:
@@ -858,6 +891,8 @@ def publish_quiz(
         conn = None
         update_journal(journal_path, journal, state="db_committed")
         checkpoint("db_committed", journal)
+        if managed_item is not None and managed_checkpoint is not None:
+            managed_checkpoint("publication_db_committed", journal)
 
         journal["artifacts"]["json"]["attempted"] = True
         update_journal(journal_path, journal)
@@ -883,6 +918,8 @@ def publish_quiz(
 
         update_journal(journal_path, journal, state="artifacts_promoted")
         checkpoint("artifacts_promoted", journal)
+        if managed_item is not None and managed_checkpoint is not None:
+            managed_checkpoint("publication_artifacts_promoted", journal)
 
         journal["registry"]["attempted"] = True
         update_journal(journal_path, journal)
@@ -894,6 +931,7 @@ def publish_quiz(
             exam_minutes=normalize_exam_minutes(exam_minutes),
             source_pack_id=source_pack_id,
             source_dataset_id=source_dataset_id,
+            **({"folder": registry_folder} if registry_folder is not None else {}),
         )
         # Once registry publication returns successfully, the quiz is live.
         # Journal-finalization failures are left for idempotent reconciliation
@@ -902,19 +940,38 @@ def publish_quiz(
             journal["registry"]["published"] = True
             update_journal(journal_path, journal, state="registry_published")
             checkpoint("registry_published", journal)
+            if managed_item is not None and managed_checkpoint is not None:
+                managed_checkpoint("publication_registry_published", journal)
             if not remove_path(stage_dir):
                 raise OSError("could not remove publication staging directory")
             update_journal(journal_path, journal, state="complete")
             checkpoint("complete", journal)
+            if managed_item is not None:
+                if managed_checkpoint is not None:
+                    managed_checkpoint("before_item_receipt", journal)
+                managed_outcome(journal, "committed", {
+                    "json": final_json, "html": final_html,
+                    "assets": final_assets,
+                    "logo": join_path(logo_folder, owned_logo) if owned_logo else None,
+                })
+                if managed_checkpoint is not None:
+                    managed_checkpoint("after_item_receipt", journal)
             if not remove_journal(journal_path):
                 raise OSError("could not remove completed publication journal")
         except Exception as exc:
+            if managed_item is not None:
+                raise
             print_message(
                 f"[QUIZ PUBLICATION FINALIZATION ERROR] quiz_id={quiz_id}: "
                 f"{type(exc).__name__}: {exc}; startup reconciliation will retry"
             )
         return quiz_id, html_name
     except Exception:
+        # Registry publication may have committed before its Desktop receipt.
+        # Keep its journal for exact startup reconciliation; compensation here
+        # would erase a result that the caller can no longer classify.
+        if managed_item is not None and journal["registry"]["attempted"]:
+            raise
         cleanup_ok = True
         try:
             update_journal(journal_path, journal, state="rollback_pending")
@@ -965,6 +1022,12 @@ def publish_quiz(
             if safe_logo == rollback_logo_filename and safe_logo == logo_filename:
                 cleanup_ok = remove_path(join_path(logo_folder, safe_logo)) and cleanup_ok
         cleanup_ok = remove_path(stage_dir) and cleanup_ok
+        if cleanup_ok and managed_item is not None:
+            managed_outcome(journal, "rolled_back", {
+                "json": final_json, "html": final_html,
+                "assets": final_assets,
+                "logo": join_path(logo_folder, owned_logo) if owned_logo else None,
+            })
         if cleanup_ok and remove_journal(journal_path) and publication_rollback is not None:
             publication_rollback()
         raise

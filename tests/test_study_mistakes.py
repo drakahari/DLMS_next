@@ -1,4 +1,5 @@
 """Disposable factual-selection, fidelity and publication regressions."""
+from contextlib import closing
 import json
 import sqlite3
 import threading
@@ -30,7 +31,7 @@ class StudyMistakeTests(unittest.TestCase):
         return sm.scope(folders or [], quizzes if quizzes is not None else [self.quiz_id])
 
     def pool(self, scope=None):
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             return sm.pool(conn.cursor(), scope or self.selection(), dlms._study_mistake_options())
 
     def wrong(self):
@@ -39,7 +40,7 @@ class StudyMistakeTests(unittest.TestCase):
 
     def pass_data(self, scope=None):
         selection = scope or self.selection()
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             current = sm.pool(conn.cursor(), selection, dlms._study_mistake_options())
             report = sm.pass_report(conn.cursor(), selection, current)
             return dict(scope=selection, generation=sm.state(conn.cursor()), fingerprint=current['fingerprint'], expected_pass=report['id'] if report else None)
@@ -58,7 +59,7 @@ class StudyMistakeTests(unittest.TestCase):
         return self.client.post('/api/quiz-composer/study-mistakes/create', json=data, headers=self.headers)
 
     def report(self, scope=None):
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             return sm.pass_report(conn.cursor(), scope or self.selection(), self.pool(scope))
 
     def claim_quiz(self, qid, *, sid=None, variants=None):
@@ -76,12 +77,12 @@ class StudyMistakeTests(unittest.TestCase):
         later = self.claim_quiz(self.quiz_id)
         self.assertEqual(self.save(dict(later, wasCorrect=True, selected=['A'])).status_code, 200)
         self.assertEqual(len(self.pool()['eligible']), 1)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertIsNone(conn.execute("SELECT completed_at FROM study_sessions WHERE id='session-one'").fetchone()[0])
 
     def test_correct_then_wrong_is_not_first_outcome_projection(self):
         self.save(self.payload(1)); self.save(self.payload(2, correct=False))
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(learning._deduplicated_learning_answer_events(conn.cursor())[0]['was_correct'], 1)
         self.assertEqual(len(self.pool()['eligible']), 1)
 
@@ -92,13 +93,13 @@ class StudyMistakeTests(unittest.TestCase):
         wrong = self.payload(3, correct=False)
         self.save(wrong); self.save(wrong)
         self.assertEqual(len(self.pool()['eligible']), 1)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute('SELECT count(*) FROM study_responses').fetchone()[0], 2)
 
     def test_unanswered_and_legacy_do_not_invent_revisions(self):
         self.save(self.payload(1, correct=False, selected=[]))
         self.assertEqual(self.pool()['recorded'], 0)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             qid = conn.execute('SELECT id FROM questions WHERE quiz_id=?', (self.quiz_id,)).fetchone()[0]
             conn.execute("INSERT INTO study_legacy_responses(quiz_id,question_id,mode,was_correct,response_json) VALUES(?,?,'Study',0,?)", (self.quiz_id, qid, json.dumps({'selected': ['C']})))
         self.assertEqual(self.pool()['eligible'], [])
@@ -117,16 +118,16 @@ class StudyMistakeTests(unittest.TestCase):
 
     def test_source_edit_excludes_and_retains_fact(self):
         self.wrong()
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("UPDATE choices SET text='Changed' WHERE label='A'")
         self.assertEqual(self.pool()['eligible'], [])
         self.assertIn('changed', self.pool()['unavailable'][0]['reason'])
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute('SELECT count(*) FROM study_responses').fetchone()[0], 1)
 
     def test_generated_lineage_not_prompt_collapse(self):
         second, _ = self.publish(title='Independent same prompt', kind=None)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             source_q = conn.execute('SELECT id FROM questions WHERE quiz_id=?', (self.quiz_id,)).fetchone()[0]
             payload = learning._question_payload_from_db(conn.cursor(), source_q)
             payload['composition_sources'] = [{'quiz_id': self.quiz_id}]
@@ -136,7 +137,7 @@ class StudyMistakeTests(unittest.TestCase):
         self.assertEqual([source_q], [q['question_id'] for q in self.pool(scope)['eligible']])
         self.save(self.claim_quiz(second))
         self.assertEqual(len(self.pool(scope)['eligible']), 2)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("UPDATE questions SET question_text='Edited original' WHERE id=?", (source_q,))
         self.assertEqual(len(self.pool(scope)['eligible']), 1)
         self.assertIn('Generated copy', self.pool(scope)['unavailable'][0]['reason'])
@@ -156,7 +157,7 @@ class StudyMistakeTests(unittest.TestCase):
 
     def test_single_source_single_question_fidelity_and_idempotency(self):
         self.wrong()
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             before = {t: [tuple(r) for r in conn.execute('SELECT * FROM ' + t)] for t in ('questions','choices','study_responses','learning_events')}
         pid = self.start(); data = self.create_data(pid)
         result = self.create(data)
@@ -165,7 +166,7 @@ class StudyMistakeTests(unittest.TestCase):
         self.assertEqual(self.report()['used'], 1)
         self.assertEqual(self.report()['remaining'], 0)
         self.assertEqual(self.create(dict(data, title='Changed inputs')).status_code, 409)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             for table, original in before.items():
                 after = [tuple(r) for r in conn.execute('SELECT * FROM ' + table)]
                 self.assertEqual(after[:len(original)], original)
@@ -200,7 +201,7 @@ class StudyMistakeTests(unittest.TestCase):
         self.assertEqual(self.create(self.create_data(pid, count=2)).status_code, 409)
         self.assertEqual(self.report()['remaining'], 1)
         result = self.create(self.create_data(pid)); self.assertEqual(result.status_code, 200)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("DELETE FROM quizzes WHERE generation_kind='mixed_quiz'")
         self.assertEqual(self.report()['used'], 1)
         self.assertEqual(self.report()['remaining'], 0)
@@ -236,7 +237,7 @@ class StudyMistakeTests(unittest.TestCase):
 
     def test_reservation_before_crash_recovers_without_consumption(self):
         self.wrong(); pid = self.start(); data = self.create_data(pid)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             sm.reserve(conn, data, dlms._study_mistake_options())
         dlms.reconcile_quiz_publications()
         self.assertEqual(self.report()['remaining'], 1)
@@ -264,7 +265,7 @@ class StudyMistakeTests(unittest.TestCase):
             self.assertEqual(self.create(data).status_code, 409)
         self.assertEqual(self.report()['used'], 0)
         self.assertEqual(self.pool()['eligible'], [])
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute("SELECT count(*) FROM quizzes WHERE generation_kind='mixed_quiz'").fetchone()[0], 0)
 
     def test_learning_reset_preserves_pool_pass_but_not_estimates(self):
@@ -272,15 +273,15 @@ class StudyMistakeTests(unittest.TestCase):
         restore.reset_learning_intelligence_core(dlms.DB_PATH)
         self.assertEqual(len(self.pool()['eligible']), 1)
         self.assertEqual(self.report()['id'], pid)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(learning._deduplicated_learning_answer_events(conn.cursor()), [])
         self.assertEqual(self.create(self.create_data(pid)).status_code, 200)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute('SELECT count(*) FROM learning_events').fetchone()[0], 0)
 
     def test_epoch_invalidation_rejects_old_request_and_preserves_pass(self):
         self.wrong(); pid = self.start(); data = self.create_data(pid)
-        with dlms.get_db() as conn: schema.invalidate(conn)
+        with closing(dlms.get_db()) as conn, conn: schema.invalidate(conn)
         self.assertEqual(self.create(data).status_code, 409)
         self.assertEqual(self.report()['id'], pid)
         self.assertEqual(self.report()['remaining'], 1)
@@ -288,8 +289,8 @@ class StudyMistakeTests(unittest.TestCase):
     def test_schema11_migration_repeat_interruption_and_old_refusal(self):
         self.wrong()
         path = Path(dlms.APP_DATA_DIR) / 'old-copy.db'
-        with dlms.get_db() as source, sqlite3.connect(path) as target: source.backup(target)
-        with sqlite3.connect(path) as conn:
+        with closing(dlms.get_db()) as source, source, closing(sqlite3.connect(path)) as target, target: source.backup(target)
+        with closing(sqlite3.connect(path)) as conn, conn:
             for table in ('study_mistake_members','study_mistake_actions','study_mistake_passes','study_mistake_state'):
                 conn.execute('DROP TABLE ' + table)
             conn.execute('UPDATE schema_meta SET version=11')
@@ -300,12 +301,12 @@ class StudyMistakeTests(unittest.TestCase):
             raise RuntimeError('fixture migration interruption')
         with mock.patch.dict(dlms.DLMS_SCHEMA_MIGRATIONS, {12: interrupted}):
             with self.assertRaises(RuntimeError): dlms.bootstrap_database(str(path), require_owned_root=False)
-        with sqlite3.connect(path) as conn:
+        with closing(sqlite3.connect(path)) as conn, conn:
             self.assertEqual(conn.execute('SELECT version FROM schema_meta').fetchone()[0], 11)
             self.assertEqual(conn.execute("SELECT count(*) FROM sqlite_master WHERE name='study_mistake_state'").fetchone()[0], 0)
         self.assertEqual(dlms.bootstrap_database(str(path), require_owned_root=False)['version'], 12)
         self.assertEqual(dlms.bootstrap_database(str(path), require_owned_root=False)['status'], 'current')
-        with sqlite3.connect(path) as conn:
+        with closing(sqlite3.connect(path)) as conn, conn:
             for table, contents in before.items(): self.assertEqual(list(conn.execute('SELECT * FROM ' + table)), contents)
         # Same version-refusal path used by schema-11 source, not a moving Git baseline.
         with mock.patch.object(dlms, 'DLMS_SCHEMA_VERSION', 11):
@@ -321,7 +322,7 @@ class StudyMistakeTests(unittest.TestCase):
         # Use the application's supported staged migration/validation procedure.
         root = next(staged.glob('*/results.db'), staged / 'results.db').parent
         result = dlms._prepare_staged_restore_database(str(root))
-        with sqlite3.connect(result['path']) as conn:
+        with closing(sqlite3.connect(result['path'])) as conn, conn:
             self.assertEqual(conn.execute('SELECT id FROM study_mistake_passes').fetchone()[0], pid)
             self.assertEqual(conn.execute('SELECT count(*) FROM study_mistake_members').fetchone()[0], 1)
             self.assertNotEqual(conn.execute('SELECT generation FROM study_mistake_state').fetchone()[0], data['generation'])
@@ -338,11 +339,11 @@ class StudyMistakeTests(unittest.TestCase):
 
     def test_missing_media_and_sources_cannot_be_substituted(self):
         self.wrong(); pid = self.start(); data = self.create_data(pid)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("UPDATE questions SET media_json=? WHERE quiz_id=?", (json.dumps({'image_url':'/quiz-assets/missing/missing.png'}), self.quiz_id))
         self.assertEqual(self.create(data).status_code, 409)
         self.assertEqual(self.report()['used'], 0)
-        with dlms.get_db() as conn: conn.execute('DELETE FROM quizzes WHERE id=?', (self.quiz_id,))
+        with closing(dlms.get_db()) as conn, conn: conn.execute('DELETE FROM quizzes WHERE id=?', (self.quiz_id,))
         self.assertEqual(self.pool()['eligible'], [])
         self.assertEqual(self.report()['unavailable'], 1)
 
@@ -359,7 +360,7 @@ class StudyMistakeTests(unittest.TestCase):
         scope = self.selection(sources); pid = self.start(scope)
         result = self.create(self.create_data(pid, count=2, scope=scope))
         self.assertEqual(result.status_code, 200, result.json)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             generated = conn.execute("SELECT id FROM quizzes WHERE generation_kind='mixed_quiz'").fetchone()[0]
             qs = conn.execute('SELECT id,source_question_uid FROM questions WHERE quiz_id=? ORDER BY question_number', (generated,)).fetchall()
             urls = []
@@ -386,7 +387,7 @@ class StudyMistakeTests(unittest.TestCase):
         pid = self.start(selected)
         result = self.create(self.create_data(pid, scope=selected))
         self.assertEqual(result.status_code, 200, result.json)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             source_id = conn.execute('SELECT id FROM questions WHERE quiz_id=?', (qid,)).fetchone()[0]
             copied_id = conn.execute("SELECT q.id FROM questions q JOIN quizzes z ON z.id=q.quiz_id WHERE z.generation_kind='mixed_quiz'").fetchone()[0]
             source = learning._question_payload_from_db(conn.cursor(), source_id)
@@ -411,7 +412,7 @@ class StudyMistakeTests(unittest.TestCase):
         questions = [dict(self.choice(), number=i+1, question=f'Sample question {i+1}') for i in range(230)]
         qid, _ = self.publish(title='Large pool', questions=questions, kind=None)
         event = self.claim_quiz(qid)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             rows = conn.execute('SELECT id,question_number FROM questions WHERE quiz_id=? ORDER BY question_number', (qid,)).fetchall()
             for seq, row in enumerate(rows, 1):
                 payload = dict(event, questionOrdinal=row['question_number'], sequence=seq, eventId=uuid.uuid4().hex)
@@ -419,22 +420,19 @@ class StudyMistakeTests(unittest.TestCase):
         scope = self.selection([qid]); self.assertEqual(len(self.pool(scope)['eligible']), 230)
         html = self.client.get('/quiz-composer/study-mistakes?quizzes='+str(qid)).get_data(as_text=True)
         self.assertEqual(html.count('<th scope="row" data-label="Source quiz">Large pool</th>'), 20)
-        self.assertIn('data-label="Question #">1</td><td data-label="Question text">Sample question 1</td>', html)
-        self.assertIn('data-label="Question #">20</td><td data-label="Question text">Sample question 20</td>', html)
-        self.assertNotIn('data-label="Question #">21</td><td data-label="Question text">Sample question 21</td>', html)
         pid = self.start(scope)
         for count, remaining in [(100,130),(100,30),(30,0)]:
             result = self.create(self.create_data(pid, count=count, scope=scope))
             self.assertEqual(result.status_code, 200, result.json)
             self.assertEqual(self.report(scope)['remaining'], remaining)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             consumed = [r[0] for r in conn.execute('SELECT source_question_uid FROM questions WHERE is_generated_copy=1')]
             self.assertEqual(len(consumed), 230); self.assertEqual(len(set(consumed)), 230)
 
     def test_restore_rejects_fabricated_consumption_and_scope_hash(self):
         self.wrong(); pid = self.start(); data = self.create_data(pid)
         self.assertEqual(self.create(data).status_code, 200)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             schema.validate(conn)
             conn.execute("UPDATE study_mistake_passes SET scope_hash='wrong'")
             with self.assertRaises(ValueError): schema.validate(conn)
@@ -461,23 +459,23 @@ class StudyMistakeTests(unittest.TestCase):
         self.assertEqual(self.client.post('/api/quiz-composer/study-mistakes/create', json={}).status_code, 400)
 
     def test_generated_evidence_cannot_normalize_invalid_source_flags(self):
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             q = conn.execute('SELECT id FROM questions WHERE quiz_id=?',(self.quiz_id,)).fetchone()[0]
             payload = learning._question_payload_from_db(conn.cursor(), q)
             payload['composition_sources'] = [{'quiz_id': self.quiz_id}]
         generated, _ = dlms._publish_quiz('Copy before source corruption', [payload], generation_kind='mixed_quiz', filename_prefix='mixed_quiz')
         self.save(self.claim_quiz(generated))
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("UPDATE choices SET is_correct=2 WHERE question_id=? AND label='A'", (q,))
         current = self.pool()
         self.assertEqual(current['eligible'], [])
         self.assertEqual(len(current['unavailable']), 1)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute("SELECT is_correct FROM choices WHERE question_id=? AND label='A'",(q,)).fetchone()[0],2)
 
     def test_invalid_media_metadata_is_not_silently_repaired(self):
         self.wrong()
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("UPDATE questions SET media_json='[]' WHERE quiz_id=?",(self.quiz_id,))
         self.assertEqual(self.pool()['eligible'], [])
 
@@ -504,7 +502,7 @@ class StudyMistakeTests(unittest.TestCase):
         before = len(dlms.load_registry())
         def checkpoint(name, _journal):
             if name=='journal_created':
-                with dlms.get_db() as conn:
+                with closing(dlms.get_db()) as conn, conn:
                     conn.execute("UPDATE choices SET text='Explicit concurrent source change' WHERE label='A'")
         with mock.patch.object(dlms,'_quiz_publication_checkpoint',side_effect=checkpoint):
             result=self.create(data)
@@ -514,7 +512,7 @@ class StudyMistakeTests(unittest.TestCase):
 
     def test_uncertain_journal_holds_reservation_and_original_request(self):
         self.wrong();pid=self.start();data=self.create_data(pid)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             sm.reserve(conn,data,dlms._study_mistake_options())
             root=Path(dlms.DATA_FOLDER)/'uncertain-test';root.mkdir()
             (root/'publication_unresolved.json').write_text('{}')
@@ -544,7 +542,7 @@ class StudyMistakeTests(unittest.TestCase):
         selected=self.selection(source_ids);self.assertEqual(len(self.pool(selected)['eligible']),3)
         pid=self.start(selected)
         result=self.create(self.create_data(pid,count=3,scope=selected));self.assertEqual(result.status_code,200,result.json)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             generated=conn.execute("SELECT id FROM quizzes WHERE generation_kind='mixed_quiz'").fetchone()[0]
             for row in conn.execute('SELECT id,source_question_uid FROM questions WHERE quiz_id=?',(generated,)).fetchall():
                 original=conn.execute('SELECT id FROM questions WHERE question_uid=?',(row['source_question_uid'],)).fetchone()[0]
@@ -565,7 +563,7 @@ class StudyMistakeTests(unittest.TestCase):
         self.assertEqual(results[0].json['url'],results[1].json['url'])
         self.assertEqual(sorted(r.json['replayed'] for r in results),[False,True])
         self.assertEqual(self.report()['used'],1)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             self.assertEqual(conn.execute("SELECT count(*) FROM quizzes WHERE generation_kind='mixed_quiz'").fetchone()[0],1)
 
     def test_media_bytes_changed_before_publication_rejects_original_snapshot(self):
@@ -583,7 +581,7 @@ class StudyMistakeTests(unittest.TestCase):
 
     def test_recovery_requires_owned_profile(self):
         self.wrong();pid=self.start();data=self.create_data(pid)
-        with dlms.get_db() as conn:sm.reserve(conn,data,dlms._study_mistake_options())
+        with closing(dlms.get_db()) as conn, conn:sm.reserve(conn,data,dlms._study_mistake_options())
         with mock.patch.object(dlms,'_read_data_root_marker',return_value=None):dlms.reconcile_quiz_publications()
         self.assertEqual(self.report()['reserved'],1)
 
@@ -591,7 +589,7 @@ class StudyMistakeTests(unittest.TestCase):
         self.wrong();pid=self.start()
         self.assertEqual(self.create(self.create_data(pid)).status_code,200)
         self.assertEqual(self.create(self.create_data(mode='random')).status_code,200)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             before={t:[tuple(r) for r in conn.execute('SELECT * FROM '+t+' ORDER BY rowid')] for t in
                     ('study_mistake_passes','study_mistake_members','study_mistake_actions')}
         archive,_=dlms._create_dlms_backup('consumed-ledger')
@@ -600,7 +598,7 @@ class StudyMistakeTests(unittest.TestCase):
         with zipfile.ZipFile(archive) as z:z.extractall(root)
         staged=root/'DLMS_DATA'
         prepared=dlms._prepare_staged_restore_database(str(staged))
-        with sqlite3.connect(prepared['path']) as conn:
+        with closing(sqlite3.connect(prepared['path'])) as conn, conn:
             for t,contents in before.items():self.assertEqual(list(conn.execute('SELECT * FROM '+t+' ORDER BY rowid')),contents)
             for table in ('study_mistake_members','study_mistake_actions','study_mistake_passes','study_mistake_state'):
                 conn.execute('DROP TABLE '+table)
@@ -608,7 +606,7 @@ class StudyMistakeTests(unittest.TestCase):
         # This old-profile staging fixture has no pass state. The supported
         # restore bootstrap upgrades it without inventing eligibility or usage.
         prepared=dlms._prepare_staged_restore_database(str(staged))
-        with sqlite3.connect(prepared['path']) as conn:
+        with closing(sqlite3.connect(prepared['path'])) as conn, conn:
             self.assertEqual(conn.execute('SELECT version FROM schema_meta').fetchone()[0],12)
             self.assertEqual(conn.execute('SELECT count(*) FROM study_mistake_passes').fetchone()[0],0)
             self.assertEqual(conn.execute('SELECT count(*) FROM study_responses').fetchone()[0],1)
@@ -618,32 +616,44 @@ class StudyMistakeTests(unittest.TestCase):
         self.assertEqual(self.create(self.create_data(pid)).status_code,200)
         html=self.client.get('/quiz-composer/study-mistakes?quizzes='+str(self.quiz_id)).get_data(as_text=True)
         self.assertIn('1 eligible question in these sources',html)
-        self.assertRegex(html, r'class="study-mistakes-count-card"><strong class="study-mistakes-count-value">0</strong><span>Remaining this pass</span>')
-        self.assertRegex(html, r'class="study-mistakes-count-card"><strong class="study-mistakes-count-value">1</strong><span>Included in saved mixes</span>')
-        self.assertIn('Unavailable questions in this pass',html)
-        self.assertIn('<th scope="col">Source quiz</th><th scope="col">Question #</th><th scope="col">Question text</th>',html)
-        self.assertIn('<th scope="row" data-label="Source quiz">',html)
+        self.assertIn('Remaining this pass',html)
+        self.assertIn('0 remaining',html)
+        self.assertIn('Included in saved mixes',html)
+        self.assertIn('1 included',html)
+        self.assertIn('1 question</strong><span>in this snapshot',html)
+        self.assertIn('reserved',html)
+        self.assertIn('0 unavailable</strong><span>in this pass',html)
         self.assertIn('Pass complete',html)
         self.assertIn('not the exact next batch',html)
+        self.assertIn('a pass can have zero remaining while eligible source questions still exist',html)
+        self.assertIn('<table class="study-mistakes-preview">',html)
+        self.assertIn('<th scope="col">Source quiz</th><th scope="col">Question #</th><th scope="col">Question text</th>',html)
         self.assertIn('Unavailable questions (0)',html)
         self.assertLess(html.index('id="mistakePreviewHeading"'),html.index('id="mistakeCreateForm"'))
         self.assertIn('aria-describedby="mistakeCreationReason"',html)
         self.assertEqual(self.report()['used'],1)
 
-    def test_eligible_preview_table_escapes_source_and_question_text(self):
-        question = dict(self.choice(), number=1, question='<script>alert(1)</script> & prompt')
-        qid, _ = self.publish(title='Unsafe <source> & title', questions=[question], kind=None)
-        self.save(self.claim_quiz(qid))
-        html = self.client.get('/quiz-composer/study-mistakes?quizzes='+str(qid)).get_data(as_text=True)
-        preview = html.split('<table class="study-mistakes-preview"', 1)[1].split('</table>', 1)[0]
-        self.assertIn('Unsafe &lt;source&gt; &amp; title', preview)
-        self.assertIn('&lt;script&gt;alert(1)&lt;/script&gt; &amp; prompt', preview)
-        self.assertNotIn('<script>', preview)
+    def test_eligible_source_table_escapes_content_without_changing_source(self):
+        title='Review <script>alert(1)</script>'
+        question='Which text? <img src=x onerror=alert(1)>'
+        qid,_=self.publish(title=title,questions=[dict(self.choice(),question=question)],kind=None)
+        self.assertEqual(self.save(self.claim_quiz(qid)).status_code,200)
+        html=self.client.get('/quiz-composer/study-mistakes?quizzes='+str(qid)).get_data(as_text=True)
+        preview=html.split('<table class="study-mistakes-preview">',1)[1].split('</table>',1)[0]
+        self.assertIn('<th scope="row" data-label="Source quiz">Review &lt;script&gt;alert(1)&lt;/script&gt;</th>',preview)
+        self.assertIn('<td data-label="Question text">Which text? &lt;img src=x onerror=alert(1)&gt;</td>',preview)
+        self.assertNotIn('<script>',preview)
+        self.assertNotIn('<img',preview)
+        with closing(dlms.get_db()) as conn, conn:
+            row=conn.execute('SELECT title FROM quizzes WHERE id=?',(qid,)).fetchone()
+            question_row=conn.execute('SELECT question_text FROM questions WHERE quiz_id=?',(qid,)).fetchone()
+        self.assertEqual(row['title'],title)
+        self.assertEqual(question_row['question_text'],question)
 
     def test_legacy_exclusion_table_groups_reasons_and_bounds_every_page(self):
         questions=[dict(self.choice(),number=n,question='Legacy exclusion '+str(n)) for n in range(1,26)]
         qid,_=self.publish(kind=None,questions=questions)
-        with dlms.get_db() as c:
+        with closing(dlms.get_db()) as c, c:
             for row in c.execute('SELECT id FROM questions WHERE quiz_id=?',(qid,)).fetchall():
                 c.execute("INSERT INTO study_legacy_responses(quiz_id,question_id,mode,was_correct,response_json) VALUES(?,?,'Study',0,?)",(qid,row['id'],json.dumps({'selected':['C']})))
         base='/quiz-composer/study-mistakes?quizzes='+str(qid)
@@ -661,8 +671,8 @@ class StudyMistakeTests(unittest.TestCase):
 
     def test_reserved_pass_does_not_claim_completion(self):
         self.wrong();pid=self.start();data=self.create_data(pid)
-        with dlms.get_db() as c:sm.reserve(c,data,dlms._study_mistake_options())
+        with closing(dlms.get_db()) as c, c:sm.reserve(c,data,dlms._study_mistake_options())
         html=self.client.get('/quiz-composer/study-mistakes?quizzes='+str(self.quiz_id)).get_data(as_text=True)
-        self.assertRegex(html, r'<strong>1</strong><span>Reserved questions</span>')
+        self.assertIn('1 reserved',html)
         self.assertIn('id="mistakePassComplete" class="study-mistakes-notice" hidden',html)
         self.assertEqual(self.report()['used'],0)

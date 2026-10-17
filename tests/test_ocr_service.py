@@ -23,6 +23,38 @@ class OCRServiceTests(unittest.TestCase):
         (self.tessdata / "eng.traineddata").write_bytes(b"test language data")
         (self.tessdata / "configs").mkdir()
         (self.tessdata / "configs" / "tsv").write_text("tessedit_create_tsv 1\n", encoding="utf-8")
+        if os.name == 'nt':
+            # Windows cannot execute a shebang file. Adapt only this fixture's
+            # own scripts to the native Python PE executable, not OCR runtime
+            # discovery or production argv/environment policy. The Popen owns
+            # that interpreter directly, so cancellation/timeout still exercise
+            # real native child termination without a surviving wrapper child.
+            real_popen = ocr.subprocess.Popen
+            self.native_children = []
+
+            def launch_fixture(command, *args, **kwargs):
+                if isinstance(command, (list, tuple)) and command:
+                    path = Path(command[0]).resolve()
+                    if path.is_relative_to(self.root.resolve()) and path.is_file():
+                        prefix = path.read_bytes().splitlines()[0]
+                        if prefix == ('#!' + sys.executable).encode('utf-8'):
+                            command = [sys.executable, *command]
+                process = real_popen(command, *args, **kwargs)
+                self.native_children.append(process)
+                return process
+
+            patcher = mock.patch.object(ocr.subprocess, 'Popen', side_effect=launch_fixture)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+            self.addCleanup(self._assert_native_children_stopped)
+
+    def _assert_native_children_stopped(self):
+        survivors = [child for child in self.native_children if child.poll() is None]
+        for child in survivors:
+            # Retained Popen handles belong only to this synthetic test.
+            child.kill()
+            child.wait(timeout=5)
+        self.assertEqual(survivors, [], 'OCR left a native fixture process running')
 
     def tearDown(self):
         self.temp.cleanup()

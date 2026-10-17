@@ -1,4 +1,5 @@
 import io
+import os
 import hashlib
 import plistlib
 import stat
@@ -874,6 +875,10 @@ class ReleasePackageVerificationTests(unittest.TestCase):
         self.assertIn("requires canonical native artifact name", mismatch.stderr)
         self.assertFalse(output.exists())
 
+    @unittest.skipIf(os.name == 'nt', 'POSIX executable permission bits cannot be constructed with Windows chmod; Windows PE validation remains in this suite')
+    def test_single_target_packaging_rejects_nonexecutable_linux_artifact(self):
+        staging = self.make_staged_artifacts()
+        output = self.root / "single-nonexecutable"
         linux_artifact = staging / f"DLMS-{VERSION}-fedora44-x86_64"
         linux_artifact.chmod(0o644)
         invalid = subprocess.run(
@@ -977,6 +982,17 @@ class ReleasePackageVerificationTests(unittest.TestCase):
             executable.relative_to(extraction_root).as_posix(),
             f"DLMS-{VERSION}-fedora44-x86_64/DLMS-{VERSION}-fedora44-x86_64",
         )
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX executable mode propagation; Windows PE package verification remains in this suite')
+    def test_clean_extraction_preserves_linux_executable_mode(self):
+        package = self.make_linux("fedora44-x86_64")
+        spec = PACKAGE_VERIFIER.expected_packages(VERSION)[package.name]
+        extraction_root = self.root / "linux-executable-mode"
+        PACKAGE_VERIFIER._extract_final_package(package, spec, extraction_root)
+        executable, errors = PACKAGE_VERIFIER.verify_extracted_release_package(
+            package, extraction_root, spec, ROOT
+        )
+        self.assertEqual(errors, [])
         self.assertTrue(executable.stat().st_mode & stat.S_IXUSR)
 
     def test_macos_clean_extraction_requires_root_app_and_validates_bundle(self):

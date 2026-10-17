@@ -1,0 +1,54 @@
+name: Desktop contracts (no publishing)
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'desktop_assets/**'
+      - 'windows_webview2/**'
+      - 'app.py'
+      - 'dlms/**'
+      - 'templates/**'
+      - 'static/**'
+      - 'init.sql'
+      - 'requirements*.txt'
+      - 'tools/run_consolidation_checks.py'
+      - 'tests/**'
+      - 'package_*/**'
+      - '.github/workflows/desktop-contracts.yml'
+permissions:
+  contents: read
+jobs:
+  linux-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - run: python -m pip install -r requirements-test.txt -r package_fedora/requirements-build-lock.txt
+      - run: python -m pip check
+      - name: Application and read-only platform contracts
+        run: python tools/run_consolidation_checks.py application --basetemp "$RUNNER_TEMP/dlms/application"
+      - name: Isolated Qt contract groups
+        run: python tools/run_consolidation_checks.py desktop-linux --basetemp "$RUNNER_TEMP/dlms/linux"
+      - name: Portable WebView2 controller contracts
+        run: python tools/run_consolidation_checks.py windows-portable --basetemp "$RUNNER_TEMP/dlms/windows-portable"
+  windows-adapters:
+    # SDK/native renderer/frozen acceptance is a separate, explicit handoff.
+    # This job validates Python Windows file/process adapters, not native GUI.
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - run: python -m pip install -r package_windows_webview2/requirements-build-lock.txt
+      - run: python -m pip check
+      - name: Windows file, ownership and ordinary-application contracts
+        run: python -m pytest -q -p no:cacheprovider tests/windows/test_native.py tests/windows/test_reserved_paths.py tests/windows/test_restore_connection.py tests/webview2/test_ai_contract.py tests/webview2/test_backup_chooser.py

@@ -258,12 +258,13 @@ def law_import_case_packet(dependencies):
     save_message_category = ""
 
     if request.method == "POST":
-        raw_packet = request.form.get("raw_packet", "").strip()
+        # Validation may ignore surrounding whitespace; saved raw text must not.
+        raw_packet = request.form.get("raw_packet", "")
         action = request.form.get("action", "preview")
 
-        packet_submitted = bool(raw_packet)
+        packet_submitted = bool(raw_packet.strip())
 
-        if raw_packet:
+        if packet_submitted:
             line_count = len(raw_packet.splitlines())
             char_count = len(raw_packet)
 

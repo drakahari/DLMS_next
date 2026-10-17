@@ -172,6 +172,36 @@ class ContentPackImportReviewTemplateTests(unittest.TestCase):
             'action="/content-packs/import/blocked-token/cancel"', page
         )
 
+    def test_same_id_install_refusal_is_visible_on_review_without_replacement(self):
+        from dlms.services.content_pack_mutations import ContentPackInstallError
+
+        metadata = self._metadata()
+        with mock.patch.object(
+            dlms,
+            "_install_staged_content_pack",
+            side_effect=ContentPackInstallError(
+                ValueError("a Study Pack with id 'sample' is already installed"), metadata
+            ),
+        ), mock.patch.object(
+            dlms,
+            "_load_staged_content_pack",
+            return_value=("stage", "pack", metadata),
+        ), mock.patch.object(
+            dlms, "_validate_staged_content_pack", return_value=self._report()
+        ):
+            response = self.client.post(
+                "/content-packs/import/review-token/install",
+                data={"confirm_install": "yes"},
+                headers={"X-CSRFToken": csrf_token(self.client)},
+                follow_redirects=True,
+            )
+        self.assertEqual(200, response.status_code)
+        page = response.get_data(as_text=True)
+        self.assertIn('class="flash error" role="alert"', page)
+        self.assertIn("A Study Pack with this ID is already installed.", page)
+        self.assertIn("Import does not replace installed packs", page)
+        self.assertIn("existing content and generated quizzes were left unchanged", page)
+
     def test_ai_review_preserves_workflow_steps_corrections_and_return_target(self):
         correction = "DLMS safely randomized the choices for 25 questions."
         metadata = self._metadata(

@@ -132,7 +132,7 @@ def set_value(browser, selector, value):
 
 
 def click_image(browser, selector, x, y):
-    browser.evaluate(f"(() => {{const e=document.querySelector({json.dumps(selector)}),r=e.getBoundingClientRect();e.dispatchEvent(new MouseEvent('click',{{bubbles:true,clientX:r.left+r.width*{x},clientY:r.top+r.height*{y}}}));return true;}})()")
+    browser.evaluate(f"(() => {{const e=document.querySelector({json.dumps(selector)}),r=e.getBoundingClientRect();e.dispatchEvent(new MouseEvent('click',{{bubbles:true,detail:1,clientX:r.left+r.width*{x},clientY:r.top+r.height*{y}}}));return true;}})()")
 
 
 def prepare(browser, item, metadata, data_root):
@@ -225,5 +225,6 @@ def prepare(browser, item, metadata, data_root):
         browser.wait_for('index === 1')
         browser.navigate(browser.evaluate('location.origin') + '/')
         browser.wait_for("document.querySelector('.daily-review-item .daily-review-remove')")
+        browser.evaluate("(()=>{const control=document.querySelector('.daily-review-item .daily-review-remove');const details=control?.closest('details');if(details)details.open=true;return true})()")
         browser.click('.daily-review-item .daily-review-remove')
         browser.wait_for("document.querySelector('#dailyReviewClearDialog[open]')")

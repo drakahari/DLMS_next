@@ -35,6 +35,11 @@
     function canonical(scope) {
         return JSON.stringify({folders: [...new Set(scope.folders)].sort(unicodeOrder), quizzes: [...new Set(scope.quizzes)].sort((a,b) => a-b)});
     }
+    function samePayload(a, b) {
+        const stable = value => Array.isArray(value) ? value.map(stable) :
+            value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
+        return JSON.stringify(stable(a)) === JSON.stringify(stable(b));
+    }
     function selection() { return {folders: [...pickedFolders], quizzes: [...pickedQuizzes]}; }
     function changed() { return canonical(selection()) !== canonical(data.scope); }
     try {
@@ -51,7 +56,12 @@
     }
     form.addEventListener('input', saveDraft);
     let pending = null, busy = false, completed = false, freshCounts = true, recoveryCleared = true;
-    try { pending = JSON.parse(sessionStorage.getItem(key)); } catch (_error) { /* No saved request. */ }
+    let desktopContext = null, desktopChecked = false, desktopBlocked = false;
+    // Desktop WebEngine does not retain sessionStorage across a clean process
+    // restart. Keep the immutable retry request in this profile's localStorage.
+    try { pending = JSON.parse(localStorage.getItem(key)); } catch (_error) { /* No saved request. */ }
+    const browserRecord = pending;
+    if (browserRecord?.context && browserRecord?.payload) pending = browserRecord.payload;
 
     function sync() {
         if (!context.isConnected) return;
@@ -59,15 +69,15 @@
         document.getElementById('mistakeSelectionChanged').hidden = !stale;
         document.getElementById('studyMistakeResults').hidden = stale || !freshCounts;
         document.getElementById('studyMistakeExclusions').hidden = stale || !freshCounts;
-        create.disabled = stale || completed || busy || !!pending || !freshCounts || (random ? !data.eligible : !data.pass_id || !data.remaining);
-        start.disabled = !recoveryCleared || stale || busy || !!pending || !freshCounts || !data.eligible || !!data.reserved;
+        create.disabled = !desktopChecked || desktopBlocked || stale || completed || busy || !!pending || !freshCounts || (random ? !data.eligible : !data.pass_id || !data.remaining);
+        start.disabled = !desktopChecked || desktopBlocked || !recoveryCleared || stale || busy || !!pending || !freshCounts || !data.eligible || !!data.reserved;
         start.textContent = data.pass_id ? 'Start new pass' : 'Start pass';
         count.disabled = !random && !!data.pass_id && !data.remaining;
-        retry.hidden = !pending;
-        retry.disabled = busy;
+        retry.hidden = !pending || desktopBlocked;
+        retry.disabled = busy || desktopBlocked;
         next.hidden = !completed || !freshCounts || !recoveryCleared || stale || (random ? !data.eligible : !data.remaining);
         next.disabled = busy;
-        scopeForm.querySelector('[type=submit]').disabled = !recoveryCleared || busy || !!pending;
+        scopeForm.querySelector('[type=submit]').disabled = !desktopChecked || desktopBlocked || !recoveryCleared || busy || !!pending;
         let reason = '';
         if (stale) reason = 'Selection changed. Check Study mistakes before starting a pass or creating a quiz.';
         else if (pending) reason = 'Retry the retained request; its original sources and questions stay unchanged.';
@@ -141,6 +151,52 @@
         if (!response.ok) { change.hidden = !result.can_change_request; throw new Error(result.error || 'The request failed. Keep the selection and retry.'); }
         return result;
     }
+    async function desktopCall(path, envelope) {
+        const response = await fetch('/_desktop/request/' + path, {
+            method: 'POST', headers: {'Content-Type': 'application/json', 'X-DLMS-Recovery-Client': '1',
+                'X-CSRFToken': window.dlmsCsrfToken || document.querySelector('[name=csrf-token]')?.content || ''},
+            body: JSON.stringify(envelope), cache: 'no-store'});
+        const value = await response.json();
+        if (!response.ok) throw new Error(value.error || 'The Desktop request needs inspection.');
+        return value;
+    }
+    function envelope() { return {kind: 'study_mistakes', payload: pending, context: desktopContext}; }
+    async function checkDesktopRecovery() {
+        try {
+            const capability = await fetch('/_desktop/request/context', {headers: {'X-DLMS-Recovery-Client': '1'}, cache: 'no-store'});
+            if (capability.status === 404) return;
+            if (!capability.ok) throw new Error('Desktop recovery context is unavailable.');
+            desktopContext = (await capability.json()).context;
+            const response = await fetch('/_desktop/request/list', {headers: {'X-DLMS-Recovery-Client': '1'}, cache: 'no-store'});
+            if (!response.ok) throw new Error('Accepted Desktop requests cannot be checked.');
+            const records = (await response.json()).records.filter(item => item.kind === 'study_mistakes');
+            let browserPayload = browserRecord;
+            if (browserRecord && Object.hasOwn(browserRecord, 'context')) {
+                if (!samePayload(browserRecord.context, desktopContext)) throw new Error('Browser creation evidence belongs to another Desktop dataset; it was not replayed.');
+                browserPayload = browserRecord.payload;
+            } else if (browserRecord && !records.length) {
+                // Block A stored the immutable payload before Desktop epochs
+                // were bound to browser evidence. Check server authority first,
+                // then require a deliberate same-ID adoption in this profile.
+                const old = {kind: 'study_mistakes', payload: browserRecord, context: desktopContext};
+                const checked = await desktopCall('status', old);
+                if (checked.state !== 'absent' && checked.state !== 'committed')
+                    throw new Error(`Older request is ${checked.state}; it was not relabeled or replayed.`);
+                if (checked.state === 'absent' && !confirm('This older Study mistakes request has no Desktop epoch tag. Current sources match. Retry this exact request ID and selection in this disposable profile?'))
+                    throw new Error('Older request remains untouched until you choose its exact-ID recovery.');
+                localStorage.setItem(key, JSON.stringify({context: desktopContext, payload: browserRecord}));
+            }
+            if (records.length > 1 || (records.length && browserPayload && !samePayload(records[0].payload, browserPayload)))
+                throw new Error('Multiple or conflicting recovery requests need inspection. No request was replayed.');
+            pending = records.length ? records[0].payload : browserPayload;
+        } catch (error) {
+            desktopBlocked = true; status.textContent = error.message + ' Saved data was not changed.';
+        } finally {
+            desktopChecked = true;
+            if (pending && !desktopBlocked) status.textContent = `A retained creation request for “${pending.title}” needs confirmation. Retry its original ID before creating another mix.`;
+            sync();
+        }
+    }
     async function refreshCounts() {
         const url = new URL(location.href);
         url.searchParams.delete('folders'); url.searchParams.delete('quizzes');
@@ -169,16 +225,29 @@
         catch (error) { freshCounts = false; refreshMessage.textContent = `${error.message} Your saved quiz remains confirmed. Use Refresh counts or reload; do not create a replacement for it.`; refreshButton.hidden = false; }
     }
     async function send() {
-        if (busy || !pending) return;
+        if (busy || !pending || desktopBlocked || !desktopChecked) return;
         busy = true; sync(); status.textContent = 'Creating your saved mix…';
         let result;
-        try { result = await post('/api/quiz-composer/study-mistakes/create', pending); }
+        try {
+            if (desktopContext) {
+                const original = envelope();
+                const current = await desktopCall('status', original);
+                if (current.state === 'committed') result = {url: current.url, title: pending.title};
+                else if (current.state === 'absent' || current.state === 'retryable') result = await desktopCall('action', original);
+                else throw new Error(`Original request is ${current.state}. Keep this evidence and check Quiz Library before retrying.`);
+                try { await desktopCall('ack', original); }
+                catch (error) { recoveryCleared = false; status.textContent = `Quiz saved, but Desktop recovery cleanup failed: ${error.message}`; }
+            } else result = await post('/api/quiz-composer/study-mistakes/create', pending);
+        }
         catch (error) { status.textContent = `${error.message} Retry same request keeps its original selection and name.`; busy = false; sync(); return; }
         // A known acknowledgement is never turned into a failed publication by a display-refresh error.
         status.textContent = `${result.title} is saved in Quiz Library as a Mixed Quiz.`;
         open.href = result.url; open.hidden = false;
-        pending = null; completed = true; change.hidden = true;
-        try { sessionStorage.removeItem(key); } catch (_error) { recoveryCleared = false; }
+        if (recoveryCleared) {
+            pending = null;
+            try { localStorage.removeItem(key); } catch (_error) { recoveryCleared = false; }
+        }
+        completed = true; change.hidden = true;
         saveDraft(); freshCounts = false; refreshMessage.textContent = 'Updating saved counts…'; sync(); await updateCounts();
         if (!recoveryCleared) refreshMessage.textContent += ' Browser request recovery could not be cleared; reload before preparing another quiz.';
         busy = false; sync();
@@ -189,8 +258,8 @@
         saveDraft();
         pending = {request_id: data.request_id, generation: data.generation, scope: data.scope, fingerprint: data.fingerprint,
             mode: mode.value, count: Number(count.value), title: title.value, pass_id: mode.value === 'random' ? null : data.pass_id};
-        try { sessionStorage.setItem(key, JSON.stringify(pending)); }
-        catch (_error) { pending = null; status.textContent = 'Browser request recovery is unavailable. Enable session storage before creating a mix.'; sync(); return; }
+        try { localStorage.setItem(key, JSON.stringify(desktopContext ? {context: desktopContext, payload: pending} : pending)); }
+        catch (_error) { pending = null; status.textContent = 'Browser request recovery is unavailable. Enable browser storage before creating a mix.'; sync(); return; }
         send();
     });
     retry.addEventListener('click', send);
@@ -198,7 +267,7 @@
     refreshButton.addEventListener('click', async () => { if (busy) return; busy = true; sync(); await updateCounts(); busy = false; sync(); });
     change.addEventListener('click', () => {
         if (busy || change.hidden || !confirm('Change this rejected request? Only this creation request will be cleared. Saved quizzes, answers and passes stay unchanged.')) return;
-        pending = null; sessionStorage.removeItem(key); saveDraft(); location.reload();
+        pending = null; localStorage.removeItem(key); saveDraft(); location.reload();
     });
     start.addEventListener('click', async () => {
         if (start.disabled || changed() || busy || pending) return;
@@ -210,5 +279,5 @@
     mode.addEventListener('change', () => { if (mode.value === 'random' && !count.value && data.eligible) count.value = Math.min(20, data.eligible); saveDraft(); sync(); });
     if (pending) status.textContent = `A retained creation request for “${pending.title}” needs an acknowledgement. Retry it before creating another mix; its original sources will not change.`;
     browse.value = pickedFolders.size ? 'selected' : 'all';
-    renderBrowse(); sync();
+    renderBrowse(); sync(); checkDesktopRecovery();
 })();

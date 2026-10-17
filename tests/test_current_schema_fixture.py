@@ -194,6 +194,9 @@ class CurrentSchemaFixtureTests(unittest.TestCase):
                 "test_database_bootstrap.py",
                 "test_history_api_pagination.py",
                 "test_restore_migration.py",
+                # Only the retained(id) reader-handle probe is deliberately
+                # minimal; reset/application workflow cases use the full schema.
+                "test_windows_reset_integrity.py",
             },
             schema_owners,
         )

@@ -13,3 +13,8 @@
 
 # Final-package text assets use stable bytes across checkout platforms.
 /release_assets/*.txt text eol=lf
+
+# A unified diff's blank context line is one mandatory space. Check its added
+# source lines and exact publication tree separately in the CI patch validator.
+# Do not extend this exception to source files or other patches/reports.
+/reports/private-consolidation/PROPOSED.patch -whitespace

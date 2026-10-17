@@ -23,7 +23,8 @@ def test_study_save_requires_the_matching_server_acknowledgement():
     save = _function_block(source, "saveStudyLearningEvent")
 
     assert "async function saveStudyLearningEvent" in save
-    assert 'await studyFetch("/api/learning-events/study-response"' in save
+    assert 'persistDesktopOrWebAction("study", record.payload,' in save
+    assert '"/api/learning-events/study-response", studyFetch)' in save
     assert "!response.ok" in save
     assert "data.ok !== true" in save
     assert 'String(data.event_id || "") !== record.eventId' in save
@@ -56,7 +57,9 @@ def test_retry_reuses_failed_event_identity_and_success_clears_the_warning_state
     record = _function_block(source, "recordStudyLearningEvent")
 
     assert "failed.map(record => startStudyLearningEventSave(record, true))" in retry
-    assert "body: JSON.stringify(record.payload)" in save
+    helper = _function_block(source, "persistDesktopOrWebAction")
+    assert "body: JSON.stringify(payload)" in helper
+    assert "body: JSON.stringify({kind, payload, fingerprint: quizContentFingerprint})" in helper
     assert "studyLearningEventSaves.delete(record.eventId)" in save
     assert "updateStudyLearningEventStatus()" in save
     assert "eventId: eventId" in record

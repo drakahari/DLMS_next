@@ -32,6 +32,7 @@ class ContentPackRouteDependencies:
     invalid_content_pack_folder_error: Dependency
     content_pack_folder_not_found_error: Dependency
     protected_content_pack_error: Dependency
+    pack_receipt: Dependency | None = None
 
 
 def _bind_dependencies(view_func, dependencies):
@@ -85,7 +86,11 @@ def content_pack_import_review(dependencies, token):
         metadata["report"] = report
     except Exception as exc:
         print(f"[CONTENT PACK REVIEW ERROR] {type(exc).__name__}: {exc}")
-        flash("The Study Pack validation session is unavailable or expired.", "error")
+        receipt = dependencies.pack_receipt(token) if dependencies.pack_receipt else None
+        if receipt:
+            flash(f"This Study Pack installation already committed as '{receipt['name']}'. No second copy was created. The pack may have been changed or removed since then.", "success")
+        else:
+            flash("The Study Pack validation session is unavailable or expired.", "error")
         return redirect("/content-packs")
 
     ai_workflow = _content_pack_workflow(metadata) == CONTENT_PACK_AI_WORKFLOW
@@ -124,7 +129,9 @@ def content_pack_import_install(dependencies, token):
             return redirect(url_for("content_packs.content_pack_import_review", token=token))
         pack_id = result["pack_id"]
         installed = result["installed"]
-        flash(f"Installed Study Pack '{installed.get('name') or pack_id}' successfully.", "success")
+        flash((f"This Study Pack installation already completed as '{installed.get('name') or pack_id}'. No second copy was created."
+               if result.get("replayed") else
+               f"Installed Study Pack '{installed.get('name') or pack_id}' successfully."), "success")
         if _content_pack_workflow(metadata) == CONTENT_PACK_AI_WORKFLOW:
             return redirect(url_for("study_packs.study_packs_home", installed=pack_id))
         return redirect("/content-packs")
@@ -137,7 +144,13 @@ def content_pack_import_install(dependencies, token):
         else:
             exc = install_error
         print(f"[CONTENT PACK INSTALL ERROR] {type(exc).__name__}: {exc}")
-        flash("The Study Pack was not installed. Existing installed content was left unchanged.", "error")
+        if isinstance(exc, ValueError) and "is already installed" in str(exc):
+            flash(
+                "A Study Pack with this ID is already installed. Import does not replace installed packs; existing content and generated quizzes were left unchanged.",
+                "error",
+            )
+        else:
+            flash("The Study Pack was not installed. Existing installed content was left unchanged.", "error")
         try:
             _load_staged_content_pack(token)
             return redirect(url_for("content_packs.content_pack_import_review", token=token))

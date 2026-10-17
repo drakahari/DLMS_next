@@ -1,0 +1,182 @@
+[
+  {
+    "file": "altgraph-0.17.5-py2.py3-none-any.whl",
+    "bytes": 21228,
+    "sha256": "f3a22400bce1b0c701683820ac4f3b159cd301acab067c51c653e06961600597"
+  },
+  {
+    "file": "blinker-1.9.0-py3-none-any.whl",
+    "bytes": 8458,
+    "sha256": "ba0efaa9080b619ff2f3459d1d500c57bddea4a6b424b60a91141db6fd2f08bc"
+  },
+  {
+    "file": "cached_property-2.0.1-py3-none-any.whl",
+    "bytes": 7428,
+    "sha256": "f617d70ab1100b7bcf6e42228f9ddcb78c676ffa167278d9f730d1c2fba69ccb"
+  },
+  {
+    "file": "chevron-0.14.0-py3-none-any.whl",
+    "bytes": 11595,
+    "sha256": "fbf996a709f8da2e745ef763f482ce2d311aa817d287593a5b990d6d6e4f0443"
+  },
+  {
+    "file": "click-8.5.0-py3-none-any.whl",
+    "bytes": 125251,
+    "sha256": "255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360"
+  },
+  {
+    "file": "colorama-0.4.6-py2.py3-none-any.whl",
+    "bytes": 25335,
+    "sha256": "4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6"
+  },
+  {
+    "file": "flask-3.1.3-py3-none-any.whl",
+    "bytes": 103424,
+    "sha256": "f4bcbefc124291925f1a26446da31a5178f9483862233b23c0c96a20701f670c"
+  },
+  {
+    "file": "flask_wtf-1.3.0-py3-none-any.whl",
+    "bytes": 13959,
+    "sha256": "dc5e3a4ce97f75c47bf6c1c72ad2c3b7bdf579a2ed13aebcc5d3d81fe2571160"
+  },
+  {
+    "file": "frozendict-2.4.7-py3-none-any.whl",
+    "bytes": 16264,
+    "sha256": "972af65924ea25cf5b4d9326d549e69a9a4918d8a76a9d3a7cd174d98b237550"
+  },
+  {
+    "file": "genanki-0.13.1-py3-none-any.whl",
+    "bytes": 16177,
+    "sha256": "65b59434008588a1213b940474d1aca8cca83243af6fc0e26200b560efe4d9e3"
+  },
+  {
+    "file": "iniconfig-2.3.1-py3-none-any.whl",
+    "bytes": 7552,
+    "sha256": "9121e2c1fdb355232495be3194c8dfe87ccc2d5dee45947b78e68f499790d7a7"
+  },
+  {
+    "file": "itsdangerous-2.2.0-py3-none-any.whl",
+    "bytes": 16234,
+    "sha256": "c6242fc49e35958c8b15141343aa660db5fc54d4f13a1db01a3f5891b98700ef"
+  },
+  {
+    "file": "jinja2-3.1.6-py3-none-any.whl",
+    "bytes": 134899,
+    "sha256": "85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67"
+  },
+  {
+    "file": "markupsafe-3.0.3-cp314-cp314-win_amd64.whl",
+    "bytes": 15341,
+    "sha256": "bdc919ead48f234740ad807933cdf545180bfbe9342c2bb451556db2ed958581"
+  },
+  {
+    "file": "packaging-26.3-py3-none-any.whl",
+    "bytes": 129956,
+    "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c"
+  },
+  {
+    "file": "pefile-2024.8.26-py3-none-any.whl",
+    "bytes": 74766,
+    "sha256": "76f8b485dcd3b1bb8166f1128d395fa3d87af26360c2358fb75b80019b957c6f"
+  },
+  {
+    "file": "pillow-12.3.0-cp314-cp314-win_amd64.whl",
+    "bytes": 7237707,
+    "sha256": "fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d"
+  },
+  {
+    "file": "pip-26.2-py3-none-any.whl",
+    "bytes": 1816475,
+    "sha256": "931c303696af6fa3417112103b1cad26890e5a07eccb5b99783700e33f2b8aad"
+  },
+  {
+    "file": "pluggy-1.7.0-py3-none-any.whl",
+    "bytes": 27082,
+    "sha256": "7dd7b0d8832ba3cb632c306926ded123429211b83641b35dc5c41ad2d34f9bec"
+  },
+  {
+    "file": "pygments-2.21.0-py3-none-any.whl",
+    "bytes": 1250147,
+    "sha256": "2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9"
+  },
+  {
+    "file": "pyinstaller-6.22.2-py3-none-win_amd64.whl",
+    "bytes": 1405725,
+    "sha256": "9b990fa6bbe143572f06644a984ad0d7aa2e2ccc6929d4916031343a5888e9a7"
+  },
+  {
+    "file": "pyinstaller_hooks_contrib-2026.7-py3-none-any.whl",
+    "bytes": 459445,
+    "sha256": "24257a04c7a5a7a034cf28e39dcee20fbeeb9f043076729480f2e1b69904408a"
+  },
+  {
+    "file": "pypdf-6.20.1-py3-none-any.whl",
+    "bytes": 402665,
+    "sha256": "aa5a55ddcffdc5e5ab291d5decb23f6383f4e56f8e3263dc39af41fff03885ad"
+  },
+  {
+    "file": "pypdfium2-5.14.0-py3-none-win_amd64.whl",
+    "bytes": 3947280,
+    "sha256": "149fd5c6397b8df8bf7911a93506eff0be874f877afe7ac936cf5d37d21a6a06"
+  },
+  {
+    "file": "pyside6-6.11.2-cp310-abi3-win_amd64.whl",
+    "bytes": 578382,
+    "sha256": "3201d67e3c10be2eaedd3910ff0f02351eca7e88c95a291cde5e7f2f55ef207f"
+  },
+  {
+    "file": "pyside6_addons-6.11.2-cp310-abi3-win_amd64.whl",
+    "bytes": 168208836,
+    "sha256": "f449ea4431da20e7b86752cca8d166f93434516fe417f981c27e5f8e1b554407"
+  },
+  {
+    "file": "pyside6_essentials-6.11.2-cp310-abi3-win_amd64.whl",
+    "bytes": 76913043,
+    "sha256": "c8a29def77032773a30879f7f24415b5395ad08592d147c170824ef4c735dfc1"
+  },
+  {
+    "file": "pytest-9.1.1-py3-none-any.whl",
+    "bytes": 386536,
+    "sha256": "37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c"
+  },
+  {
+    "file": "pywin32_ctypes-0.2.3-py3-none-any.whl",
+    "bytes": 30756,
+    "sha256": "8a1513379d709975552d202d942d9837758905c8d01eb82b8bcc30918929e7b8"
+  },
+  {
+    "file": "pyyaml-6.0.3-cp314-cp314-win_amd64.whl",
+    "bytes": 156429,
+    "sha256": "4a2e8cebe2ff6ab7d1050ecd59c25d4c8bd7e6f400f5f82b96557ac0abafd0ac"
+  },
+  {
+    "file": "setuptools-84.0.0-py3-none-any.whl",
+    "bytes": 818216,
+    "sha256": "51a52592b3b99e102b609654876bd65f19f999935166d1352678931132b0c670"
+  },
+  {
+    "file": "shiboken6-6.11.2-cp310-abi3-win_amd64.whl",
+    "bytes": 1226578,
+    "sha256": "6ab0eba1c904455df621f9a6df3ca2bb896bab8670572d2bc4e37804ae91f19a"
+  },
+  {
+    "file": "tzdata-2026.5-py2.py3-none-any.whl",
+    "bytes": 347996,
+    "sha256": "b683bd1b6659ddcd810ff02ad09ba821d4bf1065072805063eb35c49617905ac"
+  },
+  {
+    "file": "waitress-3.0.2-py3-none-any.whl",
+    "bytes": 56232,
+    "sha256": "c56d67fd6e87c2ee598b76abdd4e96cfad1f24cacdea5078d382b1f9d7b5ed2e"
+  },
+  {
+    "file": "werkzeug-3.1.9-py3-none-any.whl",
+    "bytes": 228700,
+    "sha256": "6392e50c78460ba618e5b21f08a71f59c99ce99cdc6cf6e3dd7e6ccca8754fab"
+  },
+  {
+    "file": "wtforms-3.2.2-py3-none-any.whl",
+    "bytes": 158656,
+    "sha256": "72b90d5d921bd3119252069cf0301e9c13915f9e52792652bc91c5dda4b79e56"
+  }
+]

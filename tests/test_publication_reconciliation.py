@@ -2,6 +2,7 @@
 import json
 import os
 import shutil
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -125,8 +126,15 @@ class PublicationReconciliationTests(unittest.TestCase):
                 self._assert_rolled_back()
 
     def test_crash_after_database_commit_before_journal_transition_rolls_back(self):
+        committed_connections = []
+
         def commit_then_crash(connection):
             connection.commit()
+            committed_connections.append(connection)
+            # Simulate process death, which closes its OS handles. Raising a
+            # BaseException in-process alone leaves SQLite's connection cycle
+            # alive and invalidates the next Windows fixture reset.
+            connection.close()
             raise SimulatedCrash("after database commit")
 
         with mock.patch.object(
@@ -138,6 +146,10 @@ class PublicationReconciliationTests(unittest.TestCase):
                     self._questions(),
                     filename_prefix="committed_crash",
                 )
+
+        self.assertEqual(len(committed_connections), 1)
+        with self.assertRaises(sqlite3.ProgrammingError):
+            committed_connections[0].execute('SELECT 1')
 
         self.assertEqual(1, len(self._db_quiz_ids()))
         self.assertEqual(1, len(self._journal_files()))
@@ -421,7 +433,12 @@ class PublicationReconciliationTests(unittest.TestCase):
         outside.write_text("protected", encoding="utf-8")
         self.addCleanup(lambda: outside.unlink(missing_ok=True))
         target = Path(dlms.DATA_FOLDER) / record["artifacts"]["json"]["name"]
-        target.symlink_to(outside)
+        try:
+            target.symlink_to(outside)
+        except OSError as exc:
+            if os.name == 'nt' and exc.winerror == 1314:
+                self.skipTest('Windows symlink privilege unavailable; native junction/profile refusal is covered in tests/windows/test_native.py')
+            raise
         path = self._write_journal(record)
         report = dlms.reconcile_quiz_publications()
         self.assertEqual(1, report["unsafe"])

@@ -181,7 +181,7 @@
 {% if messages %}
 <div class="pdf-import-flash-stack">
 {% for category, message in messages %}
-<div class="flash {{ category }}">{{ message }}</div>
+<div class="flash {{ category }}" role="{{ 'alert' if category == 'error' else 'status' }}">{{ message }}</div>
 {% endfor %}
 </div>
 {% endif %}

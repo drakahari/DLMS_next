@@ -529,6 +529,11 @@ def coordinate_profile_snapshot():
         "maintenance.reset_all_data", "maintenance.remove_all_dlms_data",
         "maintenance.wipe_database", "study.delete_history",
     }
+    if os.environ.get("DLMS_DESKTOP_PROFILE") and request.endpoint in {
+        "quiz.confirm_portable_quiz_bundle", "quiz.cancel_portable_quiz_bundle",
+        "content_packs.content_pack_import_install", "content_packs.content_pack_import_cancel"
+    }:
+        exclusive = True
     permit = _profile_snapshot.access(APP_DATA_DIR, exclusive=exclusive)
     permit.__enter__()
     g._dlms_snapshot_permit = permit
@@ -1319,11 +1324,22 @@ def _reconcile_quiz_publication_journal(journal_path):
         remove_journal=_remove_quiz_publication_journal,
         update_journal=_update_quiz_publication_journal,
         rollback_publication=_rollback_recorded_quiz_publication,
+        managed_outcome=_record_desktop_import_outcome,
         open_file=open,
         json_module=json,
         islink=os.path.islink,
         print_message=print,
     )
+
+
+def _record_desktop_import_outcome(journal, outcome, paths):
+    """Only the isolated Desktop profile has a managed-import operation store."""
+    if journal.get("desktop_import") is None:
+        return
+    if not os.environ.get("DLMS_DESKTOP_PROFILE"):
+        raise RuntimeError("Desktop import publication cannot be reconciled outside its profile")
+    from desktop import import_operations
+    import_operations.record_publication_outcome(sys.modules[__name__], journal, outcome, paths)
 
 
 def _study_mistake_options():
@@ -1351,11 +1367,13 @@ def reconcile_quiz_publications():
     )
     if _read_data_root_marker(APP_DATA_DIR) is None or result['unsafe'] or result['failed']:
         return result
-    from dlms.services import study_mistakes
+    from dlms.services import study_mistakes, review_marks
     with registry_lock:
         conn = get_db()
         try:
             study_mistakes.recover(conn, _study_mistake_options(), _quiz_publication_staging_root())
+            if os.environ.get("DLMS_DESKTOP_PROFILE"):
+                review_marks.recover_generations(conn, _quiz_publication_staging_root())
         finally:
             conn.close()
     return result
@@ -1385,6 +1403,9 @@ def _publish_quiz(
     generation_kind=None,
     publication_record=None,
     publication_rollback=None,
+    managed_item=None,
+    artifact_identity=None,
+    registry_folder=None,
 ):
     generation_kind = _question_identity_service.validate_generation_kind(
         generation_kind
@@ -1414,6 +1435,12 @@ def _publish_quiz(
         generation_kind=generation_kind,
         publication_record=publication_record,
         publication_rollback=publication_rollback,
+        managed_item=managed_item,
+        managed_outcome=_record_desktop_import_outcome if managed_item is not None else None,
+        managed_checkpoint=(__import__("desktop.import_operations", fromlist=["checkpoint"]).checkpoint
+                            if managed_item is not None else None),
+        artifact_identity=artifact_identity,
+        registry_folder=registry_folder,
         generated_artifact_names=_generated_quiz_artifact_names,
         staging_root=_quiz_publication_staging_root,
         normalize_ordinals=_normalize_quiz_question_ordinals,
@@ -1477,10 +1504,10 @@ def _generated_quiz_artifact_identity():
     )
 
 
-def _generated_quiz_artifact_names(prefix):
+def _generated_quiz_artifact_names(prefix, *, artifact_identity=None):
     return _quiz_artifact_renderer._generated_quiz_artifact_names(
         prefix,
-        artifact_identity=_generated_quiz_artifact_identity,
+        artifact_identity=artifact_identity or _generated_quiz_artifact_identity,
     )
 
 
@@ -2090,9 +2117,10 @@ def _validate_restored_sqlite(path, relative_path="results.db"):
         sqlite_module=sqlite3,
     )
     if relative_path == "results.db":
+        from contextlib import closing
         from dlms.services.certifications import validate_restored
         from pathlib import Path
-        with sqlite3.connect(Path(os.path.abspath(path)).as_uri() + "?mode=ro", uri=True) as conn:
+        with closing(sqlite3.connect(Path(os.path.abspath(path)).as_uri() + "?mode=ro", uri=True)) as conn:
             validate_restored(conn)
     return result
 
@@ -2366,6 +2394,14 @@ def _restore_operation_root():
 
 
 def _restore_operation_checkpoint(_stage, _journal):
+    if os.environ.get("DLMS_DESKTOP_PROFILE"):
+        from desktop.isolation import profile_paths
+        from desktop.transition import source_checkpoint
+        name = os.environ.get("DLMS_DESKTOP_PROFILE_NAME", "")
+        paths = profile_paths(name, create=False)
+        if os.environ["DLMS_DESKTOP_PROFILE"] != str(paths["root"]):
+            raise RuntimeError("Desktop restore checkpoint profile is inconsistent")
+        source_checkpoint(paths, _stage, _journal)
     return _restore_service.restore_operation_checkpoint(_stage, _journal)
 
 
@@ -2469,6 +2505,15 @@ def _remove_recorded_restore_directory(path):
 
 
 def _finish_restore_operation_cleanup(journal_path, paths, *, remove_stage=True):
+    if os.environ.get("DLMS_DESKTOP_PROFILE"):
+        from desktop.isolation import profile_paths
+        from desktop.transition import source_cleanup_receipt
+        name = os.environ.get("DLMS_DESKTOP_PROFILE_NAME", "")
+        desktop_paths = profile_paths(name, create=False)
+        if os.environ["DLMS_DESKTOP_PROFILE"] != str(desktop_paths["root"]):
+            raise RuntimeError("Desktop restore cleanup profile is inconsistent")
+        journal, _ = _read_restore_operation_journal(journal_path)
+        source_cleanup_receipt(desktop_paths, journal)
     return _restore_service.finish_restore_operation_cleanup(
         journal_path,
         paths,
@@ -3119,7 +3164,7 @@ def normalize_exam_minutes(value, default=90):
     return min(minutes, 1440)
 
 
-def add_quiz_to_registry(quiz_id, html, title, logo=None, exam_minutes=90, source_pack_id=None, source_dataset_id=None):
+def add_quiz_to_registry(quiz_id, html, title, logo=None, exam_minutes=90, source_pack_id=None, source_dataset_id=None, folder=None):
     """
     Canonical registry update:
     - quiz_id is the DATABASE quizzes.id (authoritative)
@@ -3172,7 +3217,7 @@ def add_quiz_to_registry(quiz_id, html, title, logo=None, exam_minutes=90, sourc
             else:
                 source_type = "study-pack"
 
-        kept.append({
+        entry = {
             "id": quiz_id,
             "html": html,
             "title": title,
@@ -3182,7 +3227,10 @@ def add_quiz_to_registry(quiz_id, html, title, logo=None, exam_minutes=90, sourc
             "source_pack_id": source_pack_key or None,
             "source_dataset_id": str(source_dataset_id or "").strip() or None,
             "source_type": source_type,
-        })
+        }
+        if folder is not None:
+            entry["folder"] = folder
+        kept.append(entry)
 
         save_registry(kept)
 
@@ -3277,6 +3325,11 @@ def _stage_content_pack_upload(upload, *, workflow=None):
 
 @_profile_guard
 def _install_staged_content_pack(token):
+    if os.environ.get("DLMS_DESKTOP_PROFILE"):
+        from desktop import pack_operations
+        prior = pack_operations.replay(sys.modules[__name__], token)
+        if prior is not None:
+            return prior
     return _content_pack_mutation_service.install_staged_content_pack(
         token,
         load_staged_content_pack=_load_staged_content_pack,
@@ -3287,10 +3340,19 @@ def _install_staged_content_pack(token):
         content_pack_folder=CONTENT_PACK_FOLDER,
         remove_content_pack_stage=_remove_content_pack_stage,
         move=shutil.move,
+        checkpoint=(lambda stage: __import__("desktop.import_operations", fromlist=["checkpoint"]).checkpoint(stage))
+                    if os.environ.get("DLMS_DESKTOP_PROFILE") else None,
+        managed_prepare=(lambda *args: pack_operations.prepare(sys.modules[__name__], *args))
+                        if os.environ.get("DLMS_DESKTOP_PROFILE") else None,
+        managed_installed=(lambda *args: pack_operations.installed(sys.modules[__name__], *args))
+                          if os.environ.get("DLMS_DESKTOP_PROFILE") else None,
     )
 
 
 def _cancel_staged_content_pack(token):
+    if os.environ.get("DLMS_DESKTOP_PROFILE"):
+        from desktop import pack_operations
+        return pack_operations.cancel(sys.modules[__name__], token)
     return _content_pack_mutation_service.cancel_staged_content_pack(
         token,
         load_staged_content_pack=_load_staged_content_pack,
@@ -3924,8 +3986,17 @@ DataRootOwnershipError = _restore_service.DataRootOwnershipError
 
 
 def _destructive_operation_error(exc, operation):
-    if isinstance(exc, DataRootOwnershipError):
+    if (isinstance(exc, DataRootOwnershipError)
+            and getattr(exc, "dlms_reset_outcome", None) != "possibly_modified"):
         return "DLMS could not verify ownership of its data folder. No destructive action was authorized. Check the configured data location before retrying.", 409
+    backup = getattr(exc, "dlms_reset_safety_backup", None)
+    if (getattr(exc, "dlms_reset_outcome", None) == "possibly_modified"
+            and isinstance(backup, str) and 0 < len(backup) <= 255
+            and backup == os.path.basename(backup) and "\\" not in backup and "/" not in backup
+            and not any(ord(c) < 32 or ord(c) == 127 for c in backup) and backup.lower().endswith(".zip")):
+        return ("The reset did not complete and some data may already have changed. "
+                f"Retained safety backup: {backup}. No automatic rollback is confirmed. "
+                "Keep this backup and inspect the current data before retrying or restoring.", 500)
     return "The operation did not complete. Some changes may already have occurred. Check available disk space and data-folder access. Keep any safety backup; review the current data before retrying. If the problem persists, report the action and DLMS version.", 500
 
 
@@ -5227,7 +5298,7 @@ def _build_portable_quiz_download(cur, registry, selected_quiz_ids):
 
 
 def _stage_portable_quiz_bundle(upload):
-    return _portable_quiz_bundle_service.stage_portable_quiz_bundle(
+    token = _portable_quiz_bundle_service.stage_portable_quiz_bundle(
         upload,
         content_length=request.content_length,
         staging_folder=PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER,
@@ -5237,6 +5308,10 @@ def _stage_portable_quiz_bundle(upload):
         token_hex=secrets.token_hex,
         now=datetime.now,
     )
+    if os.environ.get("DLMS_DESKTOP_PROFILE"):
+        from desktop import import_operations
+        import_operations.stamp_stage(sys.modules[__name__], token)
+    return token
 
 
 def _load_staged_portable_quiz_bundle(token):
@@ -5248,6 +5323,9 @@ def _load_staged_portable_quiz_bundle(token):
 
 
 def _cancel_staged_portable_quiz_bundle(token):
+    if os.environ.get("DLMS_DESKTOP_PROFILE"):
+        from desktop import import_operations
+        return import_operations.cancel(sys.modules[__name__], token)
     return _portable_quiz_bundle_service.remove_portable_quiz_bundle_stage(
         token, staging_folder=PORTABLE_QUIZ_BUNDLE_STAGING_FOLDER
     )
@@ -5284,6 +5362,9 @@ def _rollback_portable_quiz(quiz_id):
 
 
 def _install_staged_portable_quiz_bundle(token):
+    if os.environ.get("DLMS_DESKTOP_PROFILE"):
+        from desktop import import_operations
+        return import_operations.install(sys.modules[__name__], token)
     return _portable_quiz_bundle_service.install_staged_portable_quiz_bundle(
         token,
         load_staged_bundle=_load_staged_portable_quiz_bundle,
@@ -6737,6 +6818,8 @@ app.register_blueprint(create_content_packs_blueprint(ContentPackRouteDependenci
     invalid_content_pack_folder_error=lambda: _content_pack_mutation_service.InvalidContentPackFolderError,
     content_pack_folder_not_found_error=lambda: _content_pack_mutation_service.ContentPackFolderNotFoundError,
     protected_content_pack_error=lambda: _content_pack_mutation_service.ProtectedContentPackError,
+    pack_receipt=(lambda token: __import__("desktop.pack_operations", fromlist=["receipt"]).receipt(
+        sys.modules[__name__], token)) if os.environ.get("DLMS_DESKTOP_PROFILE") else None,
 )))
 
 app.register_blueprint(create_study_packs_blueprint(StudyPackRouteDependencies(
@@ -6916,6 +6999,8 @@ app.register_blueprint(create_quiz_blueprint(
         upload_max_bytes=lambda: PORTABLE_QUIZ_BUNDLE_UPLOAD_MAX_BYTES,
         multipart_overhead_bytes=lambda: UPLOAD_MULTIPART_OVERHEAD_BYTES,
         print_message=lambda *args, **kwargs: print(*args, **kwargs),
+        import_progress=(lambda token: __import__("desktop.import_operations", fromlist=["progress"]).progress(
+            sys.modules[__name__], token)) if os.environ.get("DLMS_DESKTOP_PROFILE") else None,
     ),
 ))
 
@@ -7012,7 +7097,7 @@ def _run_restore_staging_startup_cleanup():
 _run_restore_startup_reconciliation()
 _run_restore_staging_startup_cleanup()
 ensure_db_initialized()
-_run_quiz_publication_startup_reconciliation()
+_quiz_publication_startup_report = _run_quiz_publication_startup_reconciliation()
 _startup_snapshot_access.__exit__(None, None, None)
 
 

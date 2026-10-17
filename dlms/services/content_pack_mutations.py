@@ -1,10 +1,12 @@
 """Content-pack staging, installation, asset migration, and removal services."""
 
 import io
+import hashlib
 import json
 import os
 import re
 import shutil
+import stat
 import tempfile
 import zipfile
 
@@ -32,7 +34,9 @@ class ProtectedContentPackError(ValueError):
 
 def _fsync_regular_file(path, *, open_file=open, fsync=os.fsync):
     """Make one completed staged file durable before directory publication."""
-    with open_file(path, "rb") as staged_file:
+    # Windows FlushFileBuffers requires a writable handle. The staged file is
+    # already complete: r+b preserves its bytes and never creates/truncates it.
+    with open_file(path, "r+b" if os.name == "nt" else "rb") as staged_file:
         fsync(staged_file.fileno())
 
 
@@ -412,7 +416,40 @@ def _load_staged_content_pack(token, *, content_pack_stage_path, safe_pack_child
     pack_root = safe_pack_child(stage_dir, metadata["root_name"])
     if not os.path.isdir(pack_root):
         raise FileNotFoundError("Staged Content Pack root folder is missing")
+    expected_sha256 = metadata.get("tree_sha256")
+    if not isinstance(expected_sha256, str) or len(expected_sha256) != 64:
+        raise ValueError("The staged Study Pack lacks a valid review identity. Upload and review it again.")
+    if _staged_pack_tree_sha256(pack_root) != expected_sha256:
+        raise ValueError("The staged Study Pack changed after validation. Upload and review it again.")
     return stage_dir, pack_root, metadata
+
+
+def _staged_pack_tree_sha256(root):
+    """Bind a transient review to its exact extracted pack bytes and paths."""
+    digest = hashlib.sha256()
+    for directory, names, files in os.walk(root, followlinks=False):
+        names.sort()
+        files.sort()
+        for name in names:
+            path = os.path.join(directory, name)
+            details = os.lstat(path)
+            if not stat.S_ISDIR(details.st_mode):
+                raise ValueError("Staged Study Pack contains an unsafe link")
+            relative = os.path.relpath(path, root).replace(os.sep, "/").encode("utf-8")
+            digest.update(b"D" + len(relative).to_bytes(8, "big") + relative)
+        for name in files:
+            path = os.path.join(directory, name)
+            details = os.lstat(path)
+            if not stat.S_ISREG(details.st_mode) or details.st_nlink != 1:
+                raise ValueError("Staged Study Pack contains an unsafe member")
+            relative = os.path.relpath(path, root).replace(os.sep, "/").encode("utf-8")
+            member_digest = hashlib.sha256()
+            with open(path, "rb") as handle:
+                while block := handle.read(1024 * 1024):
+                    member_digest.update(block)
+            digest.update(b"F" + len(relative).to_bytes(8, "big") + relative)
+            digest.update(details.st_size.to_bytes(8, "big") + member_digest.digest())
+    return digest.hexdigest()
 
 
 def _remove_content_pack_stage(token, *, content_pack_stage_path, remove_tree=shutil.rmtree):
@@ -492,6 +529,7 @@ def stage_content_pack_upload(
             "file_count": inspection["file_count"],
             "uncompressed_bytes": inspection["uncompressed_bytes"],
             "report": report,
+            "tree_sha256": _staged_pack_tree_sha256(pack_root),
             "created_at": now().isoformat(timespec="seconds"),
         }
         if answer_position_corrections:
@@ -517,13 +555,17 @@ def install_staged_content_pack(
     content_pack_folder,
     remove_content_pack_stage,
     move=shutil.move,
+    checkpoint=None,
+    managed_prepare=None,
+    managed_installed=None,
 ):
     """Validate, promote, verify, and clean one staged Study Pack."""
     destination = None
     pack_root = None
     metadata = {}
+    moved = False
     try:
-        _stage_dir, pack_root, metadata = load_staged_content_pack(token)
+        stage_dir, pack_root, metadata = load_staged_content_pack(token)
         report = validate_staged_content_pack(
             pack_root,
             require_single_select=(workflow_for_metadata(metadata) == ai_workflow),
@@ -544,12 +586,27 @@ def install_staged_content_pack(
         if os.path.exists(destination):
             raise ValueError(f"destination folder '{folder_name}' already exists")
 
+        if managed_prepare:
+            managed_prepare(token, pack_root, destination, metadata, report)
+        if checkpoint:
+            checkpoint("pack_before_move")
         move(pack_root, destination)
+        moved = True
+        if checkpoint:
+            checkpoint("pack_after_move")
         installed = discover_content_packs().get(pack_id)
         if not installed:
             raise ValueError("DLMS could not discover the pack after installation")
+        if managed_installed:
+            managed_installed(token, pack_root, destination, metadata, report, installed)
+        if checkpoint:
+            checkpoint("pack_after_discovery")
 
         remove_content_pack_stage(token)
+        if managed_prepare and os.path.lexists(stage_dir):
+            raise OSError("Study Pack installation staging cleanup is incomplete")
+        if checkpoint:
+            checkpoint("pack_after_cleanup")
         return {
             "status": "installed",
             "metadata": metadata,
@@ -557,6 +614,11 @@ def install_staged_content_pack(
             "installed": installed,
         }
     except Exception as exc:
+        if moved and managed_prepare:
+            # Desktop's pre-move intent is the authority after an ambiguous
+            # post-move error. Startup reconciles exact staged/destination
+            # trees; compensation here could erase an installed result.
+            raise ContentPackInstallError(exc, metadata) from exc
         try:
             if destination and os.path.isdir(destination) and pack_root:
                 os.makedirs(os.path.dirname(pack_root), exist_ok=True)

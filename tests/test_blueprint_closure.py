@@ -80,7 +80,7 @@ class BlueprintClosureTests(unittest.TestCase):
     EXPECTED_DEPENDENCY_TYPES = {
         "dlms.routes.admin_images.AdminImageRouteDependencies": 6,
         "dlms.routes.anki.AnkiRouteDependencies": 22,
-        "dlms.routes.content_packs.ContentPackRouteDependencies": 19,
+        "dlms.routes.content_packs.ContentPackRouteDependencies": 20,
         "dlms.routes.core.CoreRouteDependencies": 17,
         "dlms.routes.exam_plans.ExamPlanDependencies": 4,
         "dlms.routes.certifications.CertificationDependencies": 4,
@@ -94,7 +94,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.medical.MedicalRouteDependencies": 9,
         "dlms.routes.pdf_import.PDFImportRouteDependencies": 56,
         "dlms.routes.quiz.dependencies.QuizAuthoringDependencies": 19,
-        "dlms.routes.quiz.dependencies.QuizBundleDependencies": 16,
+        "dlms.routes.quiz.dependencies.QuizBundleDependencies": 17,
         "dlms.routes.quiz.dependencies.QuizEditorDependencies": 19,
         "dlms.routes.quiz.dependencies.QuizLibraryDependencies": 21,
         "dlms.routes.settings.SettingsRouteDependencies": 12,

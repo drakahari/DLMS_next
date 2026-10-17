@@ -65,7 +65,8 @@ def _atomic_write_text(
         prefix=f".{os_module.path.basename(path)}.", suffix=".tmp", dir=directory
     )
     try:
-        with os_module.fdopen(descriptor, "w", encoding=encoding) as temporary:
+        # Preserve caller-supplied separators, including mixed LF/CRLF on Windows.
+        with os_module.fdopen(descriptor, "w", encoding=encoding, newline="") as temporary:
             descriptor = None
             temporary.write(text)
             temporary.flush()

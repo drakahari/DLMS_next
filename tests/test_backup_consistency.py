@@ -292,7 +292,12 @@ def test_gate_rejects_symlink_and_lock_survives_profile_replacement(tmp_path):
     lock = gate.lock_path(root)
     outside = tmp_path / 'outside'
     outside.write_text('unchanged')
-    lock.symlink_to(outside)
+    try:
+        lock.symlink_to(outside)
+    except OSError as exc:
+        if os.name == 'nt' and exc.winerror == 1314:
+            pytest.skip('Windows symlink privilege unavailable; native handle/lock/parent substitution checks are in tests/windows/test_native.py')
+        raise
     with pytest.raises(OSError):
         with gate.access(root): pass
     assert outside.read_text() == 'unchanged'

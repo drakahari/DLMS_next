@@ -1,5 +1,6 @@
 """Additive AppImage layout, launcher and native icon contracts."""
 import ast
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -30,6 +31,8 @@ def tool(monkeypatch):
 
 @pytest.fixture
 def appdir(tool, tmp_path):
+    if os.name == 'nt':
+        pytest.skip('Linux AppImage symlink/layout/shell execution fixture; Windows payload checks are in tests/windows and tests/webview2')
     binary = tmp_path / "DLMS"
     binary.write_text('#!/bin/sh\nprintf "%s\\n" "$QUIZAPP_DATA_DIR" "$@"\n')
     binary.chmod(0o755)

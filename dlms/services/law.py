@@ -188,7 +188,7 @@ def resolve_law_raw_import_path(
 
 def load_law_raw_packet(path, *, open_file=open):
     """Read one already-validated raw Law packet as UTF-8 text."""
-    with open_file(path, "r", encoding="utf-8") as f:
+    with open_file(path, "r", encoding="utf-8", newline="") as f:
         return f.read()
 
 

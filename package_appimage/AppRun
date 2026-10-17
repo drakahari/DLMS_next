@@ -1,0 +1,9 @@
+#!/bin/sh
+# Runtime supplies APPDIR; a separately extracted AppRun resolves its own folder.
+# No PATH helper, venv, installation pointer or repository dependency.
+if test -z "$APPDIR"; then
+  case "$0" in */*) appimage_parent=${0%/*} ;; *) appimage_parent=. ;; esac
+  APPDIR=$(CDPATH= cd -P "$appimage_parent" && pwd) || exit 2
+fi
+export APPDIR
+exec "$APPDIR/usr/lib/dlms-desktop/DLMS-Desktop" --appimage-launch "$@"

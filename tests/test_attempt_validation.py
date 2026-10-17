@@ -1,4 +1,5 @@
 """DLMS-082 server-side quiz attempt and learning-event validation."""
+from contextlib import closing
 import tempfile
 import unittest
 from pathlib import Path
@@ -176,7 +177,7 @@ class AttemptValidationTests(unittest.TestCase):
         self._assert_rejected_without_writes(payload)
 
     def test_correct_reduced_matching_round_saves_and_retry_is_idempotent(self):
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute('UPDATE questions SET matching_round_size=2,matching_direction=? WHERE id=?', ('random', self.matching_id))
             for index in range(2, 5):
                 conn.execute('INSERT INTO matching_pairs(question_id,pair_order,left_text,right_text) VALUES(?,?,?,?)',
@@ -189,7 +190,7 @@ class AttemptValidationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.json)
         self.assertEqual(self._post_attempt(payload).status_code, 200)
         self.assertEqual(self._attempt_write_counts('reduced-matching')['attempts'], 1)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             import json
             event = conn.execute('SELECT response_json FROM learning_events WHERE question_id=? AND event_type=?',
                                  (self.matching_id, 'exam_answer')).fetchone()
@@ -202,7 +203,7 @@ class AttemptValidationTests(unittest.TestCase):
 
     def test_matching_round_rejects_tampered_identity_and_scoring(self):
         import copy
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute('UPDATE questions SET matching_round_size=2,matching_direction=? WHERE id=?', ('term_to_definition', self.matching_id))
             conn.execute('INSERT INTO matching_pairs(question_id,pair_order,left_text,right_text) VALUES(?,?,?,?)',
                          (self.matching_id, 3, 'Third', 'Third definition'))
@@ -234,7 +235,7 @@ class AttemptValidationTests(unittest.TestCase):
         import json
         payload = self._payload('legacy-matching-ack')
         self.assertEqual(self._post_attempt(payload).status_code, 200)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             before = conn.execute(
                 "SELECT response_json FROM learning_events WHERE question_id=? AND event_type='exam_answer'",
                 (self.matching_id,),
@@ -247,7 +248,7 @@ class AttemptValidationTests(unittest.TestCase):
         response = self._post_attempt(retry)
         self.assertEqual(response.status_code, 200, response.json)
         self.assertTrue(response.json['already_recorded'])
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             after = conn.execute(
                 "SELECT response_json FROM learning_events WHERE question_id=? AND event_type='exam_answer'",
                 (self.matching_id,),
@@ -274,14 +275,14 @@ class AttemptValidationTests(unittest.TestCase):
         self.assertEqual(self._post_attempt(payload).status_code, 200)
         for malformed in ('null', 'false', '1', '[]', '{broken'):
             with self.subTest(response_json=malformed):
-                with dlms.get_db() as conn:
+                with closing(dlms.get_db()) as conn, conn:
                     conn.execute("UPDATE learning_events SET response_json=? WHERE question_id=? AND event_type='exam_answer'",
                                  (malformed, self.matching_id))
                 self.assertEqual(self._post_attempt(payload).status_code, 400)
                 self.assertEqual(self._attempt_write_counts(payload['attemptId']), counts)
 
     def test_reduced_matching_missed_review_uses_selected_reversed_pairs(self):
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute('UPDATE questions SET matching_round_size=2,matching_direction=? WHERE id=?', ('definition_to_term', self.matching_id))
             conn.execute('INSERT INTO matching_pairs(question_id,pair_order,left_text,right_text) VALUES(?,?,?,?)',
                          (self.matching_id, 3, 'Third', 'Third definition'))
@@ -290,7 +291,7 @@ class AttemptValidationTests(unittest.TestCase):
         payload['missedDetails'] = [{'attemptQuestionNumber': 2, 'questionType': 'matching'}]
         response = self._post_attempt(payload)
         self.assertEqual(response.status_code, 200, response.json)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             import json
             row = conn.execute('SELECT response_json,choices_text,correct_text,selected_text FROM missed_questions WHERE attempt_question_number=2').fetchone()
             record = json.loads(row['response_json'])

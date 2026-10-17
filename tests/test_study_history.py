@@ -1,4 +1,5 @@
 """Read-only history presentation over disposable factual records."""
+from contextlib import closing
 import json
 import re
 import unittest
@@ -22,7 +23,7 @@ class StudyHistoryTests(unittest.TestCase):
 
     def seed(self, count=61, legacy=63):
         self.save(self.payload(1,correct=False));self.save(self.payload(2))
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             row=dict(conn.execute('SELECT * FROM study_sessions').fetchone())
             responses=[dict(r) for r in conn.execute('SELECT * FROM study_responses')]
             conn.execute('DELETE FROM study_sessions')
@@ -62,7 +63,7 @@ class StudyHistoryTests(unittest.TestCase):
             html=self.client.get(url).get_data(as_text=True);seen.extend(re.findall(r'data-legacy-id="(\d+)"',html));url=self.link(html,'Older legacy responses')
         self.assertEqual(len(seen),63);self.assertEqual(len(set(seen)),63)
         # Updates do not move old sessions, nor does deleting the boundary skip a neighbor.
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("UPDATE study_sessions SET last_activity_at='2099-01-01T00:00:00Z' WHERE id='history-000'")
             conn.execute("DELETE FROM study_sessions WHERE id='history-041'")
         ids=re.findall(r'data-session-id="([^"]+)"',self.client.get(second_url).get_data(as_text=True))
@@ -76,7 +77,7 @@ class StudyHistoryTests(unittest.TestCase):
         self.assertIn('No Study sessions on this page',later)
         self.assertNotIn('No saved Study sessions yet',later)
         self.assertIn('Legacy saved responses (63)',later)
-        with dlms.get_db() as conn:conn.execute('DELETE FROM study_sessions')
+        with closing(dlms.get_db()) as conn, conn:conn.execute('DELETE FROM study_sessions')
         legacy=self.client.get('/study-history').get_data(as_text=True)
         self.assertIn('No durable Study sessions recorded',legacy)
         self.assertNotIn('No saved Study history yet',legacy)
@@ -85,7 +86,7 @@ class StudyHistoryTests(unittest.TestCase):
 
     def test_gaps_corrections_identity_and_read_only_detail(self):
         self.seed(count=3,legacy=1)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             conn.execute("DELETE FROM study_responses WHERE session_id='history-002' AND sequence=1")
             before=list(conn.iterdump())
         html=self.client.get('/study-history').get_data(as_text=True)
@@ -100,11 +101,11 @@ class StudyHistoryTests(unittest.TestCase):
         self.assertIn('First outcome unverified',gap)
         self.assertNotIn('first graded answer correct',gap)
         self.assertEqual(self.client.get('/study-history/session/missing').status_code,404)
-        with dlms.get_db() as conn:self.assertEqual(before,list(conn.iterdump()))
+        with closing(dlms.get_db()) as conn, conn:self.assertEqual(before,list(conn.iterdump()))
 
     def test_question_details_are_paginated_and_escape_titles(self):
         self.seed(count=1,legacy=0)
-        with dlms.get_db() as conn:
+        with closing(dlms.get_db()) as conn, conn:
             row=dict(conn.execute('SELECT * FROM study_responses LIMIT 1').fetchone())
             conn.execute('DELETE FROM study_responses')
             for n in range(1,57):
@@ -121,7 +122,7 @@ class StudyHistoryTests(unittest.TestCase):
 
     def test_recorded_finish_does_not_invent_missing_saved_coverage(self):
         self.seed(count=1,legacy=0)
-        with dlms.get_db() as conn:conn.execute('DELETE FROM study_responses')
+        with closing(dlms.get_db()) as conn, conn:conn.execute('DELETE FROM study_responses')
         page=self.client.get('/study-history').get_data(as_text=True)
         self.assertIn('0 / 1 reviewed',page)
         self.assertIn('Recorded finish has incomplete saved coverage',page)

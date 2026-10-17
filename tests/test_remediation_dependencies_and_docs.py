@@ -24,15 +24,15 @@ def test_werkzeug_rejects_windows_devices_with_empty_streams(monkeypatch, path):
 def test_werkzeug_build_test_and_runtime_pins_agree():
     for filename in ('requirements-build.txt', 'requirements-test.txt'):
         assert locked_requirements(ROOT / filename)['werkzeug'] == '3.1.9'
-    assert 'Werkzeug>=3.1.9,<3.2' in (ROOT / 'requirements.txt').read_text()
-    assert 'Werkzeug==3.1.9' in (ROOT / 'docs/screenshots/requirements.txt').read_text()
+    assert 'Werkzeug>=3.1.9,<3.2' in (ROOT / 'requirements.txt').read_text(encoding="utf-8")
+    assert 'Werkzeug==3.1.9' in (ROOT / 'docs/screenshots/requirements.txt').read_text(encoding="utf-8")
 
 
 def test_canonical_theme_guidance_matches_registry():
     assert len(THEME_IDS) == 26
     assert sum(len(group['options']) for group in theme_groups()) == 26
     for name in ('16-settings-and-runtime.md', 'appendix-keyboard-and-accessibility.md'):
-        text = (ROOT / 'docs/user-manual' / name).read_text()
+        text = (ROOT / 'docs/user-manual' / name).read_text(encoding="utf-8")
         assert '26 manually selectable themes' in text
         assert 'provides five themes' not in text
     assert (ROOT / 'static/help_assets/settings-appearance-theme.webp').is_file()

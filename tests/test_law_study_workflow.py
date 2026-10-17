@@ -118,7 +118,7 @@ class LawStudyWorkflowTests(unittest.TestCase):
 
         filename = self._save_and_preview(client)
 
-        self.assertEqual(RAW_PACKET.strip(), Path(dlms.LAW_IMPORTS_FOLDER, filename).read_text(encoding="utf-8"))
+        self.assertEqual(RAW_PACKET.encode("utf-8"), Path(dlms.LAW_IMPORTS_FOLDER, filename).read_bytes())
         self.assertEqual([filename], sorted(path.name for path in Path(dlms.LAW_IMPORTS_FOLDER).glob("*.txt")))
         preview = client.get(f"/law/imports/{filename}")
         self.assertEqual(200, preview.status_code)

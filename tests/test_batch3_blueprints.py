@@ -73,6 +73,7 @@ class Batch3BlueprintTests(unittest.TestCase):
             "delete_content_pack_folder", "content_pack_install_error",
             "invalid_content_pack_folder_error",
             "content_pack_folder_not_found_error", "protected_content_pack_error",
+            "pack_receipt",
         },
         study_pack_routes.StudyPackRouteDependencies: {
             "content_pack_ai_workflow", "stage_content_pack_upload",

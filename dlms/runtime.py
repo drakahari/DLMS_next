@@ -6,7 +6,22 @@ import sys
 
 
 DLMS_SERVER_HOST = "127.0.0.1"
-DLMS_SERVER_PORT = 9001
+
+
+def _desktop_or_default_port(environ=None):
+    """Retain the web default; honor only the isolated Desktop launcher."""
+    env = os.environ if environ is None else environ
+    if not env.get("DLMS_DESKTOP_PROFILE"):
+        return 9001
+    if not env.get("DLMS_DESKTOP_NONCE"):
+        raise ValueError("Desktop port requires launcher ownership")
+    port = int(env["DLMS_DESKTOP_PORT"])
+    if not 1024 <= port <= 65535:
+        raise ValueError("Invalid Desktop loopback port")
+    return port
+
+
+DLMS_SERVER_PORT = _desktop_or_default_port()
 
 
 def _dlms_validate_server_host(value):

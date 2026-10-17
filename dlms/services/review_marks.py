@@ -279,3 +279,20 @@ def validate_restored_marks(conn):
             raise ValueError('Backup contains invalid marked-question requests.')
         if row['state']=='done' and not isinstance(json.loads(row['result_json'] or 'null'),dict):
             raise ValueError('Backup contains invalid mark acknowledgements.')
+
+
+def recover_generations(conn, staging_root):
+    """Settle only proven post-publication Review intent at normal startup.
+
+    A live or unsafe quiz publication journal makes the outcome uncertain.
+    The original immutable request ID is retained in every state.
+    """
+    if Path(staging_root).exists() and list(Path(staging_root).glob('publication_*.json*')):
+        return
+    for row in conn.execute("SELECT * FROM review_mark_actions WHERE state IN ('pending','published')"):
+        action = dict(row)
+        if action['state'] == 'published':
+            continue  # Status validates the registered destination separately.
+        if action['quiz_id'] is None:
+            conn.execute("UPDATE review_mark_actions SET state='retryable' WHERE request_id=? AND state='pending'", (action['request_id'],))
+    conn.commit()

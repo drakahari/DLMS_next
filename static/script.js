@@ -26,6 +26,8 @@ let studyAIConfig = null;
 let studyAIConfigRequest = null;
 let pendingExamAttempt = null;
 let examAttemptSaveInProgress = false;
+let examAttemptSettlePromise = null;
+let desktopClosing = false;
 let recoverySessionId = null;
 let quizRecoveryController = null;
 let quizRecoveryReady = false;
@@ -47,6 +49,36 @@ let durableStudyPositionSave = Promise.resolve();
 const durableStudyOwner = createLearningSessionId();
 
 const CHOICE_ANSWER_ENCODING = "choice-labels-v1";
+let desktopRecoveryCapability = null;
+let desktopRecoveryPending = 0;
+let desktopRecoveryWarnings = [];
+async function desktopRecoveryEnabled() {
+    if (!desktopRecoveryCapability) desktopRecoveryCapability = (async () => {
+        const response = await fetch("/_desktop/recovery/capabilities", {
+            headers: {"X-DLMS-Recovery-Client": "1"}, cache: "no-store"
+        });
+        if (response.status === 404) return false; // ordinary web installation
+        const capability = response.ok ? await response.json() : null;
+        if (!response.ok || capability?.enabled !== true) {
+            throw new Error("Desktop recovery is unavailable. This action has not been confirmed.");
+        }
+        desktopRecoveryPending = Number(capability.recovery?.count || 0);
+        desktopRecoveryWarnings = Array.isArray(capability.recovery?.warnings) ? capability.recovery.warnings : [];
+        return true;
+    })();
+    return desktopRecoveryCapability;
+}
+
+async function persistDesktopOrWebAction(kind, payload, webUrl, webFetch) {
+    if (!(await desktopRecoveryEnabled())) return webFetch(webUrl, {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)
+    });
+    if (!quizContentFingerprint) throw new Error("Quiz source identity is unavailable. This action has not been retained.");
+    return fetch("/_desktop/recovery/action", {
+        method: "POST", headers: {"Content-Type": "application/json", "X-DLMS-Recovery-Client": "1"},
+        body: JSON.stringify({kind, payload, fingerprint: quizContentFingerprint})
+    });
+}
 function choiceIndexesForLabels(question, labels) {
     return labels.map(label => question.choices.findIndex(choice => choice.label === label)).sort((a,b) => a-b);
 }
@@ -339,11 +371,8 @@ async function saveStudyLearningEvent(record, retrying = false) {
     checkpointQuizRecovery();
     try {
         await durableStudyReady;
-        const response = await studyFetch("/api/learning-events/study-response", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify(record.payload)
-        });
+        const response = await persistDesktopOrWebAction("study", record.payload,
+            "/api/learning-events/study-response", studyFetch);
         let data = null;
         try {
             data = await response.json();
@@ -367,6 +396,7 @@ async function saveStudyLearningEvent(record, retrying = false) {
             if (!studyLearningEventSaves.size) studyCompletionMessage = "";
             updateStudyLearningEventStatus();
             if (!completeStudyRecoveryIfReady()) checkpointQuizRecovery();
+            if (data.cleanup_pending) showQuizRecoveryNotice("Response saved; Desktop recovery-record cleanup is pending and will retry on restart.");
         }
         return true;
     } catch (error) {
@@ -397,6 +427,7 @@ async function retryStudyLearningEventSaves() {
 }
 
 async function recordStudyLearningEvent(q, wasCorrect, selected, kind = "response", questionOrdinal = index + 1) {
+    if (desktopClosing) return;
     if (examMode || !q || !window.QUIZ_ID || !durableStudySupported) return;
     // Finish freezes the session's event set. A clipboard promise can resolve
     // after that boundary; it must not leave an unsavable event behind.
@@ -564,6 +595,15 @@ async function loadQuiz() {
         }
         console.log("Quiz loaded. Questions:", quiz.length);
         setQuizModeButtonsEnabled(true);
+        try {
+            if (await desktopRecoveryEnabled() && (desktopRecoveryPending > 0 || desktopRecoveryWarnings.length > 0)) {
+                setQuizModeButtonsEnabled(false);
+                showQuizRecoveryNotice(`${desktopRecoveryPending} accepted Desktop action(s) still need reconciliation. ${desktopRecoveryWarnings.length} recovery warning(s) need inspection. Reopen this profile or inspect its recovery evidence before starting new work.`);
+            }
+        } catch (error) {
+            setQuizModeButtonsEnabled(false);
+            showQuizRecoveryNotice(error.message || "Desktop recovery status is unavailable.");
+        }
     } catch (err) {
         console.error("Failed to load quiz:", err);
         showQuizRecoveryNotice(err.message || "Failed to load quiz questions.");
@@ -1200,6 +1240,10 @@ function selectChoice(i) {
     if (!examMode) {
 
         if (!isMulti) {
+            // A second activation of the same single choice is not a new
+            // response. In particular it must not mint a second eventId
+            // while the first Desktop save is awaiting its acknowledgment.
+            if (Array.isArray(userAnswers[key]) && userAnswers[key].length === 1 && userAnswers[key][0] === i) return;
             // single-answer question → normal behavior
             arr = [i];
         } else {
@@ -1474,8 +1518,17 @@ let reviewMarkContext = null;
 let reviewMarkLoad = null;
 let reviewMarkPending = null;
 let legacyReviewMarksAdopted = false;
+let desktopReviewIdentity = null;
+let desktopReviewChecked = false;
+function sameReviewPayload(a,b) {
+    const stable=value=>Array.isArray(value)?value.map(stable):value&&typeof value==='object'?
+        Object.fromEntries(Object.keys(value).sort().map(key=>[key,stable(value[key])])):value;
+    return JSON.stringify(stable(a))===JSON.stringify(stable(b));
+}
 const reviewMarkPendingKey = `dlms.reviewMarkPending.${window.QUIZ_ID}`;
 try { reviewMarkPending=JSON.parse(localStorage.getItem(reviewMarkPendingKey) || 'null'); } catch (_) { /* Keep unreadable storage untouched. */ }
+const reviewMarkBrowserRecord=reviewMarkPending;
+if (reviewMarkPending?.context && reviewMarkPending?.payload) reviewMarkPending=reviewMarkPending.payload;
 
 function reviewMarkStatus(message) {
     let node = document.getElementById("reviewMarkStatus");
@@ -1487,6 +1540,26 @@ function reviewMarkStatus(message) {
 }
 async function loadReviewMarks() {
     if (!quizContentFingerprint || !durableStudySupported) return null;
+    if (!desktopReviewChecked) {
+        const identity=await fetch('/_desktop/request/context',{headers:{'X-DLMS-Recovery-Client':'1'},cache:'no-store'});
+        if (identity.status !== 404) {
+            if (!identity.ok) throw new Error('Desktop Review recovery context is unavailable; no mark was sent.');
+            desktopReviewIdentity=(await identity.json()).context;
+            const listed=await fetch('/_desktop/request/list',{headers:{'X-DLMS-Recovery-Client':'1'},cache:'no-store'});
+            if (!listed.ok) throw new Error('Desktop Review recovery records cannot be checked; no mark was sent.');
+            const records=(await listed.json()).records.filter(record=>record.kind==='review_save' && record.payload.quiz_id===Number(window.QUIZ_ID));
+            if (reviewMarkBrowserRecord?.context) {
+                if (!sameReviewPayload(reviewMarkBrowserRecord.context,desktopReviewIdentity))
+                    throw new Error('Mark browser evidence belongs to another Desktop dataset; it was not replayed.');
+            } else if (reviewMarkBrowserRecord && !records.length) {
+                throw new Error('Unbound older mark evidence needs inspection; it was not relabeled.');
+            }
+            if (records.length>1 || (records.length && reviewMarkPending && !sameReviewPayload(records[0].payload,reviewMarkPending)))
+                throw new Error('Conflicting saved Review evidence needs inspection; no mark was sent.');
+            if (records.length) reviewMarkPending=records[0].payload;
+        }
+        desktopReviewChecked=true;
+    }
     const data=await studyRequest('/api/review-marks/context',{quiz_id:Number(window.QUIZ_ID),fingerprint:quizContentFingerprint});
     reviewMarkContext=data;
     if (reviewMarkPending) reviewMarkStatus('A mark request is awaiting confirmation. Select the mark button to retry it; your previous browser marks are retained.');
@@ -1503,21 +1576,40 @@ function offerLegacyReviewMarks() {
 }
 async function saveReviewMarkIndexes(indexes, marked, adoptedButton=null) {
     const button=document.getElementById('studyAnkiBtn'); if (button) button.disabled=true;
+    let reviewCommitted=false;
     try {
         if (!reviewMarkContext) await loadReviewMarks();
         if (!reviewMarkContext) throw new Error('This quiz page cannot verify its source. Open a registered current quiz, or regenerate an older saved quiz, before saving marks. Existing browser marks are retained.');
         if (!reviewMarkPending) reviewMarkPending={action:'mark',request_id:createLearningSessionId(),quiz_id:Number(window.QUIZ_ID),fingerprint:quizContentFingerprint,
             generation:reviewMarkContext.generation,revision:reviewMarkContext.revision,assessment_revision:reviewMarkContext.assessment_revision,indexes,marked,legacy:Boolean(adoptedButton)};
-        localStorage.setItem(reviewMarkPendingKey,JSON.stringify(reviewMarkPending));
-        await studyRequest('/api/review-marks/save',reviewMarkPending);
+        localStorage.setItem(reviewMarkPendingKey,JSON.stringify(desktopReviewIdentity ?
+            {context:desktopReviewIdentity,payload:reviewMarkPending} : reviewMarkPending));
+        if (desktopReviewIdentity) {
+            const envelope={kind:'review_save',payload:reviewMarkPending,context:desktopReviewIdentity};
+            async function call(path) {
+                const response=await fetch('/_desktop/request/'+path,{method:'POST',headers:{'Content-Type':'application/json',
+                    'X-DLMS-Recovery-Client':'1','X-CSRFToken':window.dlmsCsrfToken || document.querySelector('[name=csrf-token]')?.content || ''},
+                    body:JSON.stringify(envelope),cache:'no-store'});
+                const value=await response.json();
+                if(!response.ok) throw new Error(value.error||'Review outcome is uncertain; original evidence was retained.');
+                return value;
+            }
+            const current=await call('status');
+            if(current.state==='absent'||current.state==='retryable') await call('action');
+            else if(current.state!=='committed') throw new Error(`Original mark request is ${current.state}. Check saved marks before retrying.`);
+            reviewCommitted=true;
+            await call('ack');
+        } else await studyRequest('/api/review-marks/save',reviewMarkPending);
         localStorage.removeItem(reviewMarkPendingKey);
         reviewMarkPending=null;
         await loadReviewMarks();
         if (adoptedButton) { legacyReviewMarksAdopted=true; adoptedButton.remove(); }
         reviewMarkStatus('Review marks saved in DLMS. Marked questions offers Anki export and focused practice.');
     } catch (error) {
-        reviewMarkStatus(error.message+' Select the mark button to retry the same request.');
-        if ([400,409].includes(error.status) && !document.getElementById('refreshRejectedMark')) {
+        reviewMarkStatus(reviewCommitted ?
+            `Review mark saved, but recovery cleanup failed: ${error.message} Keep the original request for verification.` :
+            error.message+' The original request and selection were retained; check saved marks before retrying.');
+        if (!desktopReviewIdentity && [400,409].includes(error.status) && !document.getElementById('refreshRejectedMark')) {
             const reset=document.createElement('button'); reset.type='button'; reset.id='refreshRejectedMark';
             reset.textContent='Keep old browser request and reload current marks';
             reset.onclick=async()=>{
@@ -2064,18 +2156,29 @@ function renderExamResult(pending, state) {
 
     const saved = state === "saved";
     const saving = state === "saving";
+    const uncertainExisting = state === "uncertain-existing";
+    const uncertainValidation = state === "uncertain-validation";
+    const needsHistoryCheck = uncertainExisting || uncertainValidation;
     const reviewAttempt = encodeURIComponent(String(pending.attemptId));
     const persistenceStatus = saved
-        ? `<p role="status">Your attempt was saved successfully.</p>`
+        ? `<p role="status">Your attempt was saved successfully.</p>${pending.cleanupPending ? '<p role="alert">Desktop recovery-record cleanup is pending and will retry on restart.</p>' : ''}`
         : saving
             ? `<p role="status">Saving your attempt…</p>`
-            : `<p role="alert">Your score was calculated, but this attempt was not saved. Retry before leaving this page if you want it in History, Analytics, Learning Intelligence, and Review.</p>`;
+            : uncertainExisting
+                ? `<p role="alert">This Exam attempt may already have been saved. Check History for this attempt before taking another action. Keep the pending recovery record until you confirm the result.</p>`
+            : uncertainValidation
+                ? `<p role="alert">This Exam attempt was not confirmed as retained or saved. Its current source or request content could not be verified. Check History for this attempt before trying again; keep the pending recovery evidence.</p>`
+            : pending.retained
+                ? `<p role="alert">Your attempt is retained for Desktop recovery, but its save to History is not yet confirmed. Retry or reopen this profile.</p>`
+                : `<p role="alert">Your score was calculated, but this attempt was not confirmed as retained or saved. Retry before leaving this page.</p>`;
     const persistenceAction = saved
         ? `<button onclick="location.href='/history?attempt=${reviewAttempt}'">
                 <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#review"></use></svg> Review This Attempt
             </button>`
         : saving
             ? `<button disabled aria-disabled="true">Saving Attempt…</button>`
+            : needsHistoryCheck
+                ? `<button onclick="location.href='/history?attempt=${reviewAttempt}'">Check This Attempt in History</button>`
             : `<button onclick="retryExamAttemptSave()">Retry Saving Attempt</button>`;
     const completionNotice = saved && pendingGeneratedPracticeCompletion
         ? `<p role="alert">The Exam attempt was saved, but Generated Practice completion was not recorded.</p>
@@ -2095,9 +2198,9 @@ function renderExamResult(pending, state) {
             <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#history"></use></svg> View Full History
         </button>
 
-        <button onclick="location.reload()">
+        ${saved ? `<button onclick="location.reload()">
             <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#refresh"></use></svg> Retake Exam
-        </button>
+        </button>` : ''}
 
         <button onclick="location.href='/'">
             <svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#home"></use></svg> Return to Dashboard
@@ -2110,15 +2213,17 @@ async function savePendingExamAttempt() {
     if (!pending || examAttemptSaveInProgress) return;
 
     examAttemptSaveInProgress = true;
+    let settleExamSave;
+    examAttemptSettlePromise = new Promise(resolve => { settleExamSave = resolve; });
     checkpointQuizRecovery();
     renderExamResult(pending, "saving");
     try {
-        const response = await fetch("/record_attempt", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify(pending.payload)
-        });
+        const response = await persistDesktopOrWebAction("exam", pending.payload,
+            "/record_attempt", fetch);
         const data = await response.json().catch(() => ({}));
+        pending.retained = data.retained === true;
+        pending.uncertainExisting = data.code === "exam_existing_unverifiable";
+        pending.uncertainValidation = data.code === "exam_validation_unconfirmed";
         if (
             !response.ok ||
             data.ok !== true ||
@@ -2140,6 +2245,7 @@ async function savePendingExamAttempt() {
         }
         pendingExamAttempt = null;
         quizRecoveryController?.complete();
+        pending.cleanupPending = data.cleanup_pending === true;
         renderExamResult(pending, "saved");
         if (generatedPracticeStatus?.is_transient !== false) {
             try {
@@ -2155,11 +2261,23 @@ async function savePendingExamAttempt() {
         console.log("RESULT UI RENDERED. Attempt ID:", pending.attemptId);
     } catch (error) {
         console.error("Attempt persistence failed:", error);
-        renderExamResult(pending, "failed");
+        renderExamResult(pending, pending.uncertainExisting ? "uncertain-existing" : pending.uncertainValidation ? "uncertain-validation" : "failed");
         checkpointQuizRecovery();
     } finally {
         examAttemptSaveInProgress = false;
+        settleExamSave();
+        examAttemptSettlePromise = null;
     }
+}
+
+async function dlmsDesktopBeforeClose() {
+    desktopClosing = true;
+    stopExamTimer();
+    const inFlight = [...studyLearningEventSaves.values()].map(record => record.savePromise).filter(Boolean);
+    if (examAttemptSettlePromise) inFlight.push(examAttemptSettlePromise);
+    await Promise.allSettled(inFlight);
+    checkpointQuizRecovery();
+    return {settled: true, pendingStudy: studyLearningEventSaves.size, pendingExam: !!pendingExamAttempt};
 }
 
 async function retryGeneratedPracticeCompletion() {
