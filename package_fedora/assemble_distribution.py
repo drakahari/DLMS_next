@@ -26,13 +26,21 @@ def digest(path):
 
 def verify_materials(root):
     data=json.loads((root/'MANIFEST.json').read_text())
-    if data['format']!=1 or data['status']!='Private technical materials; public redistribution not cleared':raise ValueError('Unsupported materials manifest')
+    historical = data.get('format') == 1 and data.get('status') == 'Private technical materials; public redistribution not cleared'
+    preview = data.get('format') == 2 and data.get('status') == 'Linux preview redistribution materials; not legal certification'
+    if not (historical or preview):raise ValueError('Unsupported materials manifest')
     rows={p.relative_to(root).as_posix():digest(p) for p in leaves(root) if p.name!='MANIFEST.json' or p.parent!=root}
     if rows!=data['sha256']:raise ValueError('Distribution texts differ from manifest')
+    if preview:
+        required = {'REDISTRIBUTION.md', 'BUILD_AND_REPLACEMENT.md', 'SOURCE_MATERIALS.json'}
+        if not required.issubset(rows):raise ValueError('Preview source/build instructions are missing')
+        sources=json.loads((root/'SOURCE_MATERIALS.json').read_text())
+        if not sources.get('archives') or sources.get('unresolved') != []:
+            raise ValueError('Preview corresponding-source materials are unresolved')
     return data
 
 
-def assemble(output,inputs):
+def assemble(output,inputs,*,preview=False):
     output=output.absolute()
     if '..' in output.parts:raise ValueError('Parent traversal in output')
     if output.exists() or output.is_symlink():raise FileExistsError('Materials output exists; preserve it')
@@ -59,6 +67,8 @@ def assemble(output,inputs):
             shutil.copyfile(source,output/name)
     manifest={'format':1,'status':'Private technical materials; public redistribution not cleared',
               'sha256':{p.relative_to(output).as_posix():digest(p) for p in leaves(output)}}
+    if preview:
+        manifest.update(format=2,status='Linux preview redistribution materials; not legal certification')
     (output/'MANIFEST.json').write_text(json.dumps(manifest,indent=2,sort_keys=True)+'\n')
     verify_materials(output)
     return manifest
@@ -66,7 +76,8 @@ def assemble(output,inputs):
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--output',required=True,type=Path)
+    p.add_argument('--linux-preview',action='store_true',help='Require completed source index and recipient build/replacement instructions; not legal certification')
     p.add_argument('--input',action='append',required=True,help='group=regular-file-or-directory')
-    a=p.parse_args();assemble(a.output,[(v.split('=',1)[0],Path(v.split('=',1)[1])) for v in a.input])
+    a=p.parse_args();assemble(a.output,[(v.split('=',1)[0],Path(v.split('=',1)[1])) for v in a.input],preview=a.linux_preview)
 
 if __name__=='__main__':main()

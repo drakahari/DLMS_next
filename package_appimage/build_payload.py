@@ -22,6 +22,8 @@ def main():
     p.add_argument('--source-commit', help='Exact source identity for an isolated, verified build snapshot without Git history')
     p.add_argument('--source-tree-sha256', help='SHA-256 of the supplied file manifest when building an uncommitted review tree')
     a = p.parse_args()
+    from desktop.install_manifest import release_id
+    release_id(a.release)  # Refuse invalid build identity before freezing/output.
     root = Path(__file__).resolve().parents[1]
     output = a.output.absolute()
     if output.exists() or output.is_symlink():
@@ -48,7 +50,13 @@ def main():
             raise FileNotFoundError(f'Required Linux Qt platform plugin: {name}')
     output.mkdir(mode=0o700)
     (output / 'tmp').mkdir(mode=0o700)
-    info = dict(application_version='0.1.0-fedora-rc1', release=a.release,
+    # The shared application version is independent of the Desktop release.
+    # Read its literal without initializing the application or a data profile.
+    import ast
+    application_version = next(node.value.value for node in ast.parse((root/'app.py').read_text(encoding='utf-8')).body
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'APP_VERSION' for t in node.targets)
+        and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str))
+    info = dict(application_version=application_version, release=a.release,
                 source_commit=commit, target=a.target, support=a.support)
     if a.source_tree_sha256 is not None:
         # Preserve the runtime's strict five-field identity contract. Additional

@@ -3,6 +3,7 @@ set -eu
 release=${1:?Release identity required}
 source_commit=${2:?Exact source commit required}
 source_tree=${3:-}
+support=${DLMS_DESKTOP_PREVIEW_SUPPORT:-Private Ubuntu24.04-compatible candidate; Fedora44/Omarchy qualification recorded separately; not publicly cleared}
 mkdir -p /work/out/ocr-bundle/bin /work/out/ocr-bundle/tessdata/configs /work/out/ocr-bundle/licenses
 cp /opt/ocr/bin/tesseract /work/out/ocr-bundle/bin/
 cp /opt/lept/lib/libleptonica.so.6* /work/out/ocr-bundle/bin/
@@ -12,7 +13,7 @@ cp -a /work/old-ocr/licenses/. /work/out/ocr-bundle/licenses/
 cp /inputs/resolved-python.txt /inputs/resolved-debian.txt /work/out/
 /opt/ocr/bin/tesseract --version > /work/out/ocr-version.txt 2>&1
 python -m pip check
-set -- --host-platform --output /work/out/normal-build --release "$release" --target 'Linux x86_64 glibc2.39 baseline; host Fontconfig/GBM' --support 'Private Ubuntu24.04-compatible candidate; Fedora44/Omarchy qualification recorded separately; not publicly cleared' --source-commit "$source_commit" --ocr-bundle /work/out/ocr-bundle --notices /work/notices --distribution-kit /work/distribution-kit
+set -- --host-platform --output /work/out/normal-build --release "$release" --target 'Linux x86_64 glibc2.39 baseline; host Fontconfig/GBM' --support "$support" --source-commit "$source_commit" --ocr-bundle /work/out/ocr-bundle --notices /work/notices --distribution-kit /work/distribution-kit
 if [ -n "$source_tree" ]; then
     set -- "$@" --source-tree-sha256 "$source_tree"
 fi
