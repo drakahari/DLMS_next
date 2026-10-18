@@ -56,7 +56,21 @@ def current(owner,captured):
 def begin(owner,record,*,captured):
     if not hasattr(owner,'_native_exports'):owner._native_exports=ExportQueue(owner)
     record['native_export']=True
-    owner._native_exports.enqueue(record,captured)
+    if record.get('marked_blob_url'):
+        from .marked_exports import authorize
+        def decided(permitted):
+            if permitted:
+                owner._native_exports.enqueue(record,captured)
+            else:
+                record['state']='refused'
+                from .marked_exports import report
+                report(owner,record,captured,'refused')
+                if current(owner,captured):
+                    owner._feedback(record['feedback_ticket'],
+                        'Anki download not saved: use Export to Anki or its Download Anki package link in this page. Private bytes retained; no destination changed.','error')
+        authorize(owner,record,captured,decided)
+    else:
+        owner._native_exports.enqueue(record,captured)
 
 
 class ExportQueue(QObject):
@@ -89,6 +103,8 @@ class ExportQueue(QObject):
             if focus is not None:focus.setFocus(Qt.FocusReason.OtherFocusReason)
             if not chosen:
                 record['state']='cancelled';owner._feedback(record['feedback_ticket'],'Export save canceled; private download retained. No destination was changed.')
+                from .marked_exports import report
+                report(owner,record,item[1:],'cancelled')
                 self.finish();return
             selection=export_output.select(Path(chosen),forbidden=forbidden())
             self.future=self.pool.submit(export_output.publish,Path(record['path']),selection)
@@ -96,6 +112,8 @@ class ExportQueue(QObject):
             self.timer.start()
         except (OSError,ValueError) as exc:
             record['state']='failed'
+            from .marked_exports import report
+            report(owner,record,item[1:],'refused')
             if self.valid(item):
                 owner._feedback(record['feedback_ticket'],f'Export not saved: {exc}. Private download retained.','error')
                 with browser_dialog(owner):
@@ -115,8 +133,12 @@ class ExportQueue(QObject):
                 if self.valid(item):owner._feedback(record['feedback_ticket'],f"Export saved: {saved['path']}. Folder could not be remembered: {exc}",'warning')
             else:
                 if self.valid(item):owner._feedback(record['feedback_ticket'],f"Export saved: {saved['path']}",'success')
+            from .marked_exports import report
+            report(owner,record,item[1:],'completed')
         except Exception as exc:
             record['state']='failed'
+            from .marked_exports import report
+            report(owner,record,item[1:],'unconfirmed')
             if self.valid(item):owner._feedback(record['feedback_ticket'],f'Export publication unconfirmed: {exc}. Inspect the selected folder and retained private download before retrying.','error')
         self.finish()
     def finish(self):

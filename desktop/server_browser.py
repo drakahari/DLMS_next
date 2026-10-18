@@ -50,6 +50,8 @@ class ServerPage(OwnedPage):
         self.owner, self.origin = owner, origin
         self.policy_diagnostics = ServerPolicyDiagnostics((qVersion(), qWebEngineVersion(), qWebEngineChromiumVersion()))
         self.newWindowRequested.connect(self._new_window)
+        from .marked_exports import install
+        install(self)
         from .ai_actions import AIHandoff
         self.ai_handoff = AIHandoff(self, owner)
         if __import__('sys').platform == 'darwin':
@@ -82,7 +84,14 @@ class ServerPage(OwnedPage):
         return False
 
     def _new_window(self, request):
-        if self.owner.view is None or self.owner._closing:
+        if (self.owner.view is None or self.owner._closing
+                or self.owner._retiring_browser is not None or self.owner.view.page() is not self):
+            return
+        target = request.requestedUrl()
+        if (request.isUserInitiated() and exact_server_origin(target, self.origin)
+                and exact_server_origin(self.url(), self.origin) and self.url().path() == '/anki/custom'
+                and target.path() == '/anki/printable' and not target.hasQuery() and not target.hasFragment()):
+            request.openIn(self)  # Keep the validated original method and body.
             return
         # A popup must not inherit this authenticated profile or leak a URL
         # through the system browser without a separately approved flow.

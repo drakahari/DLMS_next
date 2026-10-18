@@ -11,6 +11,7 @@
 body{margin:0;background:#e7ebef;color:#111;font-family:Arial,Helvetica,sans-serif}
 .print-toolbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 18px;background:#0a1b31;color:white;box-shadow:0 2px 12px rgba(0,0,0,.25)}
 .print-toolbar h1{font-size:18px;margin:0}.print-toolbar p{margin:3px 0 0;font-size:12px;color:#c9d5e3}.print-toolbar button{border:0;border-radius:8px;background:#188fe0;color:white;font-weight:800;padding:10px 16px;cursor:pointer}
+.print-actions{display:flex;flex-wrap:wrap;gap:8px}.print-actions form{margin:0}
 .print-note{max-width:8.5in;margin:18px auto;padding:12px 16px;background:#fff7d8;border:1px solid #d4b656;border-radius:8px;font-size:13px;line-height:1.45}
 .avery-sheet{position:relative;width:8.5in;height:11in;margin:18px auto;background:white;padding:1in 1.75in;display:flex;flex-direction:column;box-shadow:0 4px 18px rgba(0,0,0,.18);overflow:hidden}
 .sheet-label{position:absolute;top:.25in;left:.35in;font-size:10px;color:#777}
@@ -28,7 +29,16 @@ body{margin:0;background:#e7ebef;color:#111;font-family:Arial,Helvetica,sans-ser
 </style>
 </head>
 <body>
-<div class="print-toolbar"><div><h1>{{ deck_name }}</h1><p>Avery 5388 · 3 × 5 in · 3 cards per US Letter sheet · {{ rows|length }} cards</p></div><button type="button" onclick="window.print()">Print Cards</button></div>
+<div class="print-toolbar"><div><h1>{{ deck_name }}</h1><p>Avery 5388 · 3 × 5 in · 3 cards per US Letter sheet · {{ rows|length }} cards</p></div><div class="print-actions">
+<form action="/anki/custom" method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="hidden" name="deck_name" value="{{ deck_name }}">
+{% for name in ('quiz_cards', 'missed_cards', 'law_cards') %}{% for value in request.form.getlist(name) %}
+<input type="hidden" name="{{ name }}" value="{{ value }}">
+{% endfor %}{% endfor %}
+<button id="returnCustomDeck" type="submit">Return to Custom Deck</button>
+</form>
+<button type="button" onclick="window.print()">Print Cards</button></div></div>
 <div class="print-note"><strong>Duplex guidance:</strong> This layout alternates each front sheet with its matching back sheet. Your selected setting is <strong>{{ 'long-edge' if duplex_flip == 'long' else 'short-edge' }} flip</strong>. Print one test sheet before a large run and use your printer's cardstock/index-card setting when available.</div>
 {% for sheet in sheets %}
 <section class="avery-sheet front-sheet"><div class="sheet-label">Sheet {{ sheet.number }} fronts</div>

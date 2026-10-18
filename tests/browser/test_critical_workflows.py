@@ -14937,7 +14937,7 @@ print(json.dumps({'id':qid,'html':html}))
         capture_control(browser,Path(output)/'marked-type-boundaries.webp','#markedQuestions')
     browser.click('#eligibleMarkTools summary');browser.click('#clearMarkSelection');browser.click('[data-select-marks=anki]')
     browser.wait_for("!document.getElementById('exportMarks').disabled")
-    browser.click('#exportMarks');browser.wait_for("document.getElementById('markActionStatus').textContent.includes('Anki package exported')")
+    browser.click('#exportMarks');browser.wait_for("document.getElementById('markActionStatus').textContent.includes('Anki download requested')")
     assert _database_value(browser_stack.data_root/'results.db','SELECT count(*) FROM review_marks WHERE marked=1')==4
     browser.click('#clearMarkSelection');browser.click('[data-select-marks=practice]')
     browser.wait_for("!document.getElementById('practiceMarks').disabled")
@@ -18268,3 +18268,59 @@ def test_imported_hotspot_marks_rebuild_preserve_runtime_history_and_grading(bro
             quiz_id=qid, session_id=session_id, runtime_sha256=hashlib.sha256(raw).hexdigest(),
             exact_runtime_preserved=True, exact_database_preserved=True,
             correct_responses=2, marks=2, other_fixture_refusals=failure_text), indent=2)+'\n')
+
+
+def test_marked_export_fallback_and_original_avery_post(browser_stack, browser_server):
+    """Real browser Blob saves and target=_blank form POST; no Qt host involved."""
+    browser=browser_stack.browser;base=_marked_http_base(browser_stack)
+    stack=BrowserStack(browser,base,browser_stack.data_root,browser_stack.metadata)
+    qid,_=_new_four_question_study_quiz(stack)
+    browser.click('.study-mode-btn');browser.wait_for('durableStudySession!==null && reviewMarkContext!==null')
+    browser.click('#studyAnkiBtn');browser.wait_for('reviewMarkContext.indexes.includes(0) && reviewMarkPending===null')
+    browser.click('#studyAnkiExportBtn');browser.wait_for("document.querySelectorAll('[data-mark-id]').length===1")
+    browser.click('#selectPageMarks');browser.wait_for("!document.getElementById('exportMarks').disabled")
+    before=set(browser_server.work_root.glob('firefox-session-*/downloads/*.apkg'))
+    browser.click('#exportMarks');browser.wait_for("document.querySelector('#markExportResult a')!==null")
+    def new_package(previous):
+        end=time.monotonic()+8
+        while time.monotonic()<end:
+            for path in set(browser_server.work_root.glob('firefox-session-*/downloads/*.apkg'))-previous:
+                try:
+                    with zipfile.ZipFile(path) as archive:
+                        assert archive.testzip() is None
+                        raw=archive.read('collection.anki2')
+                    conn=sqlite3.connect(':memory:');conn.deserialize(raw)
+                    notes=[r[0] for r in conn.execute('SELECT flds FROM notes')];conn.close()
+                    assert len(notes)==1 and 'Completion question 1?' in notes[0]
+                    return path,notes
+                except (OSError,zipfile.BadZipFile,sqlite3.Error):pass
+            time.sleep(.05)
+        raise AssertionError('No complete new APKG download')
+    first,notes=new_package(before)
+    before=set(browser_server.work_root.glob('firefox-session-*/downloads/*.apkg'))
+    browser.click('#markExportResult a');second,again=new_package(before)
+    assert notes==again and first!=second
+    assert 'exported' not in browser.evaluate("document.getElementById('markActionStatus').textContent").lower()
+    browser.navigate(base+'/anki/custom');browser.wait_for("document.querySelector('input[name=quiz_cards]')!==null")
+    browser.evaluate("document.querySelector('input[name=quiz_cards][value^=\"quiz:"+str(qid)+":\"]').checked=true;document.querySelector('[name=deck_name]').value='Browser POST body preserved';document.querySelector('[name=duplex_flip]').value='short';true")
+    original=browser.context
+    contexts={n['context'] for n in browser.command('browsingContext.getTree',{})['contexts']}
+    browser.click('button[formaction="/anki/printable"]')
+    end=time.monotonic()+8;created=[]
+    while not created and time.monotonic()<end:
+        created=[n for n in browser.command('browsingContext.getTree',{})['contexts'] if n['context'] not in contexts]
+        if not created:time.sleep(.05)
+    assert len(created)==1
+    browser.context=created[0]['context']
+    browser.wait_for("location.pathname==='/anki/printable' && document.readyState==='complete'")
+    text=browser.evaluate('document.body.innerText')
+    assert 'Browser POST body preserved' in text and 'short-edge flip' in text and 'Avery 5388' in text
+    assert browser.evaluate("document.querySelector('.front-sheet pre').textContent.includes('Completion question')")
+    browser.click('#returnCustomDeck');browser.wait_for("location.pathname==='/anki/custom' && document.readyState==='complete'")
+    assert browser.evaluate("document.querySelectorAll('input[name=quiz_cards]:checked').length")==1
+    assert browser.evaluate("document.querySelector('[name=deck_name]').value")=='Browser POST body preserved'
+    browser.command('browsingContext.close',{'context':browser.context});browser.context=original
+    output=os.environ.get('DLMS_OUTPUT_CAPTURE_DIR')
+    if output:
+        Path(output).mkdir(parents=True,exist_ok=True)
+        (Path(output)/'browser-output-result.json').write_text(json.dumps({'initial_and_fallback_content_equal':True,'notes':len(notes),'printable_post_body_preserved':True,'physical_printing':False},indent=2)+'\n')
