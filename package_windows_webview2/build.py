@@ -113,12 +113,19 @@ def main():
     parser.add_argument("--release", required=True)
     parser.add_argument("--host-build", required=True, help="explicit final inventoried host build; no stale default")
     parser.add_argument("--instrumented", action="store_true", help="separate native-controls test payload; never install")
+    parser.add_argument("--preview-materials", type=Path, help="verified Windows-specific recipient notices/source kit")
+    parser.add_argument("--native-packages", type=Path, help="existing hash-pinned OCR producer archive cache; required for preview")
     args=parser.parse_args()
     if not args.release.replace("-", "").isalnum():
         raise ValueError("Invalid release identity")
     if sys.platform != "win32" or sys.version_info[:3] != (3,14,7):
         raise RuntimeError("Use the verified native CPython 3.14.7 build environment")
     verified = verify_environment()
+    if args.preview_materials:
+        from .preview_materials import verify
+        verify(args.preview_materials)
+        if args.native_packages is None:
+            raise ValueError('Preview requires explicit pinned Windows native producer archives')
     if not args.host_build.startswith("webview2-host-candidate-") or not args.host_build.removeprefix("webview2-host-candidate-").isdigit():
         raise ValueError("Use an explicitly inventoried task-local host build")
     host = WORK / args.host_build / "payload"
@@ -128,6 +135,10 @@ def main():
     verify_sdk_inputs(host, WORK / "webview2-inputs-01/webview2.nupkg")
     run = WORK / args.release
     run.mkdir(exist_ok=False)
+    if args.preview_materials:
+        from .native_inputs import materialize
+        pinned_native = materialize(args.native_packages, run/'pinned-native', ROOT/'package_windows/ocr-lock.json')
+        (run/'pinned-native-inputs.json').write_text(json.dumps(pinned_native, indent=2)+'\n')
     (run / "build-mode.json").write_text(json.dumps({"instrumented": args.instrumented}) + "\n")
     (run / "verified-pins.json").write_text(json.dumps(verified, indent=2) + "\n")
     shutil.copy2(host.parent / "SHA256.json", run / "host-inputs.json")
@@ -157,6 +168,9 @@ def main():
               "browser_runtime":"Installed Microsoft WebView2 Evergreen; detected at launch, separately serviced",
               "support":("INSTRUMENTED TEST ONLY. Never install or count as normal physical acceptance."
                          if args.instrumented else "Private unsigned candidate. Physical acceptance and public distribution unqualified.")}
+    if args.preview_materials and not args.instrumented:
+        identity.update(application_version=source_backend_version(), target="Windows 11 x86-64 Desktop preview",
+                        support="Unsigned public preview candidate. Review validation and limitations before use; not a stable release.")
     (run/"build-info.json").write_text(json.dumps(identity,indent=2)+"\n")
     notices=run/"notices"
     notices.mkdir()
@@ -185,6 +199,12 @@ def main():
         "Private test candidate, unsigned. Available vendor notices are included.\n"
         "Exact Qt/Chromium and native source/license/public redistribution obligations remain open.\n"
         "OCR native archive selection includes libarchive's GPL build; no public clearance is claimed.\n")
+    if args.preview_materials:
+        (notices/'PRIVATE-CANDIDATE.txt').unlink()
+        shutil.copytree(args.preview_materials, notices/'distribution')
+        (notices/'README.txt').write_text('Unsigned Windows Desktop preview candidate.\n'
+            'Read distribution/REDISTRIBUTION.md, BUILD_AND_REPLACEMENT.md and SOURCE_MATERIALS.json.\n'
+            'All corresponding-source companions must accompany any approved binary release.\n')
     (run/"resolved-python.json").write_text(json.dumps(sorted(packages,key=lambda x:x["name"].lower()),indent=2)+"\n")
     inventory=[{"path":p.relative_to(notices).as_posix(),"sha256":sha(p)}
                for p in sorted(notices.rglob("*")) if p.is_file()]
@@ -205,6 +225,16 @@ def main():
     env=dict(os.environ,DLMS_TESSERACT_BUNDLE_ROOT=str(ocr),DLMS_WINDOWS_BUILD_INFO=str(run/"build-info.json"),
              DLMS_WINDOWS_NOTICES=str(notices),DLMS_WEBVIEW2_HOST=str(host),PYTHONHASHSEED="0",
              DLMS_WV_BUILD_INSTRUMENTED="1" if args.instrumented else "0")
+    if args.preview_materials:
+        version_text=(ROOT/'package_windows_webview2/version.txt').read_text().replace(
+            'DLMS Desktop private project','DLMS project').replace('WebView2 Windows Candidate','Windows Preview').replace(
+            '0.1.0 Windows candidate',source_backend_version()+' Windows preview')
+        version_tuple=','.join(source_backend_version().split('.')[:3])+',0'
+        version_text=version_text.replace('(0,1,0,0)','('+version_tuple+')').replace("'0.1.0.0'",repr(source_backend_version()+'.0'))
+        (run/'version-preview.txt').write_text(version_text)
+        env.update(DLMS_WINDOWS_PUBLIC_PREVIEW='1',DLMS_WINDOWS_VERSION_RESOURCE=str(run/'version-preview.txt'))
+        env.update(DLMS_WINDOWS_PINNED_NATIVE=str(run/'pinned-native'),
+                   DLMS_WINDOWS_PINNED_NATIVE_RECORDS=str(run/'pinned-native-inputs.json'))
     with (run/"freeze.log").open("w") as log:
         result=subprocess.run([sys.executable,"-m","PyInstaller","--noconfirm","--clean",
             "--distpath",str(run/"dist"),"--workpath",str(run/"build"),

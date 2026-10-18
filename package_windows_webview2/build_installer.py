@@ -39,6 +39,14 @@ def main():
     command=[str(WORK/"inno-portable/ISCC.exe"),"--no-ide-signtools","/DPayload="+str(payload),"/DRelease="+release,
              "/DOutputRoot="+str(output)]
     if args.test_scope:command.append("/DTestScope=1")
+    info=json.loads((candidate/'build-info.json').read_text())
+    if info.get('target') == 'Windows 11 x86-64 Desktop preview':
+        from .preview_materials import verify
+        verify(payload/'_internal/notices/distribution')
+        version=info.get('backend_version', '')
+        if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',version):
+            raise ValueError('Preview backend version must be an exact numeric release')
+        command.extend(['/DPublicPreview=1','/DBackendVersion='+version])
     command.append(str(ROOT/"package_windows_webview2/installer.iss"))
     def digest(path):
         with path.open('rb') as stream:return hashlib.file_digest(stream,'sha256').hexdigest()

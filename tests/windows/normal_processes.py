@@ -64,6 +64,37 @@ def alive(pid,born):
     try:return identity(pid)["start"]==born
     except OSError:return False
 
+
+def modules(parent):
+    """Bounded allowlisted modules of proven test descendants, with birth rechecks.
+
+    Keep this public helper independent of private rendering experiments. Module
+    presence does not establish the actual graphics backend or displayed pixels.
+    """
+    ps=c.WinDLL('psapi',use_last_error=True)
+    enum=api(ps,'EnumProcessModulesEx',w.BOOL,w.HANDLE,c.POINTER(w.HMODULE),w.DWORD,c.POINTER(w.DWORD),w.DWORD)
+    filename=api(ps,'GetModuleFileNameExW',w.DWORD,w.HANDLE,w.HMODULE,w.LPWSTR,w.DWORD)
+    rows=[]
+    for pid in descendants(parent):
+        try:
+            owner=identity(pid);handle=checked(open_process(0x410,False,pid))
+            try:
+                if identity(pid)!=owner:raise ValueError('Owned test identity changed before module read')
+                values=(w.HMODULE*4096)();needed=w.DWORD()
+                checked(enum(handle,values,c.sizeof(values),c.byref(needed),3))
+                if needed.value>c.sizeof(values):raise ValueError('Module inventory exceeds bound')
+                names=[]
+                for value in values[:needed.value//c.sizeof(w.HMODULE)]:
+                    path=c.create_unicode_buffer(32768)
+                    checked(filename(handle,value,path,len(path)))
+                    if path.value.rsplit('\\',1)[-1].lower() in {'nvspcap64.dll','d3d11.dll','dxgi.dll','nvldumdx.dll','nvwgf2umx.dll'}:
+                        names.append(path.value)
+                if identity(pid)!=owner:raise ValueError('Owned test identity changed during module read')
+                rows.append({'pid':pid,'identity':owner,'modules':names})
+            finally:close(handle)
+        except (OSError,ValueError) as exc:rows.append({'pid':pid,'inspection_error':type(exc).__name__})
+    return rows
+
 def backend_nonce(launcher, expected_image, diagnostics=None):
     # Only a descendant with the exact frozen backend role/image is opened.
     for pid in descendants(launcher)-{launcher}:

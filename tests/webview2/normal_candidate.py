@@ -83,7 +83,7 @@ def main():
     before=payload_binding(exe,parsed.inventory)
     from tests.windows import normal_candidate as workflows
     from desktop.windows_processes import arguments
-    from experiments.windows_webview2.compare import modules
+    from tests.windows.normal_processes import modules
     original=workflows.descendants;original_nonce=workflows.backend_nonce;samples=[];last=[0]
     versions={}
     def inspect(parent):

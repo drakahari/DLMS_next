@@ -11,10 +11,17 @@
 
 [Setup]
 AppId={{C7FCBD76-02F4-49C4-B187-9A143237A1F9}
+#ifdef PublicPreview
+AppName=DLMS Desktop Windows Preview
+AppVerName=DLMS Desktop Windows Preview {#Release} (unsigned)
+AppPublisher=DLMS project
+AppVersion={#BackendVersion}
+#else
 AppName=DLMS Desktop WebView2 Candidate
-AppVersion=0.1.0
 AppVerName=DLMS Desktop WebView2 Candidate {#Release}
 AppPublisher=DLMS Desktop private project
+AppVersion=0.1.0
+#endif
 DefaultDirName={localappdata}\Programs\DLMS Desktop WebView2 Candidate
 DefaultGroupName=DLMS Desktop WebView2 Candidate
 DisableProgramGroupPage=yes
@@ -45,17 +52,21 @@ CreateUninstallRegKey=yes
 [Files]
 Source: "{#Payload}\*"; DestDir: "{app}\versions\{#Release}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
-#ifndef TestScope
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 
 [Icons]
-Name: "{group}\DLMS Desktop"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"
+#ifdef TestScope
+; Real shortcut behavior, restricted to the disposable installation tree.
+Name: "{app}\synthetic-menu\DLMS Desktop"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:MenuProfileParameters}"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"
+Name: "{app}\synthetic-desktop\DLMS Desktop"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:DesktopProfileParameters}"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"; Tasks: desktopicon
+#else
+Name: "{group}\DLMS Desktop"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:MenuProfileParameters}"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"
 Name: "{group}\Uninstall DLMS Desktop"; Filename: "{uninstallexe}"
-Name: "{userdesktop}\DLMS Desktop WebView2 Candidate"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"; Tasks: desktopicon
+Name: "{userdesktop}\DLMS Desktop WebView2 Candidate"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:DesktopProfileParameters}"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Description: "Open DLMS Desktop"; Flags: nowait postinstall skipifsilent unchecked
+Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:MenuProfileParameters}"; Description: "Open DLMS Desktop"; Flags: nowait postinstall skipifsilent unchecked
 #endif
 
 ; No data, profile, cache, downloads, backup or external directory is installed
@@ -92,6 +103,7 @@ var
   PinnedPaths: TStringList;
   AppDirectories: TStringList;
   CurrentSid: String;
+  SavedMenuParameters, SavedDesktopParameters: String;
 
 function NativeAttributes(Name: String): LongWord;
   external 'GetFileAttributesW@kernel32.dll stdcall';
@@ -442,6 +454,110 @@ begin
   Result := FileExists(Image) and GetVersionNumbersString(Image, FileVersion) and (FileVersion = Version);
 end;
 
+function MenuProfileParameters(Unused: String): String;
+begin Result := SavedMenuParameters; end;
+
+function DesktopProfileParameters(Unused: String): String;
+begin Result := SavedDesktopParameters; end;
+
+function ProfileArgumentsAllowed(Arguments: String): Boolean;
+var Profile: String; I: Integer;
+begin
+  Result := Arguments = '';
+  if Result then Exit;
+  if Copy(Arguments, 1, 10) <> '--profile ' then Exit;
+  Profile := Copy(Arguments, 11, Length(Arguments));
+  if (Length(Profile) < 1) or (Length(Profile) > 32) then Exit;
+  if (Profile[1] < 'a') or (Profile[1] > 'z') then Exit;
+  for I := 2 to Length(Profile) do
+    if not (((Profile[I] >= 'a') and (Profile[I] <= 'z')) or
+            ((Profile[I] >= '0') and (Profile[I] <= '9')) or
+            (Profile[I] = '_') or (Profile[I] = '-')) then Exit;
+  Result := True;
+end;
+
+function VersionComponentAllowed(Version: String): Boolean;
+var I: Integer;
+begin
+  Result := False;
+  if Version = '' then Exit;
+  for I := 1 to Length(Version) do
+    if not (((Version[I] >= 'A') and (Version[I] <= 'Z')) or
+            ((Version[I] >= 'a') and (Version[I] <= 'z')) or
+            ((Version[I] >= '0') and (Version[I] <= '9')) or
+            (Version[I] = '-')) then Exit;
+  Result := True;
+end;
+
+function CaptureShortcutProfile(Path: String; var Parameters: String): Boolean;
+var Attributes, ErrorCode: LongWord; Handle, TargetHandle: THandle;
+    Info: TNativeFileInfo; Shell, Link: Variant;
+    Target, Directory, Versions, Version, Parent: String;
+begin
+  Result := False; Parameters := '';
+  Parent := ExtractFileDir(Path);
+  if not SafeDirectoryChain(Parent) then Exit;
+  { Even an absent shortcut must not authorize writing through an unsafe parent.
+    Pin the existing ancestor before Inno creates any missing menu directory. }
+  while not DirExists(Parent) do begin
+    if ExtractFileDir(Parent) = Parent then Exit;
+    Parent := ExtractFileDir(Parent);
+  end;
+  if not SafeCreationParent(Parent) then Exit;
+  if DirExists(ExtractFileDir(Path)) and
+     not PinDirectory(ExtractFileDir(Path), True) then Exit;
+  Attributes := NativeAttributes(NativeLocalPath(Path));
+  if Attributes = $FFFFFFFF then begin
+    ErrorCode := NativeLastError;
+    Result := (ErrorCode = 2) or (ErrorCode = 3); Exit;
+  end;
+  { Pin a regular trusted shortcut against writes/replacement while COM reads it.
+    The leaf is released before Inno replaces it; no target is executed/resolved. }
+  Handle := OpenDirectory(NativeLocalPath(Path), $20081, 1, 0, 3, $200000, 0);
+  if Handle = THandle(-1) then Exit;
+  try
+    if not FileInformation(Handle, Info) or ((Info.Attributes and $410) <> 0) or
+       (Info.Links <> 1) or not OwnedDirectory(Handle) then Exit;
+    try
+      Shell := CreateOleObject('WScript.Shell');
+      Link := Shell.CreateShortcut(Path);
+      Target := Link.TargetPath;
+      Directory := Link.WorkingDirectory;
+      Parameters := Link.Arguments;
+      Link := Unassigned; Shell := Unassigned;
+    except Exit; end;
+    if (NativeLocalPath(Target) = '') or (NativeLocalPath(Directory) = '') or
+       (CompareText(ExtractFileName(Target), 'DLMS-Desktop-WebView2.exe') <> 0) or
+       (CompareText(ExtractFileDir(Target), Directory) <> 0) then Exit;
+    Versions := ExpandConstant('{app}\versions');
+    if CompareText(ExtractFileDir(Directory), Versions) <> 0 then Exit;
+    Version := ExtractFileName(Directory);
+    if not VersionComponentAllowed(Version) or not ProfileArgumentsAllowed(Parameters) or
+       not PinDirectory(Directory, True) then Exit;
+    TargetHandle := OpenDirectory(NativeLocalPath(Target), $20081, 1, 0, 3, $200000, 0);
+    if TargetHandle = THandle(-1) then Exit;
+    try
+      Result := FileInformation(TargetHandle, Info) and ((Info.Attributes and $410) = 0)
+        and (Info.Links = 1) and OwnedDirectory(TargetHandle);
+    finally CloseNative(TargetHandle); end;
+  finally CloseNative(Handle); end;
+end;
+
+function CaptureLaunchProfiles: Boolean;
+var MenuPath, DesktopPath: String;
+begin
+#ifdef TestScope
+  MenuPath := ExpandConstant('{app}\synthetic-menu\DLMS Desktop.lnk');
+  DesktopPath := ExpandConstant('{app}\synthetic-desktop\DLMS Desktop.lnk');
+#else
+  MenuPath := ExpandConstant('{group}\DLMS Desktop.lnk');
+  DesktopPath := ExpandConstant('{userdesktop}\DLMS Desktop WebView2 Candidate.lnk');
+#endif
+  Result := CaptureShortcutProfile(MenuPath, SavedMenuParameters);
+  if Result and WizardIsTaskSelected('desktopicon') then
+    Result := CaptureShortcutProfile(DesktopPath, SavedDesktopParameters);
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
@@ -452,6 +568,11 @@ begin
   if not GuardApplication(True) then begin
     ReleasePins;
     Result := 'The installation directory is unsafe or inaccessible. Choose a local directory owned by your account without public write access, junctions or links.';
+    Exit;
+  end;
+  if not CaptureLaunchProfiles then begin
+    ReleasePins;
+    Result := 'Existing DLMS launch shortcut could not be safely preserved. Its target and working folder must identify an existing version in this installation, and its only supported argument is --profile followed by a lowercase profile name. Inspect the shortcut before updating; no profile was changed.';
   end;
 end;
 
