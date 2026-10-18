@@ -530,6 +530,19 @@ def export_anki_genanki(dependencies):
     if not rows:
         return {"error": "No missed questions found for this attempt"}, 404
 
+    # The review page submits an explicit subset. Older attempt-only clients
+    # retain their existing all-missed behavior; never expand a supplied subset.
+    if "attempt_question_numbers" in data:
+        selected = data["attempt_question_numbers"]
+        if (not isinstance(selected, list) or not selected
+                or any(type(n) is not int or n < 1 for n in selected)):
+            return {"error": "Select valid missed question numbers"}, 400
+        wanted = set(selected)
+        available = {row["attempt_question_number"] for row in rows}
+        if not wanted <= available:
+            return {"error": "The selected missed questions are unavailable; reload the attempt"}, 409
+        rows = [row for row in rows if row["attempt_question_number"] in wanted]
+
     print(f"[ANKI] exporting {len(rows)} missed questions")
 
     deck_rows = []

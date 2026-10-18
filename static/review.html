@@ -111,9 +111,11 @@
             </div>
 
             <div class="review-bulk-actions">
-                <button type="button" onclick="exportMissedAnkiApkg()"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#content"></use></svg> Export Selected to Anki</button>
+                <button type="button" id="exportAttemptMissed" onclick="exportMissedAnkiApkg()"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#content"></use></svg> Export Selected to Anki</button>
                 <button type="button" onclick="explainSelectedWithAI()"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#ai"></use></svg> Explain Selected with AI</button>
             </div>
+            <p id="attemptExportStatus" role="status" aria-live="polite"></p>
+            <div id="attemptExportResult"></div>
         </section>
 
         <div class="review-return-row">
@@ -684,56 +686,60 @@ window.syncSelectAllAI = function() {
     master.checked = boxes.length > 0 && boxes.length === checked.length;
 };
 
-window.exportMissedAnkiApkg = function() {
-    const params = new URLSearchParams(window.location.search);
-    const attemptId = params.get("attempt");
-
-    if (!attemptId) {
-        alert("Missing attempt ID.");
+let attemptExportSerial = 0;
+let attemptExportBlob = null;
+window.exportMissedAnkiApkg = async function() {
+    const attemptId = new URLSearchParams(location.search).get("attempt");
+    const selected = [...new Set(Array.from(document.querySelectorAll(".anki-select:checked"))
+        .map(cb => Number(cb.dataset.qnum)).filter(n => Number.isInteger(n) && n > 0))];
+    const button = document.getElementById("exportAttemptMissed");
+    const status = document.getElementById("attemptExportStatus");
+    const result = document.getElementById("attemptExportResult");
+    if (button.disabled) return;
+    if (!attemptId || !selected.length) {
+        status.textContent = !attemptId ? "Missing attempt ID." : "Select at least one missed question for Anki.";
         return;
     }
-
-    const selected = Array.from(
-        document.querySelectorAll(".anki-select:checked")
-    ).map(cb => Number(cb.dataset.qnum));
-
-    if (!selected.length) {
-        alert("Please select at least one missed question.");
-        return;
-    }
-
-    let downloadName = "DLMS_Missed_Questions.apkg";
-
-    fetch("/export/anki", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-            attempt_id: attemptId,
-            attempt_question_numbers: selected
-        })
-    })
-    .then(res => {
+    const serial = ++attemptExportSerial;
+    const documentUrl = location.href;
+    button.disabled = true;
+    result.replaceChildren();
+    if (attemptExportBlob) URL.revokeObjectURL(attemptExportBlob);
+    attemptExportBlob = null;
+    status.textContent = "Preparing the selected missed questions…";
+    try {
+        const res = await fetch("/export/anki", {
+            method: "POST", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({attempt_id: attemptId, attempt_question_numbers: selected})
+        });
         if (!res.ok) throw new Error("APKG export failed");
+        let downloadName = "DLMS_Missed_Questions.apkg";
         const disposition = res.headers.get("Content-Disposition") || "";
         const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
         if (filenameMatch) downloadName = filenameMatch[1];
-        return res.blob();
-    })
-    .then(blob => {
-        const url = URL.createObjectURL(blob);
+        const blob = await res.blob();
+        if (serial !== attemptExportSerial || location.href !== documentUrl) return;
         const a = document.createElement("a");
-        a.href = url;
+        attemptExportBlob = URL.createObjectURL(blob);
+        a.href = attemptExportBlob;
         a.download = downloadName;
-        document.body.appendChild(a);
+        a.dataset.attempt = attemptId;
+        a.textContent = "Download Anki package";
+        result.append(a);
+        status.textContent = "Anki package prepared; download requested. Complete any Save As prompt. Your saved attempt is unchanged.";
         a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-    })
-    .catch(err => {
+    } catch (err) {
         console.error("[ANKI] APKG export error:", err);
-        alert("Failed to generate APKG.");
-    });
+        if (serial === attemptExportSerial && location.href === documentUrl)
+            status.textContent = "Anki package could not be prepared. Your saved attempt is unchanged; retry the export.";
+    } finally {
+        if (serial === attemptExportSerial && location.href === documentUrl) button.disabled = false;
+    }
 };
+window.addEventListener('pagehide', () => {
+    attemptExportSerial++;
+    if (attemptExportBlob) URL.revokeObjectURL(attemptExportBlob);
+});
 
 /* =====================================================
    STARTUP
