@@ -252,8 +252,11 @@ GitHub releases or retained in a versioned documentation archive.
 
 ## Release boundary
 
-This manual documents the 3.3.0 development source. The latest published release
-is 3.2.2; installation examples for published packages retain that version.
+This manual covers DLMS 3.3.0 shared workflows with edition-specific Desktop
+steps. Browser-based DLMS 3.3.0 is stable; Desktop downloads are separate
+previews. See [Choose your DLMS](../choose-your-dlms.md) for the current public
+downloads and qualification limits. Documentation changes in source do not
+update the files bundled in existing downloads.
 Native package publication is governed by the
 [release review checklist](../releases/3.3.0-RELEASE-CHECKLIST.md),
 not by the presence of documentation. A PDF remains optional and is not a

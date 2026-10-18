@@ -90,6 +90,13 @@ workflow.
 
 ## Import a Content Pack ZIP
 
+**Desktop file selection:** follow the
+[native chooser and Server consent steps](04-creating-and-importing-content.md#select-files-in-desktop-local-or-server).
+In Server mode the native origin warning is separate from permission to use the
+source material: allowing the selection lets that Server page read the chosen
+copies and potentially upload them immediately. Cancel grants no new selection.
+
+
 Use **Content Packs** when you receive a compatible DLMS Study Pack ZIP outside
 the guided AI Builder.
 

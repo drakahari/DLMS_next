@@ -34,12 +34,13 @@
       "scope": "Qt Desktop download refusal; shared web premature-success wording; browser download itself passed",
       "reproduction": "Select ordinary text mark; Export Anki; try fallback link",
       "user_impact": "Qt refuses initial/fallback save; web previously claims export before browser/native publication",
-      "repair_status": "output-repair candidate implemented; uncommitted pending Astra High review",
-      "outstanding_coverage": "native Windows/Mac hosts, native Ubuntu/Omarchy, physical keyboard and remaining workflow audit coverage",
+      "repair_status": "Astra approved exact 12-file repair; committed f1c21488bd3d453fc184666d89fcf1e5df229b1a; PR #18 merged normally as 384780bc246f7cb99cef7086f1810e159d6b5640. Published Preview 1 downloads remain unchanged.",
+      "outstanding_coverage": "Native Windows/Mac, native Ubuntu/Omarchy, physical keyboard/accessibility and early-click timing remain unconfirmed. Avery rendered output is not physical printer/duplex-alignment acceptance.",
       "observed_application": "3.3.0",
       "observed_artifact_sha256": "f1693fcc751685d8811c9067f29f25bc677de7676d6e9abf1050bbc3e049c579",
-      "repair_base": "12c202920f45219cc13ae7c4cca940c938bd7aab",
-      "repair": "Exact-origin/current-document APKG Blob eligibility; isolated top-document trusted-action permission before native Save As; existing no-replace publication. Initial/fallback/repeat/cancel/refusal and APKG contents verified; web preparation wording and native terminal outcomes are truthful."
+      "repair_base": "5784e7bbe372ffe6cf6a241d934081815f7edd8c",
+      "repair": "Exact-origin/current-document APKG Blob eligibility; isolated top-document trusted-action permission before native Save As; existing no-replace publication. Initial/fallback/repeat/cancel/refusal and APKG contents verified; web preparation wording and native terminal outcomes are truthful.",
+      "followup_evidence": "Normal unchanged frozen candidate: synthetic Server initial/fallback marked APKG and cancellation, rendered Avery POST/return selection passed; owner-operated native mode configuration/close is distinguished from application-local automation."
     },
     {
       "id": "F4",
@@ -48,13 +49,14 @@
       "scope": "Qt Desktop Local GET substitution confirmed; old Qt Server URL-only external handoff/refusal identified by source, not separately GUI-reproduced; original browser POST/new-tab workflow passed",
       "reproduction": "Custom Deck preview; Open Avery Print Layout",
       "user_impact": "Local HTTP405 instead of layout; old Server does not preserve the in-profile print request by source inspection. Original browser workflow passed the focused check.",
-      "repair_status": "output-repair candidate implemented; uncommitted pending Astra High review",
-      "outstanding_coverage": "physical printer/duplex alignment and native Windows/Mac print hosts",
+      "repair_status": "Astra approved exact 12-file repair; committed f1c21488bd3d453fc184666d89fcf1e5df229b1a; PR #18 merged normally as 384780bc246f7cb99cef7086f1810e159d6b5640. Published Preview 1 downloads remain unchanged.",
+      "outstanding_coverage": "Native Windows/Mac, native Ubuntu/Omarchy, physical keyboard/accessibility and early-click timing remain unconfirmed. Avery rendered output is not physical printer/duplex-alignment acceptance.",
       "observed_application": "3.3.0",
       "observed_artifact_sha256": "f1693fcc751685d8811c9067f29f25bc677de7676d6e9abf1050bbc3e049c579",
-      "repair_base": "12c202920f45219cc13ae7c4cca940c938bd7aab",
+      "repair_base": "5784e7bbe372ffe6cf6a241d934081815f7edd8c",
       "repair": "Local original-request openIn handoff; narrow Server exception only from current same-origin /anki/custom to /anki/printable with explicit action. Endpoint remains POST-only. Return form preserves card tokens/deck name when Qt replaces WebContents and resets history.",
-      "evidence": "Exact base new-window method under source Qt traced GET and 405; repaired Local/Server traced POST and correct rendered body. Firefox actual target=_blank POST succeeds."
+      "evidence": "Exact base new-window method under source Qt traced GET and 405; repaired Local/Server traced POST and correct rendered body. Firefox actual target=_blank POST succeeds.",
+      "followup_evidence": "Normal unchanged frozen candidate: synthetic Server initial/fallback marked APKG and cancellation, rendered Avery POST/return selection passed; owner-operated native mode configuration/close is distinguished from application-local automation."
     },
     {
       "id": "DG01",
@@ -62,8 +64,8 @@
       "scope": "edition-specific manual/Help",
       "reproduction": "Compare captured manual/Help wording with documented and observed workflow",
       "user_impact": "Desktop reconnect origin",
-      "repair_status": "open, outside first repair batch",
-      "outstanding_coverage": "Correct instructions and perform the affected documented steps",
+      "repair_status": "Corrected in uncommitted manual/Help follow-up from 384780bc246f7cb99cef7086f1810e159d6b5640; source/controls checked. Not present in unchanged published downloads or reused normal candidate.",
+      "outstanding_coverage": "Source descriptions and verified direct references do not establish that every corrected instruction was freshly followed in a rebuilt packaged GUI.",
       "observed_application": "3.3.0",
       "observed_artifact_sha256": "f1693fcc751685d8811c9067f29f25bc677de7676d6e9abf1050bbc3e049c579",
       "repair_base": "12c202920f45219cc13ae7c4cca940c938bd7aab"
@@ -74,8 +76,8 @@
       "scope": "edition-specific manual/Help",
       "reproduction": "Compare captured manual/Help wording with documented and observed workflow",
       "user_impact": "Edition data roots",
-      "repair_status": "open, outside first repair batch",
-      "outstanding_coverage": "Correct instructions and perform the affected documented steps",
+      "repair_status": "Corrected in uncommitted manual/Help follow-up from 384780bc246f7cb99cef7086f1810e159d6b5640; source/controls checked. Not present in unchanged published downloads or reused normal candidate.",
+      "outstanding_coverage": "Source descriptions and verified direct references do not establish that every corrected instruction was freshly followed in a rebuilt packaged GUI.",
       "observed_application": "3.3.0",
       "observed_artifact_sha256": "f1693fcc751685d8811c9067f29f25bc677de7676d6e9abf1050bbc3e049c579",
       "repair_base": "12c202920f45219cc13ae7c4cca940c938bd7aab"
@@ -86,8 +88,8 @@
       "scope": "edition-specific manual/Help",
       "reproduction": "Compare captured manual/Help wording with documented and observed workflow",
       "user_impact": "Hosting vs Desktop Server connection",
-      "repair_status": "open, outside first repair batch",
-      "outstanding_coverage": "Correct instructions and perform the affected documented steps",
+      "repair_status": "Corrected in uncommitted manual/Help follow-up from 384780bc246f7cb99cef7086f1810e159d6b5640; source/controls checked. Not present in unchanged published downloads or reused normal candidate.",
+      "outstanding_coverage": "Source descriptions and verified direct references do not establish that every corrected instruction was freshly followed in a rebuilt packaged GUI.",
       "observed_application": "3.3.0",
       "observed_artifact_sha256": "f1693fcc751685d8811c9067f29f25bc677de7676d6e9abf1050bbc3e049c579",
       "repair_base": "12c202920f45219cc13ae7c4cca940c938bd7aab"
@@ -98,8 +100,8 @@
       "scope": "edition-specific manual/Help",
       "reproduction": "Compare captured manual/Help wording with documented and observed workflow",
       "user_impact": "Lifecycle settings and close semantics",
-      "repair_status": "open, outside first repair batch",
-      "outstanding_coverage": "Correct instructions and perform the affected documented steps",
+      "repair_status": "Corrected in uncommitted manual/Help follow-up from 384780bc246f7cb99cef7086f1810e159d6b5640; source/controls checked. Not present in unchanged published downloads or reused normal candidate.",
+      "outstanding_coverage": "Source descriptions and verified direct references do not establish that every corrected instruction was freshly followed in a rebuilt packaged GUI.",
       "observed_application": "3.3.0",
       "observed_artifact_sha256": "f1693fcc751685d8811c9067f29f25bc677de7676d6e9abf1050bbc3e049c579",
       "repair_base": "12c202920f45219cc13ae7c4cca940c938bd7aab"
@@ -110,8 +112,8 @@
       "scope": "edition-specific manual/Help",
       "reproduction": "Compare captured manual/Help wording with documented and observed workflow",
       "user_impact": "Native backup save",
-      "repair_status": "open, outside first repair batch",
-      "outstanding_coverage": "Correct instructions and perform the affected documented steps",
+      "repair_status": "Corrected in uncommitted manual/Help follow-up from 384780bc246f7cb99cef7086f1810e159d6b5640; source/controls checked. Not present in unchanged published downloads or reused normal candidate.",
+      "outstanding_coverage": "Source descriptions and verified direct references do not establish that every corrected instruction was freshly followed in a rebuilt packaged GUI.",
       "observed_application": "3.3.0",
       "observed_artifact_sha256": "f1693fcc751685d8811c9067f29f25bc677de7676d6e9abf1050bbc3e049c579",
       "repair_base": "12c202920f45219cc13ae7c4cca940c938bd7aab"
@@ -122,8 +124,8 @@
       "scope": "edition-specific manual/Help",
       "reproduction": "Compare captured manual/Help wording with documented and observed workflow",
       "user_impact": "Native staged backup adoption",
-      "repair_status": "open, outside first repair batch",
-      "outstanding_coverage": "Correct instructions and perform the affected documented steps",
+      "repair_status": "Corrected in uncommitted manual/Help follow-up from 384780bc246f7cb99cef7086f1810e159d6b5640; source/controls checked. Not present in unchanged published downloads or reused normal candidate.",
+      "outstanding_coverage": "Source descriptions and verified direct references do not establish that every corrected instruction was freshly followed in a rebuilt packaged GUI.",
       "observed_application": "3.3.0",
       "observed_artifact_sha256": "f1693fcc751685d8811c9067f29f25bc677de7676d6e9abf1050bbc3e049c579",
       "repair_base": "12c202920f45219cc13ae7c4cca940c938bd7aab"
@@ -134,8 +136,8 @@
       "scope": "edition-specific manual/Help",
       "reproduction": "Compare captured manual/Help wording with documented and observed workflow",
       "user_impact": "Intentional profile removal",
-      "repair_status": "open, outside first repair batch",
-      "outstanding_coverage": "Correct instructions and perform the affected documented steps",
+      "repair_status": "Corrected in uncommitted manual/Help follow-up from 384780bc246f7cb99cef7086f1810e159d6b5640; source/controls checked. Not present in unchanged published downloads or reused normal candidate.",
+      "outstanding_coverage": "Source descriptions and verified direct references do not establish that every corrected instruction was freshly followed in a rebuilt packaged GUI.",
       "observed_application": "3.3.0",
       "observed_artifact_sha256": "f1693fcc751685d8811c9067f29f25bc677de7676d6e9abf1050bbc3e049c579",
       "repair_base": "12c202920f45219cc13ae7c4cca940c938bd7aab"
@@ -146,8 +148,8 @@
       "scope": "edition-specific manual/Help",
       "reproduction": "Compare captured manual/Help wording with documented and observed workflow",
       "user_impact": "Server file consent",
-      "repair_status": "open, outside first repair batch",
-      "outstanding_coverage": "Correct instructions and perform the affected documented steps",
+      "repair_status": "Corrected in uncommitted manual/Help follow-up from 384780bc246f7cb99cef7086f1810e159d6b5640; source/controls checked. Not present in unchanged published downloads or reused normal candidate.",
+      "outstanding_coverage": "Source descriptions and verified direct references do not establish that every corrected instruction was freshly followed in a rebuilt packaged GUI.",
       "observed_application": "3.3.0",
       "observed_artifact_sha256": "f1693fcc751685d8811c9067f29f25bc677de7676d6e9abf1050bbc3e049c579",
       "repair_base": "12c202920f45219cc13ae7c4cca940c938bd7aab"
@@ -158,8 +160,8 @@
       "scope": "edition-specific manual/Help",
       "reproduction": "Compare captured manual/Help wording with documented and observed workflow",
       "user_impact": "Version/download labels",
-      "repair_status": "open, outside first repair batch",
-      "outstanding_coverage": "Correct instructions and perform the affected documented steps",
+      "repair_status": "Corrected in uncommitted manual/Help follow-up from 384780bc246f7cb99cef7086f1810e159d6b5640; source/controls checked. Not present in unchanged published downloads or reused normal candidate.",
+      "outstanding_coverage": "Source descriptions and verified direct references do not establish that every corrected instruction was freshly followed in a rebuilt packaged GUI.",
       "observed_application": "3.3.0",
       "observed_artifact_sha256": "f1693fcc751685d8811c9067f29f25bc677de7676d6e9abf1050bbc3e049c579",
       "repair_base": "12c202920f45219cc13ae7c4cca940c938bd7aab"
@@ -170,12 +172,56 @@
       "scope": "edition-specific manual/Help",
       "reproduction": "Compare captured manual/Help wording with documented and observed workflow",
       "user_impact": "Matching CSV summary review claim",
-      "repair_status": "open, outside first repair batch",
-      "outstanding_coverage": "Correct instructions and perform the affected documented steps",
+      "repair_status": "Corrected in uncommitted manual/Help follow-up from 384780bc246f7cb99cef7086f1810e159d6b5640; source/controls checked. Not present in unchanged published downloads or reused normal candidate.",
+      "outstanding_coverage": "Source descriptions and verified direct references do not establish that every corrected instruction was freshly followed in a rebuilt packaged GUI.",
       "observed_application": "3.3.0",
       "observed_artifact_sha256": "f1693fcc751685d8811c9067f29f25bc677de7676d6e9abf1050bbc3e049c579",
       "repair_base": "12c202920f45219cc13ae7c4cca940c938bd7aab"
+    },
+    {
+      "id": "F5",
+      "severity": "medium",
+      "component": "Qt attempt-specific missed-question APKG Blob download",
+      "scope": "Observed normal Linux Qt Local. Same Blob gate is shared by Qt hosts, but Server and native Mac/Windows reproduction is not claimed. Browser download transport differs; no fresh browser failure established.",
+      "observed_application": "normal task-only output-repair candidate matching merged runtime",
+      "observed_artifact_sha256": "c5fcaa0a8b352399a51733978bb60f7aeff7894d5a3300f931a3232ae2491184",
+      "reproduction": "Exam History \u2192 Review This Attempt with a wrong answer \u2192 missed-question Anki Select all \u2192 Export Selected to Anki. No native Save As appears; native status says A download outside the local application was blocked.",
+      "user_impact": "Attempt-specific export unavailable; no destination file created. Separate history-wide missed-question export succeeded with correct APKG content. No record or history damage observed.",
+      "repair_status": "Open; runtime repair not authorized in this documentation/coverage batch.",
+      "source_evidence": [
+        "static/review.html: exportMissedAnkiApkg creates a Blob URL after POST /export/anki",
+        "desktop/shell.py: narrow marked-question document/filename Blob permission does not cover this distinct review export"
+      ],
+      "evidence": [
+        "local/evidence/068-missed-native-native.json",
+        "local/evidence/069-missed-export-refused.json",
+        "local/evidence/069-missed-export-refused.png",
+        "local/evidence/HISTORY_ANKI_RESULT.json"
+      ],
+      "outstanding_coverage": "Focused design and independent review for this distinct document/action binding before any gate extension; normal Server and other hosts remain unconfirmed."
+    },
+    {
+      "id": "F6",
+      "severity": "medium",
+      "component": "Shared Quiz Bundles narrow sidebar navigation",
+      "scope": "Normal Linux Qt Local reproduced; captured shared HTML/JS lacks a toggle handler. Browser/Server source applicability indicated, not fresh native/browser GUI acceptance.",
+      "observed_application": "normal task-only output-repair candidate matching merged runtime",
+      "observed_artifact_sha256": "c5fcaa0a8b352399a51733978bb60f7aeff7894d5a3300f931a3232ae2491184",
+      "reproduction": "Open Quiz Bundles at 711px viewport width; click visible hamburger twice. Sidebar remains closed; aria-expanded remains false.",
+      "user_impact": "Hamburger cannot expose navigation on this page. Visible Back to Quiz Library works; exporting/importing bundles still works and no data damage was observed.",
+      "repair_status": "Open; no runtime edits in this batch.",
+      "source_evidence": [
+        "templates/quiz/bundles.html supplies #menuButton but no toggle handler",
+        "static/nav-normalize.js synchronizes state but only toggles [data-settings-menu]"
+      ],
+      "evidence": [
+        "local/evidence/081a-blocked-navigation.json",
+        "local/evidence/081b-bundles-hamburger-noop.json",
+        "local/evidence/UI_ACTIONS.jsonl"
+      ],
+      "outstanding_coverage": "Narrow focused shared navigation repair and real-browser check; related bundle-review page not inferred tested."
     }
   ],
-  "output_repair_base": "5784e7bbe372ffe6cf6a241d934081815f7edd8c"
+  "output_repair_base": "5784e7bbe372ffe6cf6a241d934081815f7edd8c",
+  "followup_base": "384780bc246f7cb99cef7086f1810e159d6b5640"
 }
