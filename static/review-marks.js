@@ -151,8 +151,9 @@
         exportUrl = URL.createObjectURL(blob);
         const link = document.createElement('a'); link.href=exportUrl; link.download='dlms_marked_questions.apkg'; link.textContent='Download Anki package';
         document.getElementById('markExportResult').replaceChildren(link);
+        link.addEventListener('click',()=>{status.textContent='Anki download requested. Complete Save As or check your browser downloads. Canceling does not save a file. Your marks remain saved.';});
+        status.textContent='Anki package prepared. Complete Save As or use Download Anki package. A file is saved only after the download completes. Your marks remain saved.';
         link.click();
-        status.textContent='Anki package exported. Save it if your browser asks, or use Download Anki package. Your marks remain saved.';
       } else {
         result=result||await response.json();
         if (pending.action === 'save') { sessionStorage.removeItem(key); clearPending(); location.reload(); return; }

@@ -193,6 +193,8 @@ class LocalPage(OwnedPage):
         super().__init__(profile, parent if parent is not None else owner)
         self.owner = owner
         self.newWindowRequested.connect(self._new_window)
+        from .marked_exports import install
+        install(self)
         from .ai_actions import AIHandoff
         self.ai_handoff = AIHandoff(self, owner)
         if sys.platform == 'darwin':
@@ -213,13 +215,14 @@ class LocalPage(OwnedPage):
         return False
 
     def _new_window(self, request):
-        if self.owner.view is None or self.owner._closing:
+        if (self.owner.view is None or self.owner._closing
+                or self.owner._retiring_browser is not None or self.owner.view.page() is not self):
             return
         url = request.requestedUrl()
         if not request.isUserInitiated():
             self.owner.note_blocked(url)
         elif allowed_internal(url, self.owner.port):
-            self.owner.view.setUrl(url)
+            request.openIn(self)  # Preserve POST/body; setUrl would manufacture GET.
         else:
             self.ai_handoff.handle(url, request.isUserInitiated(), generic=lambda: self.owner.open_external(url))
 
@@ -1120,9 +1123,11 @@ class DesktopWindow(QMainWindow):
             self.view.setUrl(QUrl(self.mode_config["server"]["origin"] + "/"))
 
     def _server_download(self, request):
+        from .marked_exports import allowed_blob
+        marked_blob = allowed_blob(self, request)
         if (self.mode != "server" or self._closing or self._retiring_browser is not None
                 or self.view is None or request.page() is not self.view.page()
-                or not exact_server_origin(request.url(), self.mode_config["server"]["origin"])):
+                or not (exact_server_origin(request.url(), self.mode_config["server"]["origin"]) or marked_blob)):
             request.cancel()
             return
         name = Path(request.downloadFileName()).name
@@ -1147,6 +1152,8 @@ class DesktopWindow(QMainWindow):
         export_context = context(self)
         record = {"path": str(target), "state": "in_progress", "feedback_ticket": ticket}
         self.download_results.append(record)
+        if marked_blob:
+            record["marked_blob_url"] = request.url().toString()
         page, generation = request.page(), self._browser_generation
         def finished(*_):
             if record["state"] != "in_progress" or record.get("native_export"):
@@ -1171,6 +1178,10 @@ class DesktopWindow(QMainWindow):
             if self.mode == "server" and self.profile is download_profile and not self._closing:
                 self._feedback(ticket, message, "success" if record["state"] == "completed" else
                                "error" if record["state"] == "interrupted" else "info")
+                if marked_blob:
+                    from .marked_exports import report
+                    report(self, record, export_context,
+                           'cancelled' if record['state'] == 'cancelled' else 'refused')
         request.isFinishedChanged.connect(finished)
         request.stateChanged.connect(finished)
         self._feedback(ticket, f"Receiving Server download in its separate private folder: {target}")
@@ -1917,9 +1928,11 @@ class DesktopWindow(QMainWindow):
                 self.settings_buttons[action].setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _download(self, request):
+        from .marked_exports import allowed_blob
+        marked_blob = allowed_blob(self, request)
         if (self.mode != "local" or self._closing or self._retiring_browser is not None
                 or self.view is None or request.page() is not self.view.page()
-                or not allowed_internal(request.url(), self.port)):
+                or not (allowed_internal(request.url(), self.port) or marked_blob)):
             request.cancel()
             self.statusBar().showMessage("A download outside the local application was blocked.")
             return
@@ -1957,6 +1970,8 @@ class DesktopWindow(QMainWindow):
         request.setDownloadDirectory(str(job_dir))
         request.setDownloadFileName(name)
         record = {"path": str(destination), "state": "in_progress", "feedback_ticket": ticket}
+        if marked_blob:
+            record["marked_blob_url"] = request.url().toString()
         self.download_results.append(record)
         from .exports import context, current
         # A native backup already carries its claimed destination/operation.
@@ -2003,6 +2018,10 @@ class DesktopWindow(QMainWindow):
                 record["state"] = "interrupted"
                 record["reason"] = request.interruptReasonString()
                 self._feedback(ticket, f"Download failed: {record['reason']}", "error")
+            if marked_blob:
+                from .marked_exports import report
+                report(self, record, export_context,
+                       'cancelled' if record['state'] == 'cancelled' else 'refused')
             if native_selection and native_selection["operation"] == self.backup_output_operation and self._backup_creating:
                 self._backup_creating = False
                 self._feedback(ticket, "Backup download did not complete; no selected file was published. "

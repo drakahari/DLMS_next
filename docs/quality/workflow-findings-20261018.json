@@ -8,7 +8,7 @@
       "scope": "shared",
       "reproduction": "Generate synthetic circle/polygon image practice; rebuild; reopen",
       "user_impact": "Spatial assessment becomes DB choice surrogate; factual history and images retained",
-      "repair_status": "implemented; focused source, browser and normal frozen Fedora checks passed; independent Astra review and owner acceptance pending",
+      "repair_status": "merged in PR #17; merge 5784e7bbe372ffe6cf6a241d934081815f7edd8c; Astra approved exact reviewed repair, with conservative literal-suffix refusal and narrower failure-path GUI coverage recorded",
       "outstanding_coverage": "Windows/Mac qualification and historical recovery excluded",
       "observed_application": "3.3.0",
       "observed_artifact_sha256": "f1693fcc751685d8811c9067f29f25bc677de7676d6e9abf1050bbc3e049c579",
@@ -21,7 +21,7 @@
       "scope": "shared",
       "reproduction": "Generate same pack; answer and Mark for review before rebuild",
       "user_impact": "Fresh source falsely refused; no new hotspot mark; Study retained",
-      "repair_status": "implemented; focused source, browser and normal frozen Fedora checks passed; independent Astra review and owner acceptance pending",
+      "repair_status": "merged in PR #17; merge 5784e7bbe372ffe6cf6a241d934081815f7edd8c; Astra approved exact reviewed repair, with conservative literal-suffix refusal and narrower failure-path GUI coverage recorded",
       "outstanding_coverage": "Native Windows/Mac and unsupported historical states",
       "observed_application": "3.3.0",
       "observed_artifact_sha256": "f1693fcc751685d8811c9067f29f25bc677de7676d6e9abf1050bbc3e049c579",
@@ -31,27 +31,30 @@
       "id": "F3",
       "severity": "medium",
       "component": "Qt download/review marks export",
-      "scope": "Desktop Qt observed; original browser unconfirmed",
+      "scope": "Qt Desktop download refusal; shared web premature-success wording; browser download itself passed",
       "reproduction": "Select ordinary text mark; Export Anki; try fallback link",
-      "user_impact": "No Save As/file; premature exported message",
-      "repair_status": "open, outside first repair batch",
-      "outstanding_coverage": "same-origin blob ownership, cancellation and content fidelity",
+      "user_impact": "Qt refuses initial/fallback save; web previously claims export before browser/native publication",
+      "repair_status": "output-repair candidate implemented; uncommitted pending Astra High review",
+      "outstanding_coverage": "native Windows/Mac hosts, native Ubuntu/Omarchy, physical keyboard and remaining workflow audit coverage",
       "observed_application": "3.3.0",
       "observed_artifact_sha256": "f1693fcc751685d8811c9067f29f25bc677de7676d6e9abf1050bbc3e049c579",
-      "repair_base": "12c202920f45219cc13ae7c4cca940c938bd7aab"
+      "repair_base": "12c202920f45219cc13ae7c4cca940c938bd7aab",
+      "repair": "Exact-origin/current-document APKG Blob eligibility; isolated top-document trusted-action permission before native Save As; existing no-replace publication. Initial/fallback/repeat/cancel/refusal and APKG contents verified; web preparation wording and native terminal outcomes are truthful."
     },
     {
       "id": "F4",
       "severity": "medium",
       "component": "Qt new-window/custom print request",
-      "scope": "Desktop Qt observed; original browser unconfirmed",
+      "scope": "Qt Desktop Local GET substitution confirmed; old Qt Server URL-only external handoff/refusal identified by source, not separately GUI-reproduced; original browser POST/new-tab workflow passed",
       "reproduction": "Custom Deck preview; Open Avery Print Layout",
-      "user_impact": "HTTP405 instead of layout",
-      "repair_status": "open, outside first repair batch",
-      "outstanding_coverage": "POST method trace, printable fidelity, physical printing",
+      "user_impact": "Local HTTP405 instead of layout; old Server does not preserve the in-profile print request by source inspection. Original browser workflow passed the focused check.",
+      "repair_status": "output-repair candidate implemented; uncommitted pending Astra High review",
+      "outstanding_coverage": "physical printer/duplex alignment and native Windows/Mac print hosts",
       "observed_application": "3.3.0",
       "observed_artifact_sha256": "f1693fcc751685d8811c9067f29f25bc677de7676d6e9abf1050bbc3e049c579",
-      "repair_base": "12c202920f45219cc13ae7c4cca940c938bd7aab"
+      "repair_base": "12c202920f45219cc13ae7c4cca940c938bd7aab",
+      "repair": "Local original-request openIn handoff; narrow Server exception only from current same-origin /anki/custom to /anki/printable with explicit action. Endpoint remains POST-only. Return form preserves card tokens/deck name when Qt replaces WebContents and resets history.",
+      "evidence": "Exact base new-window method under source Qt traced GET and 405; repaired Local/Server traced POST and correct rendered body. Firefox actual target=_blank POST succeeds."
     },
     {
       "id": "DG01",
@@ -173,5 +176,6 @@
       "observed_artifact_sha256": "f1693fcc751685d8811c9067f29f25bc677de7676d6e9abf1050bbc3e049c579",
       "repair_base": "12c202920f45219cc13ae7c4cca940c938bd7aab"
     }
-  ]
+  ],
+  "output_repair_base": "5784e7bbe372ffe6cf6a241d934081815f7edd8c"
 }
