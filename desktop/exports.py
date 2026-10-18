@@ -67,7 +67,7 @@ def begin(owner,record,*,captured):
                 report(owner,record,captured,'refused')
                 if current(owner,captured):
                     owner._feedback(record['feedback_ticket'],
-                        'Anki download not saved: use Export to Anki or its Download Anki package link in this page. Private bytes retained; no destination changed.','error')
+                        'Anki download not saved: use this page’s Anki export button or its Download Anki package link. Private bytes retained; no destination changed.','error')
         authorize(owner,record,captured,decided)
     else:
         owner._native_exports.enqueue(record,captured)

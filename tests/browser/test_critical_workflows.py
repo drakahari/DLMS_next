@@ -18324,3 +18324,51 @@ def test_marked_export_fallback_and_original_avery_post(browser_stack, browser_s
     if output:
         Path(output).mkdir(parents=True,exist_ok=True)
         (Path(output)/'browser-output-result.json').write_text(json.dumps({'initial_and_fallback_content_equal':True,'notes':len(notes),'printable_post_body_preserved':True,'physical_printing':False},indent=2)+'\n')
+
+
+def test_attempt_missed_selected_apkg_content_and_repeat(browser_stack, browser_server):
+    """Browser transport is distinct from Qt consent; selection must be exact."""
+    b=browser_stack.browser;base=browser_stack.base_url
+    b.navigate(base+'/review?attempt=browser-anki-missed-attempt')
+    b.wait_for("document.querySelectorAll('.anki-select').length===2")
+    b.click('.anki-select[data-qnum="2"]')
+    previous=set(browser_server.work_root.glob('firefox-session-*/downloads/*.apkg'))
+    def downloaded(previous):
+        end=time.monotonic()+8
+        while time.monotonic()<end:
+            for p in set(browser_server.work_root.glob('firefox-session-*/downloads/*.apkg'))-previous:
+                try:
+                    with zipfile.ZipFile(p) as z:raw=z.read('collection.anki2')
+                    c=sqlite3.connect(':memory:');c.deserialize(raw);notes=[x[0] for x in c.execute('select flds from notes')];c.close()
+                    return p,notes
+                except (OSError,zipfile.BadZipFile,sqlite3.Error):pass
+            time.sleep(.05)
+        raise AssertionError('No completed attempt APKG')
+    b.click('button[onclick="exportMissedAnkiApkg()"]');first,notes=downloaded(previous)
+    assert len(notes)==1 and 'Browser question two?' in notes[0] and 'Browser question one?' not in notes[0]
+    previous=set(browser_server.work_root.glob('firefox-session-*/downloads/*.apkg'))
+    b.click('button[onclick="exportMissedAnkiApkg()"]');second,again=downloaded(previous)
+    assert first!=second and again==notes
+
+
+def test_bundle_sidebar_narrow_keyboard_and_wide_selection(browser_stack):
+    b=browser_stack.browser;base=browser_stack.base_url
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    b.navigate(base+'/quiz-bundles');b.activate();b.wait_for('document.hasFocus()')
+    b.set_viewport(711,800)
+    b.wait_for("document.querySelectorAll('input[name=quiz_ids]').length>0")
+    b.click('input[name=quiz_ids]');selected=b.evaluate("[...document.querySelectorAll('input[name=quiz_ids]:checked')].map(x=>x.value)")
+    b.click('#menuButton');b.wait_for("document.getElementById('dashboardSidebar').classList.contains('open')")
+    assert b.evaluate("document.getElementById('menuButton').getAttribute('aria-expanded')")=='true'
+    b.press_key('\ue00c');b.wait_for("document.getElementById('menuButton').getAttribute('aria-expanded')==='false'")
+    assert b.evaluate('document.activeElement.id')=='menuButton'
+    b.press_key('\ue007')
+    b.wait_for("document.getElementById('menuButton').getAttribute('aria-expanded')==='true'")
+    b.wait_for("document.activeElement.closest('#dashboardSidebar')!==null")
+    b.press_key('\ue00c');b.wait_for("document.getElementById('menuButton').getAttribute('aria-expanded')==='false'")
+    assert b.evaluate('document.activeElement.id')=='menuButton'
+    b.press_key(' ');b.wait_for("document.getElementById('menuButton').getAttribute('aria-expanded')==='true'")
+    b.press_key('\ue00c');b.wait_for("document.getElementById('menuButton').getAttribute('aria-expanded')==='false'")
+    b.set_viewport(1280,850)
+    assert b.evaluate("[...document.querySelectorAll('input[name=quiz_ids]:checked')].map(x=>x.value)")==selected
+    b.click('#dashboardSidebar a[href="/library"]');b.wait_for("location.pathname==='/library'")

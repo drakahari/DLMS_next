@@ -13,7 +13,7 @@ Observed artifact: `DLMS-Desktop-3.3.0-preview1-linux-x86_64.AppImage`, SHA-256 
 
 ## Documentation gaps — source corrected, packaged instruction acceptance qualified
 
-The DG01–09 corrections and DG10 summary correction are uncommitted in the follow-up described in [workflow-followup-20261018.md](workflow-followup-20261018.md). They preserve browser-edition procedures and distinguish Desktop Local/Server. They do not update released downloads. The table retains the original correction requirements for traceability.
+The DG01–09 corrections and DG10 summary correction were merged in PR #19 (`1a35485`) with approved Help-contract follow-up `b2dddcb`, as described in [workflow-followup-20261018.md](workflow-followup-20261018.md). They preserve browser-edition procedures and distinguish Desktop Local/Server. They do not update released downloads. The table retains the original correction requirements for traceability.
 
 | ID | Affected instructions | Correction requirement now addressed in source |
 |---|---|---|
@@ -44,9 +44,11 @@ Draft temporary warning (owner review required; not published):
 
 The second candidate addresses only F3/F4. See [output-repair-20261018.md](output-repair-20261018.md) for source, real-browser and normal frozen Fedora evidence and their limits. Existing whole-quiz/custom-deck APKG successes are reused where code is unchanged. There is no new permission for arbitrary Blob navigation, remote Local maintenance, or silent filesystem publication. The Anki permission observer is isolated to a trusted top-document action and exposes no native command channel. Native outcome text sent to the page excludes private paths/error text.
 
-Historical recovery and migrations remain out of scope. Documentation corrections and additional workflow evidence are now recorded in the uncommitted follow-up; incomplete branches remain open. Windows/Mac native, physical keyboard, native Ubuntu/Omarchy and physical printing are not established by this Fedora batch. The temporary warning above is still a draft for review, not a published advisory.
+Historical recovery and migrations remain out of scope. Documentation corrections and additional workflow evidence are recorded in the follow-up merged in PR #19; incomplete branches remain open. Windows/Mac native, physical keyboard, native Ubuntu/Omarchy and physical printing are not established by this Fedora batch. The temporary warning above is still a draft for review, not a published advisory.
 
-## Follow-up findings and evidence
+## Original documentation-batch findings and evidence
+
+These observations precede the independently reviewed F5/F6 repair described below. The original open status and narrower scope are retained as historical evidence, not the current repair status.
 
 | ID | Observed scope | Reproduction / impact | Status |
 |---|---|---|---|
@@ -55,4 +57,16 @@ Historical recovery and migrations remain out of scope. Documentation correction
 
 PR #18 merge: `384780bc246f7cb99cef7086f1810e159d6b5640`, exact approved head `f1c21488bd3d453fc184666d89fcf1e5df229b1a`. No source change or bypass was needed for the merge. Both original repairs remain in source; published Preview 1 downloads still lack them. Fresh normal-candidate Server evidence now covers marked initial/fallback/cancel APKG, rendered Avery POST/return, Study/Exam save/reopen and outage without fallback. It does not establish physical printing, early-click behavior or native Windows/Mac acceptance.
 
-The 129 original row statuses and their original counts are deliberately unchanged. The derivative [follow-up checklist](workflow-followup-20261018.json) adds direct documentation references and bounded observations; it does not turn sampled main paths into complete rows. The original warning above remains unchanged and unpublished. No additional runtime repair, historical reconstruction or data migration was performed.
+The 129 original row statuses and their original counts are deliberately unchanged. The derivative [follow-up checklist](workflow-followup-20261018.json) adds direct documentation references and bounded observations; it does not turn sampled main paths into complete rows. The original warning above remains unchanged and unpublished. That documentation batch performed no runtime repair, historical reconstruction or data migration.
+
+
+## F5/F6 follow-up — reviewed source submission
+
+Documentation PR #19 (approved head `b2dddcb`) is now merged normally as `1a35485`. Its original failed exact-wording CI is retained; the focused Help-contract correction passed all triggered CI. This branch incorporates that new main by a normal merge, keeping documentation and runtime review histories distinct. Original 129-row audit and evidence are unchanged. Published Preview 1 downloads still lack the merged source repairs.
+
+- **F5:** Qt Local attempt-specific missed Anki fails before Save As. A Firefox baseline proves the separate shared receiver ignores the selected subset and exports all misses for that attempt. The bounded repair extends existing isolated-world trusted-action consent only to the active attempt document and exact Blob/filename, retains native no-replace Save As and adds truthful outcomes/fallback. The receiver filters the supplied subset without changing factual records or the legacy omitted-subset API.
+- **F6:** Quiz Bundles hamburger lacks a toggle handler. Firefox independently reproduces the shared defect. One existing shared navigation hook restores toggle/aria/focus/Escape without changing selected IDs or bundle data.
+
+See [missed-anki-bundle-navigation-20261018.md](missed-anki-bundle-navigation-20261018.md) for exact source, normal-package and synthetic Server evidence and limits. Older remote deployments need the shared page/receiver/template changes; Desktop does not rewrite remote pages or relax origins. Native Windows/Mac, physical input/accessibility and all unrelated audit branches remain open. No historical recovery or migration.
+
+Astra approved the reviewed F5/F6 scope. The post-review change only replaces attempt-export terminal reassurance with saved Exam result/history wording; two focused refusal/unconfirmed regressions pass. The earlier normal Fedora candidate predates this wording correction; no revised package or new platform acceptance is claimed.
