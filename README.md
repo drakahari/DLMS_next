@@ -1,25 +1,105 @@
 # DLMS
 
-**A private, local-first workspace for building, studying, and improving your
-own learning material.**
-
-**Latest published release: DLMS 3.3.0** · [Download packaged releases](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0)
+**A private, local-first workspace for building, studying, and improving your own learning material.**
 
 ## Choose your DLMS
 
-**[Compare browser-based DLMS and DLMS Desktop →](docs/choose-your-dlms.md)**
+**Want the original stable release? [Download browser-based DLMS 3.3.0](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0).**
 
-Browser-based DLMS is available now and supports local/offline use as well as
-intentional server hosting. DLMS Desktop adds a dedicated window, managed Local
-startup and an optional connection to an existing server. Desktop builds in this
-private consolidation candidate are not public downloads; macOS Desktop remains
-planned. Both interfaces are supported choices. They do not automatically share
-or synchronize data.
+| Choose | What you get |
+| --- | --- |
+| **Original browser-based DLMS — stable 3.3.0** | Runs on your computer and opens in your preferred browser. Choose this for the established stable release. It can also be deliberately configured as a server. |
+| **DLMS Desktop — Preview 1** | Opens in its own application window. **Local mode** runs on your computer; **Server mode** connects to an existing DLMS server you choose. Choose this if you want to try the Desktop preview. |
+
+**Both editions can be used locally.** A browser interface does not mean a cloud service. Local use needs neither a hosted DLMS account nor a separate DLMS server. External AI and remote Server connections need network access. The two editions do not automatically share or synchronize data. Keep using the original release if it suits you.
+
+[Go to stable downloads](#download-the-original-stable-release) · [Go to Desktop preview downloads](#download-dlms-desktop--previews) · [More about editions and data](docs/choose-your-dlms.md).
+
+<a id="installation-and-releases"></a>
+
+## Download the original stable release
+
+Choose **one package for your system** from the original browser-based **DLMS 3.3.0** release:
+
+| Your system | Download |
+| --- | --- |
+| Windows 11 x86-64 | [DLMS-3.3.0-windows11-x86_64.zip](https://github.com/drakahari/DLMS_next/releases/download/v3.3.0/DLMS-3.3.0-windows11-x86_64.zip) |
+| Fedora 44 x86-64 | [DLMS-3.3.0-fedora44-x86_64.tar.gz](https://github.com/drakahari/DLMS_next/releases/download/v3.3.0/DLMS-3.3.0-fedora44-x86_64.tar.gz) |
+| Ubuntu 24.04 x86-64 | [DLMS-3.3.0-ubuntu24.04-x86_64.tar.gz](https://github.com/drakahari/DLMS_next/releases/download/v3.3.0/DLMS-3.3.0-ubuntu24.04-x86_64.tar.gz) |
+| Ubuntu 26.04 x86-64 | [DLMS-3.3.0-ubuntu26.04-x86_64.tar.gz](https://github.com/drakahari/DLMS_next/releases/download/v3.3.0/DLMS-3.3.0-ubuntu26.04-x86_64.tar.gz) |
+| Mac with Apple Silicon (not Intel) | [DLMS-3.3.0-macos-arm64.zip](https://github.com/drakahari/DLMS_next/releases/download/v3.3.0/DLMS-3.3.0-macos-arm64.zip) |
+
+<a id="macos-apple-silicon"></a>
+
+**Open it:** extract the archive and run its DLMS executable; on Mac, open the extracted `DLMS.app` in Finder. Follow the included `README.txt` for your platform. The local interface normally opens in your browser; if needed, visit [http://127.0.0.1:9001/](http://127.0.0.1:9001/). These packages are unsigned; the Mac app is not notarized. Use only the operating system's normal approval flow; stop if approval is unavailable or the system reports malware or damage. Do not disable security protections or remove quarantine.
+
+Before upgrading an existing installation, keep a verified backup: [3.3.0 release notes and rollback guidance](docs/releases/3.3.0.md). Replacing an executable does not undo a data migration.
+
+## Download DLMS Desktop — previews
+
+**Ordinary users need only their platform's app download below**, plus any system prerequisites listed under installation. You do not need Python, GitHub's “Source code” archives or the large dependency-source archives to run the packaged app.
+
+| Your system | App download — Preview 1 |
+| --- | --- |
+| Windows 11 x86-64 | [Windows installer (.exe)](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-windows/DLMS-Desktop-3.3.0-preview1-windows11-x86_64-Setup.exe) |
+| Linux x86-64 | [Linux AppImage](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1/DLMS-Desktop-3.3.0-preview1-linux-x86_64.AppImage) |
+| Mac with Apple Silicon (not Intel) | [Mac DMG](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-macos/DLMS-Desktop-3.3.0-macos-arm64-preview1.dmg) |
+
+These are **previews, not the stable release**. [Windows details](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview1-windows), [Linux details](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview1) and [Mac details](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview1-macos) record their tested systems and limitations. Desktop keeps separate profiles; installing it does not automatically import your browser-based DLMS data.
+
+### Install and open Desktop on Windows
+
+**Requires Windows 11 x86-64, .NET Framework 4.8 and a protected machine-wide Microsoft WebView2 Evergreen Runtime 155.0.4283.45 or newer.** Setup does not install prerequisites; per-user/AppData-only WebView2 runtimes are unsupported.
+
+1. Download and run `DLMS-Desktop-3.3.0-preview1-windows11-x86_64-Setup.exe`. The per-user installer is **unsigned**, so Windows may warn. Proceed only if you trust the download and Windows permits it; do not disable protections to install it.
+2. Finish setup, then open **DLMS Desktop** from the Start menu. The preview retains the **DLMS Desktop WebView2 Candidate** menu folder for compatibility. Desktop shortcut creation and opening the app at the end of setup are optional and initially unchecked.
+
+### Open Desktop on Linux
+
+Use the AppImage for a standalone trial. **Normal AppImage mounting requires FUSE.** The exact preview was tested on Fedora 44/COSMIC Wayland; native Ubuntu and Omarchy acceptance remains pending.
+
+1. Save the AppImage in a folder you want to keep. Open a terminal in that folder.
+2. Make it executable and start a named preview profile:
+
+   ```sh
+   chmod u+x DLMS-Desktop-3.3.0-preview1-linux-x86_64.AppImage
+   ./DLMS-Desktop-3.3.0-preview1-linux-x86_64.AppImage --profile preview01
+   ```
+
+It needs no mandatory installation or desktop integration. The AppImage is **unsigned**; keep Chromium sandboxing enabled. See alternatives below if FUSE is unavailable.
+
+### Install and open Desktop on Mac
+
+**Apple Silicon only; qualified on macOS 26.6.2.** Intel Macs and other macOS versions are not qualified by this preview. The app is **ad hoc signed, without Developer ID or notarization**.
+
+1. Open the DMG and copy **DLMS Desktop.app** to a location you choose. Use a separate folder if another DLMS app is already there.
+2. Double-click the copied app in Finder.
+3. If macOS says it cannot verify the app, choose **Done**, then **System Settings → Privacy & Security → Open Anyway** for this app. Confirm **Open Anyway** (or **Open**) and authenticate personally with your existing password or Touch ID.
+
+That per-app procedure was verified on the quarantined preview. If approval is unavailable or macOS reports malware or damage, stop. Do not disable Gatekeeper or remove quarantine. Managed Macs may prohibit approval.
+
+### Alternative Linux installation
+
+- **No FUSE:** explicitly extract and run the same AppImage with `APPIMAGE_EXTRACT_AND_RUN=1 ./DLMS-Desktop-3.3.0-preview1-linux-x86_64.AppImage --profile preview01`. Keep Chromium sandboxing enabled.
+- **One-folder bundle:** [download the Linux .tar.zst bundle](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1/DLMS-Desktop-3.3.0-preview1-linux-x86_64.tar.zst) if you want the optional Fedora per-user installation/manual-maintenance manager. Extract into a new folder, keep the full bundle together and follow the [Linux release instructions](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview1). Installation previews its locations and requires confirmation; it is not automatic.
+
+The original browser-based 3.3.0 release has distribution-specific Linux `.tar.gz` packages, not an AppImage. The older browser-based `DLMS-3.2.2-linux-x86_64.AppImage` remains an older-release option; it is separate from this Desktop preview.
+
+### Getting started
+
+1. In Desktop, choose **Local** to work on this computer. Choose **Server** only to connect to an existing deployment whose address you know; it uses that server's data, not your Local profile.
+2. Start with **Build Quiz**, **PDF & Image Import**, a **Study Pack**, or a subject study area. The original stable archives also include `sample_quiz.txt` for trying text import.
+3. Review imported content, then use **Study Mode** or **Exam Mode**. History, Analytics and Learning Intelligence help you decide what to revisit.
+4. Use **Settings → Backup & Restore** to keep backups outside the live data folder. Do not point the two editions at one live database.
+
+Close Desktop normally when finished and follow any pending-work warning. In browser-based DLMS, use **Shutdown DLMS** in the sidebar to stop the local process explicitly. Its optional browser-presence shutdown applies only in eligible local sessions, not a general Server shutdown guarantee. If the local process is still running, revisit its address rather than starting another copy.
+
+[Read the user manual](docs/user-manual/README.md) for the everyday workflows.
 
 DLMS 3.3.0 includes durable Study history, optional Exam Plans,
 earned-certification and training records, and 26 manually selected themes.
 See the [release notes](docs/releases/3.3.0.md) and
-[release evidence](docs/releases/3.3.0-RELEASE-CHECKLIST.md). The five native
+[release evidence](docs/releases/3.3.0-RELEASE-CHECKLIST.md). The five original browser-based native
 packages were built from commit `af6766a8c59da513870014141c60aaa1edd1d232`.
 All five native builders passed; broader packaged OCR, persistence and restore
 checks ran on Fedora. The additional Ubuntu 24.04 harness was canceled, so
@@ -28,8 +108,8 @@ those broader checks are not claimed for every platform.
 DLMS is a single-user learning-management and study application that runs on
 your computer. It combines quiz authoring, document and image import, Study and
 Exam modes, learning history, targeted review, reusable Study Packs, and Anki
-export in one desktop-style experience. The interface opens in your browser,
-while the application and its data remain local by default.
+export in one desktop-style experience. The original edition opens in your browser; Desktop uses a dedicated window.
+The application and its data remain local by default in Local mode.
 
 DLMS is an open-source, non-commercial project for personal learning, exam
 preparation, technical training, and other self-directed study. It is not a
@@ -49,9 +129,9 @@ SaaS product, cloud service, or enterprise multi-user platform.
 - **No required AI API subscription.** DLMS can prepare prompts and validate
   returned content without calling an AI-provider API or storing an API key.
   Using an external provider is optional and remains under the user's control.
-- **A desktop-style local experience.** Native packages launch a local Flask
-  application and open its browser UI; ordinary use does not require managing a
-  separate database or web server.
+- **A desktop-style local experience.** The original packages open the local
+  browser UI; Desktop manages its Local backend and application window. Neither
+  local option requires managing a separate database or server.
 
 ## Learn DLMS
 
@@ -180,111 +260,36 @@ historical and was not regenerated for this release.
 | --- | --- | --- |
 | [![Smart PDF Review and Repair](static/help_assets/sample_cloud_questions_smart_pdf_review-repair.webp)](static/help_assets/sample_cloud_questions_smart_pdf_review-repair.webp) | [![Learning Intelligence topics and weak areas](static/help_assets/learning-topics.webp)](static/help_assets/learning-topics.webp) | [![AI Study Pack Builder](static/help_assets/ai_study_pack_builder.webp)](static/help_assets/ai_study_pack_builder.webp) |
 
-## Installation and releases
-
-For normal use, download the package for your operating system from the
-[Releases page](../../releases). Every final package contains the native
-application, `README.txt`, and `sample_quiz.txt`.
-
-The five published native 3.3.0 packages are listed below. Verify downloads
-with `SHA256SUMS.txt` from the [3.3.0 release](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0).
-See the [release notes](docs/releases/3.3.0.md) for upgrade and rollback guidance.
-
-| Platform | DLMS 3.3.0 package name |
-| --- | --- |
-| Fedora 44 x86-64 | `DLMS-3.3.0-fedora44-x86_64.tar.gz` |
-| Ubuntu 24.04 x86-64 | `DLMS-3.3.0-ubuntu24.04-x86_64.tar.gz` |
-| Ubuntu 26.04 x86-64 | `DLMS-3.3.0-ubuntu26.04-x86_64.tar.gz` |
-| Windows 11 x86-64 | `DLMS-3.3.0-windows11-x86_64.zip` |
-| macOS Apple Silicon (`arm64`) | `DLMS-3.3.0-macos-arm64.zip` |
-
-Linux packages are distribution-specific; use the package named for your
-distribution. On Linux or Windows, extract the archive and run the DLMS
-executable inside it.
-
-Omarchy and AppImage packages were not published for 3.3.0. The earlier
-`DLMS-3.2.2-linux-x86_64.AppImage` remains available for that older release;
-it passed cross-distribution acceptance on Ubuntu 24.04, Ubuntu 26.04,
-Fedora 44, and Omarchy Quattro. Native Linux `.tar.gz` packages are the
-published 3.3.0 Linux downloads.
-
 ### Optional Omarchy companion
 
 Omarchy users can optionally install the separately maintained
 [DLMS Companion for Omarchy](https://github.com/drakahari/omarchy-dlms). Its
 Quattro bar widget shows due questions and opens DLMS review in the browser.
-DLMS runs without the plugin: native Linux packages work independently, and
-the generic AppImage remains distro-neutral. The plugin is not bundled with
-DLMS packages or source. See the plugin repository for installation and update
+The companion targets browser-based DLMS and is optional. The original Linux
+packages work independently; Desktop also needs no Omarchy plugin. The companion
+is not bundled with DLMS packages or source. See the plugin repository for installation and update
 instructions.
-
-### macOS Apple Silicon
-
-The macOS release is a native application bundle. The macOS ZIP exposes all three directly at
-its archive root: `DLMS.app`, `README.txt`, and `sample_quiz.txt`, with no
-wrapper directory around the app.
-
-1. Extract `DLMS-3.3.0-macos-arm64.zip`.
-2. Drag `DLMS.app` into `/Applications`.
-3. Open it from Finder or Applications.
-4. Because the release is not Developer ID-signed or notarized, Gatekeeper may
-   block its first launch. Where available, Control-click `DLMS.app`, choose
-   **Open**, and confirm. Otherwise, try once and then use **System Settings →
-   Privacy & Security → Open Anyway**.
-
-Removing quarantine is not part of the normal installation. If those first-run
-choices are unavailable, verify the ZIP against `SHA256SUMS.txt` before using
-this targeted fallback:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/DLMS.app
-```
-
-The supported macOS release target is Apple Silicon, not Intel.
-
-## Getting started
-
-1. Launch DLMS. In an interactive desktop session it normally opens the local
-   interface automatically.
-2. If needed, open [http://127.0.0.1:9001/](http://127.0.0.1:9001/) yourself.
-3. Start with **Build Quiz**, **PDF & Image Import**, an installed **Study
-   Pack**, or one of the subject study areas.
-4. Review imported material, then choose Study Mode or Exam Mode.
-5. Use History, Analytics, and Learning Intelligence to decide what to revisit;
-   send selected material to Anki when useful.
-
-DLMS uses the browser as its interface, but the local application process owns
-the session. When finished, use **Shutdown DLMS** in the sidebar for an immediate,
-explicit stop. In an eligible loopback-only desktop session, the optional
-browser-presence shutdown feature may stop DLMS after the final DLMS browser
-presence disappears and its grace period expires. Do not rely on that behavior
-when the feature is disabled or DLMS is running in LAN/server mode. If the
-process is still running, revisit the local address instead of starting another
-server copy.
-
-The included `sample_quiz.txt` is a quick way to try the classic text-import
-workflow. DLMS also includes a task-oriented Help Center covering quizzes,
-imports, Study Packs, Learning Intelligence, Anki, settings, data management,
-and troubleshooting.
 
 ## Data, privacy, and portability
 
-DLMS creates its data directory on first run and initializes its local database
-and configuration automatically:
+Browser-based DLMS creates its data directory on first run and initializes its
+local database and configuration automatically:
 
 - Windows: `%APPDATA%\DLMS`
 - macOS: `~/Library/Application Support/DLMS`
 - Linux: `~/.local/share/DLMS`
 
+Desktop uses separate, platform-specific preview profiles; see [data locations](docs/choose-your-dlms.md#where-your-data-lives). Do not manually share a live data directory between editions.
+
 Use **Settings → Backup & Restore** to download a portable backup, validate a
 backup before restoring it, or migrate persistent DLMS data. Keep important
 backups outside the live application-data directory.
 
-DLMS binds to `127.0.0.1:9001` by default. An intentional non-loopback bind is
+Browser-based DLMS binds to `127.0.0.1:9001` by default. An intentional non-loopback bind is
 an advanced trusted-LAN/server configuration: DLMS has no user authentication,
 so it should not be exposed directly to the public internet.
 
-### Browser launch and server controls
+### Browser-based launch and server controls
 
 - `--browser` forces a browser-launch attempt.
 - `--no-browser` suppresses automatic launch.
@@ -309,6 +314,19 @@ Headless/SSH detection affects automatic browser launch, not the network bind.
   artifact, final-package, checksum, and native smoke-test gates.
 - [Engineering audit summaries](docs/audits/) record evidence-based product and
   release reviews; they are not third-party certifications or guarantees.
+
+## Developers, licensing and download verification
+
+Running a packaged app does **not** require downloading source archives or installing build tools. The accompanying sources, notices, provenance and checksums are for verification, licensing, redistribution and rebuilding. OS prerequisites listed above still apply. Checksums detect file mismatches; they are not independent publisher signatures.
+
+| Edition/platform | Checksums and materials | Build/replacement guidance |
+| --- | --- | --- |
+| Original stable 3.3.0 | [SHA256SUMS.txt](https://github.com/drakahari/DLMS_next/releases/download/v3.3.0/SHA256SUMS.txt), [release/source](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0) | [Native release verification](docs/RELEASE_VERIFICATION.md), [OCR packaging](docs/OCR_PACKAGING.md) |
+| Windows Desktop preview | [SHA256SUMS.txt](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-windows/SHA256SUMS.txt), [all sources/notices and final installer supplement](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview1-windows), [redistribution](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-windows/REDISTRIBUTION.md) | [Build and replacement](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-windows/BUILD_AND_REPLACEMENT.md) |
+| Linux Desktop preview | [SHA-256 values and all source/notice companions](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview1) | [Linux build, notices and replacement guide](docs/linux-desktop-preview-build.md) |
+| Mac Desktop preview | [SHA256SUMS](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-macos/SHA256SUMS), [source index](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-macos/SOURCE_INDEX.json), [all sources/notices and provenance](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview1-macos), [redistribution](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-macos/REDISTRIBUTION.md) | [Build and replacement](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-macos/BUILD_AND_REPLACEMENT.md) |
+
+The application and original Desktop badge are MIT; dependencies retain their own terms. See [LICENSE](LICENSE), [Desktop source licensing](docs/desktop-license.md) and [artwork provenance](desktop_assets/ICON_PROVENANCE.md). Anyone redistributing a Desktop binary must retain its applicable notices and corresponding-source materials, including the final Windows installer supplement and the platform-specific source mappings. Ordinary users need only their app, not every source companion.
 
 ## Development and contributing
 
@@ -399,8 +417,10 @@ runtime-data exclusions, start/routes/shutdown/restart behavior, and the final
 archive layout. They do not add signing, notarization, installers, publication,
 or CI release automation.
 
-GitHub's automatic source archives provide the repository source; do not upload
-a separately assembled source ZIP.
+For the original browser-based native release, GitHub's automatic source archives
+provide the repository source; do not upload a separately assembled source ZIP
+for that packaging flow. Desktop redistribution additionally requires the exact
+platform source/notice companions indexed in its release materials above.
 
 </details>
 
@@ -411,4 +431,6 @@ OCR, Study/Exam persistence and exact backup/restore checks ran on Fedora with
 synthetic data. The additional Ubuntu 24.04 harness was canceled; those Fedora
 checks do not establish equivalent end-to-end behavior on every other platform.
 The [release evidence](docs/releases/3.3.0-RELEASE-CHECKLIST.md) records the
-limits, and the [Releases page](../../releases) is authoritative for downloads.
+limits, and the [Releases page](https://github.com/drakahari/DLMS_next/releases) is authoritative for downloads.
+
+Desktop Preview 1 is separately published for Windows 11 x86-64, Linux x86-64 and Apple Silicon Mac. Its preview status and platform qualification limits are described in the download sections above.
