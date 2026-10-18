@@ -15,6 +15,11 @@ sys.path[:0] = [str(root), str(source)]
 from tools.pyinstaller_ocr import collect_tesseract_bundle
 
 ocr_binaries, ocr_data = collect_tesseract_bundle(required=True)
+if os.environ.get('DLMS_WINDOWS_PUBLIC_PREVIEW') == '1':
+    import json
+    native_root = Path(os.environ['DLMS_WINDOWS_PINNED_NATIVE'])
+    native_records = json.loads(Path(os.environ['DLMS_WINDOWS_PINNED_NATIVE_RECORDS']).read_text())
+    ocr_binaries += [(str(native_root / record['file']), '.') for record in native_records]
 identity = Path(os.environ["DLMS_WINDOWS_BUILD_INFO"])
 notices = Path(os.environ["DLMS_WINDOWS_NOTICES"])
 if not identity.is_file() or not (notices / "INVENTORY.json").is_file():
@@ -43,11 +48,18 @@ analysis = Analysis([str(entry)], pathex=[str(root), str(source)],
                     binaries=ocr_binaries, datas=datas, hiddenimports=hidden,
                     excludes=["pytest", *([] if instrumented else ['tests']), "package_fedora.manage", "package_fedora.manage_gui",
                               "PySide6.QtCharts", "PySide6.QtDataVisualization", "PySide6.QtGraphs",
-                              "PySide6.QtQuick3D", "PySide6.QtVirtualKeyboard"],
+                              "PySide6.QtQuick3D", "PySide6.QtQuickTimeline", "PySide6.QtWaylandCompositor", "PySide6.QtVirtualKeyboard"],
                     noarchive=False, optimize=0)
+if os.environ.get('DLMS_WINDOWS_PUBLIC_PREVIEW') == '1':
+    from package_windows_webview2.preview_bundle import prune
+    from package_windows_webview2.native_inputs import verify_collected
+    verify_collected(analysis.binaries, native_root, native_records)
+    import json
+    analysis.binaries, analysis.datas, removed = prune(analysis.binaries, analysis.datas)
+    (identity.parent / 'preview-exclusions.json').write_text(json.dumps(removed, indent=2) + '\n')
 archive = PYZ(analysis.pure)
 executable = EXE(archive, analysis.scripts, [('X utf8', None, 'OPTION')], exclude_binaries=True, name=name,
                  debug=False, strip=False, upx=False, console=False,
                  icon=str(root / "desktop_assets/icons/windows/DLMSDesktop.ico"),
-                 version=str(root / "package_windows_webview2/version.txt"))
+                 version=os.environ.get('DLMS_WINDOWS_VERSION_RESOURCE', str(root / "package_windows_webview2/version.txt")))
 bundle = COLLECT(executable, analysis.binaries, analysis.datas, strip=False, upx=False, name=name)

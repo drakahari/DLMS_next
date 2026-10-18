@@ -43,6 +43,7 @@ sealed partial class DesktopRenderer : Form {
     const string RulesHash="b8cd43300f4cf55024bd792b128d3b0aa457de4bc307b15c457446b4b7376d60";
     string policyDirectory, expectedExtensionId;
     string trustedRuntimeDirectory;
+    readonly HashSet<string> verifiedHistoricalComponentRuntimes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     ulong activeNavigation;
     long generation;
     string documentIdentity;
@@ -660,22 +661,25 @@ sealed partial class DesktopRenderer : Form {
     static bool TrustedSystemSid(string sid) {
         return sid=="S-1-5-18"||sid=="S-1-5-32-544"||sid=="S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464";
     }
-    void ProtectedRuntimePath(string path,bool directory) {
+    void ProtectedRuntimePath(string path,bool directory,bool strictDirectory=false) {
         if((File.GetAttributes(path)&FileAttributes.ReparsePoint)!=0)throw new InvalidOperationException("Runtime reparse path refused");
         FileSystemSecurity acl=directory?(FileSystemSecurity)Directory.GetAccessControl(path):File.GetAccessControl(path);
+        CheckRuntimeAcl(acl,directory&&!strictDirectory&&!String.Equals(path,trustedRuntimeDirectory,StringComparison.OrdinalIgnoreCase));
+        // Runtime servicing uses hardlinks for its signed executable. Every
+        // alias has the same protected file ACL, and this retained handle denies
+        // writes/deletion through every alias. Policy JSON never permits links.
+        if(directory)PinPolicyDirectories(path);else PinPolicyPath(path,false,true);
+    }
+    static void CheckRuntimeAcl(FileSystemSecurity acl,bool relaxedAncestor) {
         if(!TrustedSystemSid(acl.GetOwner(typeof(SecurityIdentifier)).Value))throw new InvalidOperationException("Runtime path is not system-owned");
         const FileSystemRights writes=FileSystemRights.WriteData|FileSystemRights.AppendData|FileSystemRights.WriteExtendedAttributes|FileSystemRights.DeleteSubdirectoriesAndFiles|FileSystemRights.WriteAttributes|FileSystemRights.Delete|FileSystemRights.ChangePermissions|FileSystemRights.TakeOwnership;
         // Creating an unrelated sibling on an ancestor such as C:\ does not
         // replace our existing retained path. The version directory and image
         // themselves must disallow every untrusted write; ancestors must forbid
         // altering/deleting existing entries or their security/reparse metadata.
-        FileSystemRights denied=directory&&!String.Equals(path,trustedRuntimeDirectory,StringComparison.OrdinalIgnoreCase)?writes&~(FileSystemRights.WriteData|FileSystemRights.AppendData|FileSystemRights.WriteExtendedAttributes):writes;
+        FileSystemRights denied=relaxedAncestor?writes&~(FileSystemRights.WriteData|FileSystemRights.AppendData|FileSystemRights.WriteExtendedAttributes):writes;
         foreach(FileSystemAccessRule rule in acl.GetAccessRules(true,true,typeof(SecurityIdentifier)))
             if(rule.AccessControlType==AccessControlType.Allow&&(rule.PropagationFlags&PropagationFlags.InheritOnly)==0&&((rule.FileSystemRights&denied)!=0||(unchecked((uint)rule.FileSystemRights)&0x50000000u)!=0)&&!TrustedSystemSid(rule.IdentityReference.Value))throw new InvalidOperationException("Runtime path permits untrusted writes");
-        // Runtime servicing uses hardlinks for its signed executable. Every
-        // alias has the same protected file ACL, and this retained handle denies
-        // writes/deletion through every alias. Policy JSON never permits links.
-        if(directory)PinPolicyDirectories(path);else PinPolicyPath(path,false,true);
     }
     void VerifyRuntimeComponents() {
         string image;using(var process=Process.GetProcessById(browserPid))image=Path.GetFullPath(process.MainModule.FileName);
@@ -686,6 +690,12 @@ sealed partial class DesktopRenderer : Form {
         var paths=new List<string>();string current=trustedRuntimeDirectory;
         while(current!=null){paths.Add(current);current=Path.GetDirectoryName(current);}
         paths.Reverse();foreach(string path in paths)ProtectedRuntimePath(path,true);ProtectedRuntimePath(image,false);
+        VerifySignedRuntimeImage(image,version);
+        CheckComponentPreferences();
+        Event("runtime-trust",new Dictionary<string,object>{{"image",image},{"version",version},{"microsoft_authenticode",true},{"system_protected_path",true},{"components","exact-id-name-runtime-trust-inference"}});
+    }
+    static void VerifySignedRuntimeImage(string image,string version) {
+        if(FileVersionInfo.GetVersionInfo(image).FileVersion!=version)throw new InvalidOperationException("Runtime image version did not match its exact protected version directory");
         var file=new TrustFile{Size=(uint)Marshal.SizeOf(typeof(TrustFile)),Path=image};IntPtr memory=Marshal.AllocHGlobal(Marshal.SizeOf(typeof(TrustFile)));
         try {
             Marshal.StructureToPtr(file,memory,false);
@@ -697,8 +707,59 @@ sealed partial class DesktopRenderer : Form {
             using(var certificate=new X509Certificate2(X509Certificate.CreateFromSignedFile(image)))
                 if(certificate.GetNameInfo(X509NameType.SimpleName,false)!="Microsoft Corporation")throw new InvalidOperationException("Runtime publisher was not Microsoft Corporation");
         }finally{Marshal.DestroyStructure(memory,typeof(TrustFile));Marshal.FreeHGlobal(memory);}
-        CheckComponentPreferences();
-        Event("runtime-trust",new Dictionary<string,object>{{"image",image},{"version",version},{"microsoft_authenticode",true},{"system_protected_path",true},{"components","exact-id-name-runtime-trust-inference"}});
+    }
+    static string ComponentMetadataRuntime(object location,string path,string activeDirectory,string resource) {
+        const string refused="Runtime component Preferences metadata did not match an exact supported protected virtual resource";
+        if(!(location is int)||(int)location!=5||(resource!="edge_clipboard"&&resource!="edge_pdf"))throw new InvalidOperationException(refused);
+        NativePath(path);string full=Path.GetFullPath(path),family=Path.GetDirectoryName(activeDirectory);
+        if(!String.Equals(full,path.Replace('/','\\'),StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException(refused);
+        string directory=Path.GetDirectoryName(Path.GetDirectoryName(full));
+        if(directory==null||!String.Equals(Path.GetDirectoryName(directory),family,StringComparison.OrdinalIgnoreCase)||
+           !String.Equals(full,Path.Combine(directory,"resources",resource),StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException(refused);
+        string recorded=Path.GetFileName(directory),running=Path.GetFileName(activeDirectory);Version recordedVersion,runningVersion;
+        if(!Version.TryParse(recorded,out recordedVersion)||recordedVersion.Revision<0||recordedVersion.ToString(4)!=recorded||
+           recordedVersion.Major>65535||recordedVersion.Minor>65535||recordedVersion.Build>65535||recordedVersion.Revision>65535||
+           !Version.TryParse(running,out runningVersion)||runningVersion.Revision<0||runningVersion.ToString(4)!=running||
+           runningVersion.Major>65535||runningVersion.Minor>65535||runningVersion.Build>65535||runningVersion.Revision>65535||
+           recordedVersion.CompareTo(runningVersion)>0||
+           (!String.Equals(directory,activeDirectory,StringComparison.OrdinalIgnoreCase)&&recordedVersion.CompareTo(new Version(155,0,4283,45))<0))throw new InvalidOperationException(refused);
+        return directory;
+    }
+    static bool RuntimeObjectMissing(string path,bool directory) {
+        using(var existing=CreateFile(NativePath(path),0x20080u,3,IntPtr.Zero,3,0x00200000u|(directory?0x02000000u:0u),IntPtr.Zero)) {
+            if(existing.IsInvalid) {
+                int error=Marshal.GetLastWin32Error();
+                if(error!=2)throw new System.ComponentModel.Win32Exception(error,"Historical Runtime lookup failed; nothing was reset");
+                return true;
+            }
+            FileInformation info;
+            if(!GetFileInformationByHandle(existing,out info))throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            if((info.Attributes&0x400)!=0||((info.Attributes&0x10)!=0)!=directory)throw new InvalidOperationException("Historical Runtime object alias or type refused");
+            return false;
+        }
+    }
+    void VerifyHistoricalComponentRuntime(string directory) {
+        if(verifiedHistoricalComponentRuntimes.Contains(directory))return;
+        string family=Path.GetDirectoryName(trustedRuntimeDirectory);
+        if(!String.Equals(Path.GetDirectoryName(directory),family,StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("Historical component escaped the protected Runtime family");
+        // The active signed Runtime is already verified. Before accepting an
+        // absent old directory/image, prove its namespace forbids untrusted
+        // creation; relaxed ancestor ACL rules are insufficient here.
+        ProtectedRuntimePath(family,true,true);
+        if(!RuntimeObjectMissing(directory,true)) {
+            ProtectedRuntimePath(directory,true,true);
+            string image=Path.Combine(directory,"msedgewebview2.exe");
+            // Evergreen can leave a protected version directory after deleting
+            // its executable. No old code is selected or recreated in that case.
+            if(!RuntimeObjectMissing(image,false)) {
+                ProtectedRuntimePath(image,false);
+                VerifySignedRuntimeImage(image,Path.GetFileName(directory));
+            }
+        }
+        // No removed executable is selected, loaded or recreated. The active
+        // protected Microsoft Runtime and exact component ID/location/resource
+        // plus the exclusive extension inventory remain the authority.
+        verifiedHistoricalComponentRuntimes.Add(directory);
     }
     void CheckComponentPreferences() {
         string profile=Path.GetFullPath(view.CoreWebView2.Profile.ProfilePath),storage=Path.GetFullPath(TextValue(config,"storage")).TrimEnd('\\')+"\\";
@@ -725,8 +786,14 @@ sealed partial class DesktopRenderer : Form {
         foreach(var pair in new[]{new[]{"dgiklkfkllikcanfonkcabmbdfmgleag","edge_clipboard"},new[]{"mhjfbmdgcfjbbpaeojofohoefgiehjai","edge_pdf"}}) {
             object entry;if(!entries.TryGetValue(pair[0],out entry))continue;
             var value=entry as Dictionary<string,object>;
-            string expected=Path.Combine(trustedRuntimeDirectory,"resources",pair[1]);
-            if(value==null||!value.ContainsKey("location")||Convert.ToInt32(value["location"])!=5||!String.Equals(Path.GetFullPath(TextValue(value,"path")),expected,StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("Runtime component Preferences metadata did not match the exact protected virtual resource");
+            if(value==null||!value.ContainsKey("location"))throw new InvalidOperationException("Runtime component Preferences metadata was malformed");
+            string directory=ComponentMetadataRuntime(value["location"],TextValue(value,"path"),trustedRuntimeDirectory,pair[1]);
+            // Evergreen may retain the previous installed version's component
+            // paths in this private profile. Those are virtual resource paths,
+            // not ordinary resource directories. Accept only an exact known
+            // component in the verified protected Runtime namespace;
+            // never rewrite preferences or trust an arbitrary version pathname.
+            if(!String.Equals(directory,trustedRuntimeDirectory,StringComparison.OrdinalIgnoreCase))VerifyHistoricalComponentRuntime(directory);
         }
     }
     static bool RestrictedCsp(string[] headers) {
