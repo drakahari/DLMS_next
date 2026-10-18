@@ -7,7 +7,7 @@ import sys
 
 def main(argv=None):
     if sys.platform != 'darwin' or platform.machine() != 'arm64':
-        raise RuntimeError('This private Desktop candidate requires Apple Silicon macOS')
+        raise RuntimeError('This Desktop preview requires Apple Silicon macOS')
     import package_macos
     package_macos.ACTIVE = True
     from desktop.macos_paths import prepare_root
@@ -31,9 +31,9 @@ def main(argv=None):
         sys.argv = [sys.argv[0], *args[2:]]
         from importlib import import_module
         return int(import_module('desktop.' + role).main() or 0)
-    parser = argparse.ArgumentParser(description='Private DLMS Desktop Apple Silicon candidate')
-    parser.add_argument('--profile', default='walkthrough')
-    parser.add_argument('--data-root', help='new or previously marked Mac candidate root; no data adoption')
+    parser = argparse.ArgumentParser(description='DLMS Desktop Apple Silicon preview')
+    parser.add_argument('--profile', default='default')
+    parser.add_argument('--data-root', help='new or previously marked Mac preview root; no data adoption')
     parser.add_argument('--capture-window-events', action='store_true')
     selected = parser.parse_args(args)
     import re

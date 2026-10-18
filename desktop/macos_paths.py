@@ -1,4 +1,4 @@
-"""Separate private macOS candidate storage; never discover or adopt old profiles."""
+"""Separate macOS preview storage; never discover or adopt installed profiles."""
 import json
 import os
 from pathlib import Path
@@ -6,8 +6,8 @@ import pwd
 import stat
 import sys
 
-MARKER = '.dlms-macos-candidate.json'
-IDENTITY = {'kind': 'dlms-desktop-macos-candidate', 'version': 1}
+MARKER = '.dlms-macos-preview.json'
+IDENTITY = {'kind': 'dlms-desktop-macos-preview', 'version': 1}
 
 
 def real_home():
@@ -15,7 +15,7 @@ def real_home():
 
 
 def default_data_root():
-    return real_home() / 'Library/Application Support/DLMS Desktop Candidate'
+    return real_home() / 'Library/Application Support/DLMS Desktop Preview'
 
 
 def prepare_root(path=None, *, create=True):

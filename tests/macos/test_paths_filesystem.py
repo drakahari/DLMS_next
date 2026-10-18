@@ -39,7 +39,7 @@ class MacPathsTests(unittest.TestCase):
         with patch.object(macos_paths.pwd, "getpwuid", return_value=SimpleNamespace(pw_dir=str(native))) as lookup:
             with patch.dict(os.environ, {"HOME": str(self.base / "scoped-home")}):
                 self.assertEqual(macos_paths.real_home(), native)
-                self.assertEqual(macos_paths.default_data_root(), native / "Library/Application Support/DLMS Desktop Candidate")
+                self.assertEqual(macos_paths.default_data_root(), native / "Library/Application Support/DLMS Desktop Preview")
         lookup.assert_called_with(os.getuid())
 
     def test_new_root_is_private_marked_and_reopens_unchanged(self):
