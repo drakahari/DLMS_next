@@ -18202,3 +18202,69 @@ def test_desktop_history_reference_link_at_matched_ethereal_viewport(browser_sta
     b.evaluate("document.querySelector('.history-study-navigation a').focus();true")
     assert b.evaluate("document.activeElement.matches('.history-study-navigation a')")
     assert b.evaluate("getComputedStyle(document.activeElement).outlineWidth") == '3px'
+
+
+@pytest.mark.parametrize('browser_stack', [{'alwaysMatch': {'unhandledPromptBehavior': 'ignore'}}], indirect=True)
+def test_imported_hotspot_marks_rebuild_preserve_runtime_history_and_grading(browser_stack):
+    """The actual pack generator, durable marks and maintenance UI share one assessment."""
+    browser, base = browser_stack.browser, _marked_http_base(browser_stack)
+    fixture = ROOT / 'tests/fixtures/hotspot-preservation/synthetic-pack.zip'
+    with zipfile.ZipFile(fixture) as archive:
+        archive.extractall(browser_stack.data_root / 'content_packs')
+    browser.navigate(base + '/it/images')
+    form = "form[action='/study-packs/image/generate']:has(input[value='workflow_audit_it_20261018'])"
+    browser.wait_for(f'document.querySelector({json.dumps(form)}) !== null')
+    # Catalogs can contain multiple preseeded packs; expand this form's own row.
+    toggle = browser.evaluate(f"(() => {{let row=document.querySelector({json.dumps(form)}).closest('[id]');return row?.id;}})()")
+    if toggle and browser.evaluate(f'document.getElementById({json.dumps(toggle)}).hidden'):
+        browser.click('[aria-controls=' + json.dumps(toggle) + ']')
+    browser.click(form + ' button[type=submit]')
+    browser.wait_for('quizRecoveryReady && quiz.length===2')
+    qid = browser.evaluate('Number(window.QUIZ_ID)')
+    entry = next(e for e in json.loads((browser_stack.data_root/'config/quizzes.json').read_text()) if e['id']==qid)
+    runtime = browser_stack.data_root / 'data' / Path(entry['html']).with_suffix('.json').name
+    raw = runtime.read_bytes()
+    questions = json.loads(raw)
+    assert {q['target']['type'] for q in questions} == {'circle','polygon'}
+    browser.click('.study-mode-btn')
+    browser.wait_for('durableStudySession!==null && reviewMarkContext!==null')
+    for ordinal, question in enumerate(questions):
+        browser.wait_for("document.querySelector('.hotspot-image').complete && document.querySelector('.hotspot-image').naturalWidth>0")
+        browser.evaluate("document.querySelector('.hotspot-image').scrollIntoView({block:'center'});true")
+        point = browser.evaluate("(() => {const r=document.querySelector('.hotspot-image').getBoundingClientRect();return {x:r.x+r.width*" + ('.25' if question['target']['type']=='circle' else '.75') + ",y:r.y+r.height*.5};})()")
+        browser.command('input.performActions', {'context':browser.context, 'actions':[{
+            'type':'pointer','id':'hotspot','parameters':{'pointerType':'mouse'},'actions':[
+                {'type':'pointerMove','origin':'viewport','x':round(point['x']),'y':round(point['y'])},
+                {'type':'pointerDown','button':0},{'type':'pointerUp','button':0}]}]})
+        browser.wait_for("studyLearningEventSaves.size===0 && document.querySelector('.hotspot-click-marker.correct')!==null")
+        browser.click('#studyAnkiBtn')
+        browser.wait_for(f'reviewMarkContext.indexes.includes({ordinal}) && reviewMarkPending===null')
+        if ordinal == 0:
+            browser.click('#nextBtn')
+    browser.click('#finishReviewBtn')
+    browser.wait_for('durableStudySession.completed_at!==null')
+    session_id = browser.evaluate('durableStudySession.id')
+    browser.navigate(base + '/admin/maintenance')
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        records = '\n'.join(conn.iterdump())
+    assert len(browser.click_with_prompt('#rebuildAllBtn', accept=True)) == 1
+    browser.wait_for("document.getElementById('rebuildStatus').textContent.includes('0 failed')")
+    failure_text = browser.evaluate("document.getElementById('rebuildFailures').innerText")
+    assert failure_text == ''
+    assert runtime.read_bytes() == raw
+    with sqlite3.connect(browser_stack.data_root/'results.db') as conn:
+        assert '\n'.join(conn.iterdump()) == records
+        assert conn.execute('SELECT count(*) FROM review_marks WHERE quiz_id=? AND marked=1',(qid,)).fetchone()[0] == 2
+        assert conn.execute('SELECT count(*) FROM study_responses WHERE session_id=? AND was_correct=1',(session_id,)).fetchone()[0] == 2
+    browser.navigate(base + '/quizzes/' + entry['html'])
+    browser.wait_for('quizRecoveryReady && quiz.length===2')
+    assert browser.evaluate('quiz.map(q=>q.target)') == [q['target'] for q in questions]
+    output = os.environ.get('DLMS_HOTSPOT_CAPTURE_DIR')
+    if output:
+        Path(output).mkdir(parents=True, exist_ok=True)
+        screenshot = browser.command('browsingContext.captureScreenshot', {'context':browser.context,'origin':'viewport'})
+        (Path(output)/'browser-hotspot-after-rebuild.png').write_bytes(base64.b64decode(screenshot['data']))
+        (Path(output)/'browser-result.json').write_text(json.dumps(dict(
+            quiz_id=qid, session_id=session_id, runtime_sha256=hashlib.sha256(raw).hexdigest(),
+            exact_runtime_preserved=True, exact_database_preserved=True,
+            correct_responses=2, marks=2, other_fixture_refusals=failure_text), indent=2)+'\n')
