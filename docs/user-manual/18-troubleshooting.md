@@ -9,6 +9,23 @@ If DLMS is working well enough to open Settings, create and download a backup
 before substantial recovery work. The procedures and exact reset scopes are in
 [Maintenance, Backup, and Data Management](17-maintenance-backup-and-data-management.md).
 
+## Desktop window and mode problems
+
+For Desktop Local, return to the existing window or reopen the **same profile**
+through its documented launcher. Do not guess a fixed localhost address or start
+a second writer. If startup or a save is unresolved, preserve its message and
+recovery evidence; do not remove locks, journals or browser storage to bypass it.
+
+Close the native window normally or use **Shutdown DLMS** in Local; pending-save
+and managed-operation checks can refuse closure. In Server mode, closing Desktop
+does not stop the remote service or delete results already saved there. When
+Desktop cannot verify remote saves, **Keep open** is the default. An unreachable
+Server retains its identity and error; return to Local explicitly. See
+[Desktop Local and Server](16-settings-and-runtime.md#desktop-local-and-server).
+
+The fixed localhost and browser-presence procedures below describe
+**browser-based DLMS**, not Desktop reconnect/shutdown.
+
 ## Startup and browser problems
 
 ### DLMS did not open a browser
@@ -16,7 +33,7 @@ before substantial recovery work. The procedures and exact reset scopes are in
 The application may have started even if automatic browser launch was disabled,
 unavailable in a headless or SSH session, or unsuccessful.
 
-For a normal local desktop launch, open this address yourself:
+For a normal browser-based Local launch, open this address yourself:
 
 ```text
 http://127.0.0.1:9001/
@@ -50,7 +67,7 @@ that the executable retained its execute permission.
 
 ### Closing the browser did not stop DLMS
 
-Closing a browser is not an unconditional shutdown command. In local desktop
+Closing a browser is not an unconditional shutdown command. In browser-based Local
 mode, use **Shutdown DLMS** for an immediate stop. Automatic shutdown after the
 last page closes happens only when browser-presence shutdown is enabled and the
 loopback-only runtime is eligible; it waits for a grace period of about five

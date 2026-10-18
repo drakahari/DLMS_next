@@ -22,7 +22,7 @@ workflows. Follow the links for complete instructions and safety guidance.
 | --- | --- | --- | --- |
 | A few questions you want to type | Short Quiz Builder | The builder validates the quiz when you save it. | [Direct quiz creation](04-creating-and-importing-content.md#create-a-quiz-directly) |
 | Structured choice-question text | Paste text or upload a UTF-8 text file | Yes, when the parser sends the result through Review & Repair. | [Text import](04-creating-and-importing-content.md#import-structured-choice-question-text) |
-| A matching CSV | Matching CSV import | Yes; inspect the pairs before publishing. | [Matching CSV](11-matching-terminology-and-image-based-content.md#import-a-matching-csv) |
+| A matching CSV | Matching CSV import | No separate preview: successful import publishes directly and opens the quiz editor. Check pairs there before studying. | [Matching CSV](11-matching-terminology-and-image-based-content.md#import-a-matching-csv) |
 | A selectable-text PDF | PDF & Image Import | Yes; inspect the extracted Question Bank or Terminology Bank. | [Selectable PDFs](10-pdf-smart-pdf-and-ocr.md#import-a-selectable-text-pdf) |
 | A scanned or low-text PDF | Local OCR on selected candidate pages | Yes; OCR output always requires review. | [Scanned PDFs](10-pdf-smart-pdf-and-ocr.md#use-ocr-with-a-scanned-or-mixed-pdf) |
 | Screenshots of choice questions | Screenshot OCR | Yes; visual highlighting does not establish correctness. | [Screenshot question OCR](10-pdf-smart-pdf-and-ocr.md#import-quiz-screenshots) |
@@ -155,18 +155,11 @@ For privacy implications, see [Privacy and Data Handling](appendix-privacy-and-d
 
 ## Native packages
 
-The latest published release, DLMS 3.2.2, is packaged for these targets.
-The 3.3.0 development target retains this matrix, with the owner-accepted Ubuntu 24.04 checkpoint recorded in the coverage notes.
-Other native acceptance is not established by this documentation update:
+Browser-based DLMS 3.3.0 is the stable release. Desktop is published separately
+as platform previews; its native window, data locations and installation format
+differ. Use [Choose your DLMS](../choose-your-dlms.md#downloads-stable-original-and-desktop-previews)
+for the current download matrix and explicit qualification limits. A package's
+existence does not mean every workflow or OS version has been qualified.
 
-- Fedora 44 x86-64;
-- Ubuntu 24.04 x86-64;
-- Ubuntu 26.04 x86-64;
-- Omarchy Quattro x86-64;
-- Windows 11 x86-64;
-- macOS Apple Silicon (arm64).
-
-Use the package built for the named operating system and architecture. These
-are packaging targets, not a promise that every unlisted operating-system
-version is unsupported or compatible. Installation and runtime differences are
-summarized in [Platform and Runtime Notes](appendix-platform-and-runtime-notes.md).
+Installation and runtime differences are summarized in
+[Platform and Runtime Notes](appendix-platform-and-runtime-notes.md).

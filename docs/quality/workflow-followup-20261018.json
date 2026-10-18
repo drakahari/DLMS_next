@@ -1,0 +1,2434 @@
+{
+  "format_version": 1,
+  "base_commit": "384780bc246f7cb99cef7086f1810e159d6b5640",
+  "normal_executable_sha256": "c5fcaa0a8b352399a51733978bb60f7aeff7894d5a3300f931a3232ae2491184",
+  "original_audit_sha256": "7918178ff47e9ba55349218c3a7d08cef6b0928d5dfdfb6c0de74ba53f83f8e5",
+  "original_counts": {
+    "untested": 112,
+    "blocked": 5,
+    "passed": 4,
+    "failed": 4,
+    "not applicable": 4
+  },
+  "policy": "Original 129 parent dispositions retained; added observations distinguish main paths from branches and scopes. Direct reference verification is not workflow acceptance. New docs are source-only, not in reused normal binary.",
+  "rows": [
+    {
+      "id": "WD-001",
+      "group": "Desktop host workflows and source-visible documentation gaps",
+      "mode": "D",
+      "workflow": "Launch managed Local and reopen selected profile",
+      "prerequisites": "Qualified Linux package and selected profile",
+      "steps": "Current public README: save exact AppImage, make executable, launch --profile preview01 (FUSE normally; explicit extract-and-run alternative); read Local/profile identity; close normally; reopen same profile",
+      "expected_outcome": "Dedicated window/backend with retained Local dataset",
+      "branches_errors_persistence": "Unsigned preview; keep sandboxing enabled; occupied origin, ownership or unresolved transition must block; preserve recovery; execution unperformed",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/02-installation-and-first-launch.md#what-happens-on-first-launch"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded observation",
+          "scope": "normal frozen Linux Qt; native mode menu/Server close owner-assisted where stated",
+          "observation": "Local separate-process reopen preserves all 32 tables, 432 page/assets hashes and 208 quizzes.",
+          "evidence": [
+            "local/evidence/LOCAL_REOPEN_RESULT.json"
+          ],
+          "remaining": "No endpoint/certificate matrix, physical keyboard, physical printing or native Windows/Mac claim. Specific original parent branches remain open."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-002",
+      "group": "Desktop host workflows and source-visible documentation gaps",
+      "mode": "D",
+      "workflow": "Configure a Server endpoint",
+      "prerequisites": "Existing compatible root-mounted exact-origin server",
+      "steps": "Mode menu \u2192 Configure Server; enter endpoint and required explicit consent; save; connect",
+      "expected_outcome": "Server configuration retained separately from Local",
+      "branches_errors_persistence": "Reject invalid origin/Local endpoint; private HTTP is explicit opt-in; cancel changes nothing; no authentication guarantee",
+      "original_status": "blocked",
+      "documentation_references": [
+        "docs/user-manual/16-settings-and-runtime.md#desktop-local-and-server"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded observation",
+          "scope": "normal frozen Linux Qt; native mode menu/Server close owner-assisted where stated",
+          "observation": "Owner configured exact synthetic loopback server and explicit HTTP opt-in through normal native menu; stored origin/title verified.",
+          "evidence": [
+            "normal/evidence/005-server-library.json",
+            "normal/evidence/025-local-identity-native.json"
+          ],
+          "remaining": "No endpoint/certificate matrix, physical keyboard, physical printing or native Windows/Mac claim. Specific original parent branches remain open."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-003",
+      "group": "Desktop host workflows and source-visible documentation gaps",
+      "mode": "D",
+      "workflow": "Switch Local to Server",
+      "prerequisites": "Configured server; settled Local writes/dialogs/downloads",
+      "steps": "Choose Server; let Local save drain/checkpoint/stop; inspect endpoint identity",
+      "expected_outcome": "Server dataset opens using separate browser storage",
+      "branches_errors_persistence": "Pending saves, management/recovery evidence or dialog block transition; never silently show Local on outage",
+      "original_status": "blocked",
+      "documentation_references": [
+        "docs/user-manual/16-settings-and-runtime.md#desktop-local-and-server"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded observation",
+          "scope": "normal frozen Linux Qt; native mode menu/Server close owner-assisted where stated",
+          "observation": "Owner selected Server; distinct synthetic quiz displayed. Explicit return Local shows original empty Local dataset and same profile identity. Exam 1/2 and Study 2/2 were recorded on the synthetic Server and remained after reopening; returning Local did not adopt either result.",
+          "evidence": [
+            "normal/evidence/SERVER_ISOLATION_RESULT.json"
+          ],
+          "remaining": "No endpoint/certificate matrix, physical keyboard, physical printing or native Windows/Mac claim. Specific original parent branches remain open."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-004",
+      "group": "Desktop host workflows and source-visible documentation gaps",
+      "mode": "D",
+      "workflow": "Recover remote connection or return Local",
+      "prerequisites": "Server unavailable; retained Local identity",
+      "steps": "Read connection status; Retry connection or choose Local after warning",
+      "expected_outcome": "Retry exact origin or reopen same Local dataset",
+      "branches_errors_persistence": "Remote save state cannot be verified; return confirmation may cancel; no copying/synchronization",
+      "original_status": "blocked",
+      "documentation_references": [
+        "docs/user-manual/16-settings-and-runtime.md#desktop-local-and-server",
+        "static/help-getting-started.html#network"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded observation",
+          "scope": "normal frozen Linux Qt; native mode menu/Server close owner-assisted where stated",
+          "observation": "Task-owned server stopped; normal native surface says Server unavailable; no Local fallback. Owner explicitly selected Local.",
+          "evidence": [
+            "normal/evidence/024-server-outage-verified-native.json",
+            "normal/evidence/SERVER_ISOLATION_RESULT.json"
+          ],
+          "remaining": "No endpoint/certificate matrix, physical keyboard, physical printing or native Windows/Mac claim. Specific original parent branches remain open."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-005",
+      "group": "Desktop host workflows and source-visible documentation gaps",
+      "mode": "D",
+      "workflow": "Read About and identity",
+      "prerequisites": "Desktop running",
+      "steps": "Mode menu \u2192 About DLMS Desktop; inspect product/host/release identity; dismiss",
+      "expected_outcome": "Read-only release information",
+      "branches_errors_persistence": "About is source-visible; cannot infer all workflow qualification from version; native presentation BLOCKED",
+      "original_status": "blocked",
+      "documentation_references": [
+        "docs/user-manual/03-interface-and-navigation.md#read-desktop-build-and-active-dataset-information",
+        "static/help-getting-started.html#about-desktop"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-006",
+      "group": "Desktop host workflows and source-visible documentation gaps",
+      "mode": "D",
+      "workflow": "Select ordinary local files with native consent",
+      "prerequisites": "Supported workflow; owned synthetic file",
+      "steps": "Open chooser from upload control; explicitly select file(s); submit workflow",
+      "expected_outcome": "Private selected-file snapshot supplied to current workflow",
+      "branches_errors_persistence": "Cancel restores task; unsupported/symlink/special/changed files fail closed; Server selection never grants Local maintenance",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/04-creating-and-importing-content.md#select-files-in-desktop-local-or-server",
+        "static/help-build-quiz.html#desktop-files"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-007",
+      "group": "Desktop host workflows and source-visible documentation gaps",
+      "mode": "D",
+      "workflow": "Save Desktop download to chosen destination",
+      "prerequisites": "Completed export/backup/download",
+      "steps": "Choose Save As destination; accept intended overwrite confirmation if offered; inspect completion",
+      "expected_outcome": "File published at explicit destination",
+      "branches_errors_persistence": "Cancel is not success; uncertain saves retain feedback; export state and Local/Server boundaries remain distinct",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/15-import-export-and-portability.md#save-a-desktop-download",
+        "static/help-getting-started.html#save-desktop-downloads"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded observation",
+          "scope": "normal frozen Linux Qt; native mode menu/Server close owner-assisted where stated",
+          "observation": "Normal Server marked initial/fallback native Save As and cancellation verified; Local collection/Law/history exports checked.",
+          "evidence": [
+            "normal/evidence/SERVER_OUTPUT_RESULT.json",
+            "local/evidence/LAW_ANKI_RESULT.json"
+          ],
+          "remaining": "No endpoint/certificate matrix, physical keyboard, physical printing or native Windows/Mac claim. Specific original parent branches remain open."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-008",
+      "group": "Desktop host workflows and source-visible documentation gaps",
+      "mode": "D",
+      "workflow": "Close Desktop with pending or remote work",
+      "prerequisites": "Running Local/Server",
+      "steps": "Resolve Local saves; close window; read any close prompt; reopen intentionally",
+      "expected_outcome": "Local managed processes close with recovery preserved; remote host stays running",
+      "branches_errors_persistence": "Server close warns unsaved work cannot be verified; cancel leaves session; failed Local drain blocks normal exit",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/16-settings-and-runtime.md#desktop-local-and-server",
+        "static/help-getting-started.html#lifecycle"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded observation",
+          "scope": "normal frozen Linux Qt; native mode menu/Server close owner-assisted where stated",
+          "observation": "Owner closed Server with native confirmation; separate process reopened same Server/history. Local Dashboard shutdown twice exited normally.",
+          "evidence": [
+            "normal/evidence/launch-exit-02.json",
+            "normal/evidence/022-server-reopened.json",
+            "local/evidence/LOCAL_REOPEN_RESULT.json"
+          ],
+          "remaining": "No endpoint/certificate matrix, physical keyboard, physical printing or native Windows/Mac claim. Specific original parent branches remain open."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-009",
+      "group": "Navigation and ordinary preferences",
+      "mode": "LS",
+      "workflow": "Navigate and return through responsive sidebar",
+      "prerequisites": "Loaded current application",
+      "steps": "Open sidebar/main destination; at narrow width use menu; Escape returns focus",
+      "expected_outcome": "Same workspace and active destination visible",
+      "branches_errors_persistence": "Hidden subject links are preference only; no data mutation; keyboard/native-input results BLOCKED",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/03-interface-and-navigation.md#use-the-sidebar",
+        "static/help-getting-started.html#orientation"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-010",
+      "group": "Navigation and ordinary preferences",
+      "mode": "LS",
+      "workflow": "Use Dashboard continuation and same-folder sequence",
+      "prerequisites": "Acknowledged regular Study activity",
+      "steps": "Open Continue studying or Open current quiz; after Finish Review choose Continue your quiz sequence",
+      "expected_outcome": "Saved regular anchor and ordered next quiz reached",
+      "branches_errors_persistence": "Generated practice does not replace anchor; hidden/excluded/unavailable stops with reason; no folder jump or credit from opening",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/03-interface-and-navigation.md#the-dashboard",
+        "static/help-getting-started.html#dashboard"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-011",
+      "group": "Navigation and ordinary preferences",
+      "mode": "LS",
+      "workflow": "Open Help or contextual reference then return",
+      "prerequisites": "Loaded page",
+      "steps": "Help \u2192 choose topic; follow contextual/regex guidance; return to task",
+      "expected_outcome": "Task instructions visible",
+      "branches_errors_persistence": "Help navigation changes no persistent content; browser lifecycle text must be edition-filtered",
+      "original_status": "passed",
+      "documentation_references": [
+        "docs/user-manual/03-interface-and-navigation.md#use-help-when-you-need-task-detail"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-012",
+      "group": "Navigation and ordinary preferences",
+      "mode": "LS",
+      "workflow": "Persist theme from quick selector or Appearance",
+      "prerequisites": "Editable settings",
+      "steps": "Select theme; sidebar applies immediately or Appearance \u2192 Save Appearance; reopen",
+      "expected_outcome": "Saved theme applied to shared application pages",
+      "branches_errors_persistence": "Older self-contained pages can require explicit regeneration; other client refresh needed; no learning change",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/16-settings-and-runtime.md#change-the-appearance",
+        "docs/user-manual/03-interface-and-navigation.md#choose-an-appearance"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-013",
+      "group": "Navigation and ordinary preferences",
+      "mode": "LS",
+      "workflow": "Customize Dashboard title/background",
+      "prerequisites": "Valid title and optional supported image",
+      "steps": "Settings \u2192 Appearance; title/background; Save Appearance; refresh",
+      "expected_outcome": "Title and background retained",
+      "branches_errors_persistence": "Blank title invalid; empty chooser retains image; uploads may need reselection on error; other categories independent",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/16-settings-and-runtime.md#change-the-appearance"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-014",
+      "group": "Navigation and ordinary preferences",
+      "mode": "LS",
+      "workflow": "Control Dashboard and sidebar study visibility",
+      "prerequisites": "Editable settings",
+      "steps": "Layout & navigation; independently select panels/sidebar areas; Save",
+      "expected_outcome": "Chosen visibility persists without removing records",
+      "branches_errors_persistence": "Hide from both changes form only; Other Studies sidebar-only; Settings stays reachable",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/16-settings-and-runtime.md#simplify-the-navigation",
+        "docs/user-manual/03-interface-and-navigation.md#customize-visible-study-areas"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-015",
+      "group": "Navigation and ordinary preferences",
+      "mode": "LS",
+      "workflow": "Restore Dashboard/sidebar navigation defaults",
+      "prerequisites": "Optional unsaved layout edits",
+      "steps": "Choose scoped Restore default; answer unsaved-edit confirmation",
+      "expected_outcome": "Only selected default mapping applied immediately",
+      "branches_errors_persistence": "Cancel retains unsaved edits; content and Learning Scope preserved",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/16-settings-and-runtime.md#simplify-the-navigation"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-016",
+      "group": "Navigation and ordinary preferences",
+      "mode": "LS",
+      "workflow": "Set certification display/count/sort",
+      "prerequisites": "Certification feature available",
+      "steps": "Layout & navigation \u2192 Show My Certifications; All/custom positive count; sort; save",
+      "expected_outcome": "Dashboard trophy case/sidebar and retained presentation updated",
+      "branches_errors_persistence": "Feature hide preserves records; separate panel flag is narrower; invalid count rejected; View all remains",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/16-settings-and-runtime.md#simplify-the-navigation",
+        "docs/user-manual/certifications-and-training.md#display-evidence-and-safe-recovery"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-017",
+      "group": "Navigation and ordinary preferences",
+      "mode": "LS",
+      "workflow": "Configure provider/explanation helper/templates",
+      "prerequisites": "Editable AI settings; deliberate external destination",
+      "steps": "AI Integration; select helper/autocopy/provider; edit templates or reset own field; save",
+      "expected_outcome": "Independent prompt preferences retained",
+      "branches_errors_persistence": "Custom URL must be full HTTP(S), cannot point back to Local; template reset needs save; credentials not stored",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/16-settings-and-runtime.md#configure-optional-external-ai-helpers",
+        "docs/user-manual/certifications-and-training.md#find-renewal-matches"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded main observation",
+          "scope": "normal Linux Qt Local; diagnostic-assisted actual controls",
+          "observation": "Claude and prompt template saved; configuration persisted after restart.",
+          "evidence": [
+            "local/evidence/032-ai-saved.json",
+            "local/evidence/LOCAL_REOPEN_RESULT.json"
+          ],
+          "remaining": "Template reset/custom-provider URL branches and actual provider response untested."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-018",
+      "group": "Navigation and ordinary preferences",
+      "mode": "LS",
+      "workflow": "Configure parsing preview tools",
+      "prerequisites": "Editable Parsing settings",
+      "steps": "Enable confidence/regex/invisible cleanup/debug as desired; save; open new paste preview",
+      "expected_outcome": "Future previews use retained tools",
+      "branches_errors_persistence": "Built-in presets independent of regex; published quizzes unchanged; format confidence is not factual correctness",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/16-settings-and-runtime.md#configure-text-parsing-tools"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded main observation",
+          "scope": "normal Linux Qt Local; diagnostic-assisted actual controls",
+          "observation": "All four optional parsing flags saved and available in a new preview.",
+          "evidence": [
+            "local/evidence/034-parsing-saved.json",
+            "local/evidence/LOCAL_REOPEN_RESULT.json"
+          ],
+          "remaining": "Other combinations/reset branches not exhaustively tested."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-019",
+      "group": "Authoring and structured text",
+      "mode": "LS",
+      "workflow": "Create manual choice/multi-select quiz",
+      "prerequisites": "Small verified question set",
+      "steps": "Build Quiz \u2192 short quiz; 1\u2013100 starting blocks; title/timer/logo; answers/correct flags; Create; review editor",
+      "expected_outcome": "Normal saved playable quiz",
+      "branches_errors_persistence": "Missing question/answers/correct flag rejects; blank rows ignored; 1\u201326 choice slots; timer 1\u20131440; no autosave promise",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/04-creating-and-importing-content.md#create-a-quiz-directly"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-020",
+      "group": "Authoring and structured text",
+      "mode": "LS",
+      "workflow": "Create manual matching or mixed-type quiz",
+      "prerequisites": "At least two complete unique pairs",
+      "steps": "Short builder; Matching type; prompt/pairs/direction/round size; combine choice if wanted; Create",
+      "expected_outcome": "Saved quiz with matching semantics",
+      "branches_errors_persistence": "Partial/conflicting pairs block; minimum rows retained; editor available after publication",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/04-creating-and-importing-content.md#add-matching-questions",
+        "docs/user-manual/11-matching-terminology-and-image-based-content.md#type-a-matching-question"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-021",
+      "group": "Authoring and structured text",
+      "mode": "LS",
+      "workflow": "Import UTF-8 structured text file",
+      "prerequisites": "Numbered choice text with recognized answer markers; <=16 MiB",
+      "steps": "Build from text file; title/file/timer/logo; Upload & Build; open result; verify count/answers",
+      "expected_outcome": "Directly parsed normal quiz",
+      "branches_errors_persistence": "Partial parsing may publish fewer questions; no paste cleanup; unsupported/empty parse gives failure/log; inspect every answer",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/04-creating-and-importing-content.md#build-from-a-text-file",
+        "docs/user-manual/04-creating-and-importing-content.md#check-the-result-and-choose-the-right-input-path"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-022",
+      "group": "Authoring and structured text",
+      "mode": "LS",
+      "workflow": "Paste/clean/preview and publish structured text",
+      "prerequisites": "Formatted numbered questions and answer keys",
+      "steps": "Paste questions; title/text; specific unwanted lines/presets; Preview; compare diff/invisibles; Yes Build; verify",
+      "expected_outcome": "Published quiz after explicit final parser step",
+      "branches_errors_persistence": "Preview alone creates no final quiz; broad cleanup can merge/remove content; Apply Fix re-previews original preserving form context",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/04-creating-and-importing-content.md#create-from-pasted-text"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-023",
+      "group": "Authoring and structured text",
+      "mode": "LS",
+      "workflow": "Use advanced regex cleanup and download cleaned text",
+      "prerequisites": "Regex enabled; understood transformation",
+      "steps": "Paste cleanup REGEX => REPLACEMENT; Preview; examine differences/invisibles; download working text or build",
+      "expected_outcome": "Reusable cleaned text or intentionally parsed quiz",
+      "branches_errors_persistence": "Invalid/broad regex must be corrected; cleaned file not backup; presets/literal removal independent",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/04-creating-and-importing-content.md#create-from-pasted-text",
+        "docs/user-manual/16-settings-and-runtime.md#configure-text-parsing-tools"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded main observation",
+          "scope": "normal Linux Qt Local; diagnostic-assisted actual controls",
+          "observation": "Regex TOKEN \u2192 marker preview/build and cleaned-text native Save As; exact two-question text verified.",
+          "evidence": [
+            "local/evidence/REGEX_RESULT.json"
+          ],
+          "remaining": "Invalid/broad expressions not newly tested."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-024",
+      "group": "Authoring and structured text",
+      "mode": "LS",
+      "workflow": "Diagnose parsing failures/partial results",
+      "prerequisites": "Rejected or incomplete structured import",
+      "steps": "Read parse error/log; compare expected count/key; repair numbered structure/recognized markers; retry correct acquisition path",
+      "expected_outcome": "Verified normal quiz or retained source for repair",
+      "branches_errors_persistence": "Do not rename PDF to TXT; comma keys/wrapped choices may lose meaning; failure is not passage",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/04-creating-and-importing-content.md#check-the-result-and-choose-the-right-input-path",
+        "docs/user-manual/04-creating-and-importing-content.md#if-creation-does-not-succeed"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-025",
+      "group": "Authoring and structured text",
+      "mode": "LS",
+      "workflow": "Import matching CSV with provenance",
+      "prerequisites": "UTF-8 term,definition or left,right CSV",
+      "steps": "Build Quiz \u2192 matching pairs; title/direction/2\u2013100 round size/source fields; submit; inspect editor",
+      "expected_outcome": "Direct normal matching quiz",
+      "branches_errors_persistence": "Missing-side rows skipped; missing headers, unreadable/conflicts/<2 usable pairs reject; no separate staged review",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/04-creating-and-importing-content.md#import-a-matching-csv",
+        "docs/user-manual/11-matching-terminology-and-image-based-content.md#import-a-matching-csv"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-026",
+      "group": "Authoring and structured text",
+      "mode": "LS",
+      "workflow": "Edit saved quiz and resolve Needs review",
+      "prerequisites": "Saved quiz with verifiable source",
+      "steps": "Library \u2192 Edit/Review and edit; title/timer/content/concepts/choice labels; add choices while retaining edits; Save; reopen",
+      "expected_outcome": "Canonical corrections refresh playable page/readiness",
+      "branches_errors_persistence": "Incomplete/repeated-label/no-key blocks grading; new choices not auto-correct; revision/history kept distinct; stale checkpoint cannot be guessed",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/05-quiz-library-and-organization.md#manage-an-individual-quiz-safely",
+        "docs/user-manual/15-import-export-and-portability.md#when-a-quiz-needs-review"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-027",
+      "group": "Library and composition",
+      "mode": "LS",
+      "workflow": "Find a quiz across Visible/Hidden/All and search",
+      "prerequisites": "Saved collection",
+      "steps": "Library scope; search title/folder; open card; clear search",
+      "expected_outcome": "Desired quiz reached without moving it",
+      "branches_errors_persistence": "Search may expose hidden folder context; empty view is not deletion; active Smart View combines search",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/05-quiz-library-and-organization.md#read-the-library-at-a-glance"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-028",
+      "group": "Library and composition",
+      "mode": "LS",
+      "workflow": "Create/rename/delete a custom folder",
+      "prerequisites": "Saved collection; intended organization",
+      "steps": "Add folder; name; move quizzes; later rename/delete with confirmation",
+      "expected_outcome": "Folder assignments persist; delete moves quizzes to Uncategorized",
+      "branches_errors_persistence": "Uncategorized protected; deletion preserves individual hidden states/quizzes; empty definitions affected by settings reset",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/05-quiz-library-and-organization.md#organize-quizzes-with-folders",
+        "docs/user-manual/05-quiz-library-and-organization.md#set-the-learning-scope-for-a-folder"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-029",
+      "group": "Library and composition",
+      "mode": "LS",
+      "workflow": "Move/reorder/collapse Library sections",
+      "prerequisites": "Two quizzes/folders as needed",
+      "steps": "Move assigns folder; drag or Up/Down reorder within folder; collapse/expand header",
+      "expected_outcome": "Saved order/placement; navigable sections",
+      "branches_errors_persistence": "Dragging never cross-folder moves; touch uses explicit controls; learning scope follows destination folder",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/05-quiz-library-and-organization.md#reorder-and-collapse-library-sections",
+        "docs/user-manual/05-quiz-library-and-organization.md#manage-an-individual-quiz-safely"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-030",
+      "group": "Library and composition",
+      "mode": "LS",
+      "workflow": "Hide/unhide quiz or folder",
+      "prerequisites": "Saved target",
+      "steps": "Hide intended scope; inspect Hidden/All; Unhide",
+      "expected_outcome": "Visibility retained without deletion",
+      "branches_errors_persistence": "Folder and individual hide separate; unhide folder leaves individually hidden quizzes hidden; learning unaffected",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/05-quiz-library-and-organization.md#hide-a-folder-or-quiz"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-031",
+      "group": "Library and composition",
+      "mode": "LS",
+      "workflow": "Use Smart Views and inspect Generated Practice provenance",
+      "prerequisites": "Saved ordinary/generated/history state",
+      "steps": "Choose Needs Review/Recent/Low Score/Unfinished/OCR/Generated Practice; inspect labels/source summary; open",
+      "expected_outcome": "Filtered persistent collection understood",
+      "branches_errors_persistence": "Views do not create folders; Unfinished is browser-local; completed practice stays persistent/playable",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/05-quiz-library-and-organization.md#use-smart-views-as-dynamic-filters",
+        "docs/user-manual/05-quiz-library-and-organization.md#recognize-generated-practice"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-032",
+      "group": "Library and composition",
+      "mode": "LS",
+      "workflow": "Build a deliberate Mixed Quiz",
+      "prerequisites": ">=2 eligible questions across >=2 source quizzes",
+      "steps": "Mix Questions; name; folder/quiz/concept/missed/text filters; select; inspect source count/previews; Create",
+      "expected_outcome": "Persistent Mixed Quiz with source relationships",
+      "branches_errors_persistence": "Equivalent candidates shown once; Clear selection must be understood across filters; source quizzes unchanged; not Generated Practice",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/05-quiz-library-and-organization.md#build-a-mixed-quiz"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-033",
+      "group": "Library and composition",
+      "mode": "LS",
+      "workflow": "Choose/check Study-mistake composition scope",
+      "prerequisites": "Saved complete graded incorrect Study responses",
+      "steps": "Study mistakes; Include folders and/or individual quizzes; Check Study mistakes; inspect eligibility/unavailable",
+      "expected_outcome": "Checked current pool and source summary",
+      "branches_errors_persistence": "Browsing folder list is display-only; changing selections makes result stale; historical wrong remains after correction; hidden/excluded may be explicit sources",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/05-quiz-library-and-organization.md#choose-and-check-your-sources",
+        "docs/user-manual/05-quiz-library-and-organization.md#understand-eligibility-and-unavailable-questions"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-034",
+      "group": "Library and composition",
+      "mode": "LS",
+      "workflow": "Create/continue Without repeats mistake pass",
+      "prerequisites": "Checked eligible scope and batch 1\u2013100",
+      "steps": "Start pass; name/count; Create; open saved mix or Prepare next; return same selection for continuation",
+      "expected_outcome": "Successful publications consume fixed pass members; progress survives restart",
+      "branches_errors_persistence": "One-source/one-question remainder supported here; shortage needs explicit smaller count; failure consumes nothing; deleting mix does not return members",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/05-quiz-library-and-organization.md#create-a-batch-and-continue-the-pass"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-035",
+      "group": "Library and composition",
+      "mode": "LS",
+      "workflow": "Restart mistake pass/use Random/recover uncertain composition",
+      "prerequisites": "Eligible checked scope; completed/current pass",
+      "steps": "Start new pass explicitly or select Random; create; for uncertain save use Retry same request; refresh counts after confirmation",
+      "expected_outcome": "New snapshot/random batch or reconciled same request",
+      "branches_errors_persistence": "Random never consumes/resets Without repeats; scope combination identity matters; stale pre-restore requests invalid; portable bundles omit pass history",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/05-quiz-library-and-organization.md#create-a-batch-and-continue-the-pass",
+        "docs/user-manual/05-quiz-library-and-organization.md#saves-recovery-and-backups"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-036",
+      "group": "Library and composition",
+      "mode": "LS",
+      "workflow": "Inspect exact/possible duplicates conservatively",
+      "prerequisites": "Ordinary source quizzes",
+      "steps": "Find Duplicates; type/folder/quiz/search filters; Apply; page/expand; inspect records; optionally Edit source",
+      "expected_outcome": "Advisory source comparison and explicit manual correction only",
+      "branches_errors_persistence": "Generated copies excluded; hidden included; filter summary still whole scan; no automatic merge/delete; Possible is not equivalent",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/05-quiz-library-and-organization.md#review-possible-duplicates"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-037",
+      "group": "Library and composition",
+      "mode": "LS",
+      "workflow": "Delete individual quiz deliberately",
+      "prerequisites": "Saved quiz and independent backup if needed",
+      "steps": "Library delete; read target/consequence; confirm or cancel",
+      "expected_outcome": "Chosen quiz removed only after confirmation",
+      "branches_errors_persistence": "Irreversible via normal UI without backup; hide preferred for visibility; deletion differs from source pack removal",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/05-quiz-library-and-organization.md#manage-an-individual-quiz-safely"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded main observation",
+          "scope": "normal Linux Qt Local; diagnostic-assisted actual controls",
+          "observation": "Delete cancellation preserves all records/assets; confirm removes only target; original quiz retained.",
+          "evidence": [
+            "local/evidence/DELETE_RESULT.json"
+          ],
+          "remaining": "Other dependency/history combinations not inferred."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-038",
+      "group": "Taking quizzes, saves, recovery and marks",
+      "mode": "LS",
+      "workflow": "Run single/multi-select Study through completion",
+      "prerequisites": "Ready current quiz",
+      "steps": "Open \u2192 Study; answer/navigate; inspect immediate feedback; correct; resolve saves; Finish Review; wait Review completed",
+      "expected_outcome": "Durable ordered responses and acknowledged completion",
+      "branches_errors_persistence": "First miss/correction/assistance retained; incomplete selections not wrong automatically; completion requires every complete response and ack",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/06-taking-quizzes.md#use-study-mode-for-guided-learning",
+        "docs/user-manual/06-taking-quizzes.md#finish-a-full-or-focused-review"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded observation",
+          "scope": "normal frozen Linux Qt; native mode menu/Server close owner-assisted where stated",
+          "observation": "Normal synthetic Server Study completed 2/2 and remains in Study History after separate-process reopen.",
+          "evidence": [
+            "normal/evidence/015-server-study-history.json",
+            "normal/evidence/022-server-reopened.json"
+          ],
+          "remaining": "No endpoint/certificate matrix, physical keyboard, physical printing or native Windows/Mac claim. Specific original parent branches remain open."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-039",
+      "group": "Taking quizzes, saves, recovery and marks",
+      "mode": "LS",
+      "workflow": "Answer matching with pointer/touch/keyboard/dropdowns",
+      "prerequisites": "Ready matching quiz",
+      "steps": "Open mode; pair all targets; clear/change placements; switch Dropdowns if needed; finish Study or submit Exam",
+      "expected_outcome": "Same answers and grading across interaction modes",
+      "branches_errors_persistence": "Partial set not complete grade; direction/subset follows attempt; physical drag/keyboard verification BLOCKED",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/06-taking-quizzes.md#matching",
+        "docs/user-manual/appendix-keyboard-and-accessibility.md#matching-questions"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-040",
+      "group": "Taking quizzes, saves, recovery and marks",
+      "mode": "LS",
+      "workflow": "Answer supporting-image/hotspot questions",
+      "prerequisites": "Ready rich quiz/media",
+      "steps": "Inspect image/description; select region by pointer or keyboard crosshair; Study feedback or Exam submission",
+      "expected_outcome": "Stored response with appropriate region grading",
+      "branches_errors_persistence": "Keyboard does not reveal target/assistance; shift step differs authoring/answering; image navigation cannot prove pointer accuracy",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/06-taking-quizzes.md#images-and-hotspots",
+        "docs/user-manual/appendix-keyboard-and-accessibility.md#hotspot-answers"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-041",
+      "group": "Taking quizzes, saves, recovery and marks",
+      "mode": "LS",
+      "workflow": "Run timed Exam with pause/resume/manual submit",
+      "prerequisites": "Ready quiz and intended timer",
+      "steps": "Exam Mode; answer/navigate; Pause; Resume; Submit Exam; confirm; inspect score/saved attempt",
+      "expected_outcome": "One persisted completed attempt and result links",
+      "branches_errors_persistence": "Pause covers exam; cancel submit continues; unanswered no credit; no Study explanations during attempt",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/06-taking-quizzes.md#use-exam-mode-for-a-test-like-attempt"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded observation",
+          "scope": "normal frozen Linux Qt; native mode menu/Server close owner-assisted where stated",
+          "observation": "Normal synthetic Server Exam saved 1/2 (50%) and remains after separate-process reopen.",
+          "evidence": [
+            "normal/evidence/014-server-history.json",
+            "normal/evidence/022-server-reopened.json"
+          ],
+          "remaining": "No endpoint/certificate matrix, physical keyboard, physical printing or native Windows/Mac claim. Specific original parent branches remain open."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-042",
+      "group": "Taking quizzes, saves, recovery and marks",
+      "mode": "LS",
+      "workflow": "Finish Exam at timeout",
+      "prerequisites": "Exam with timer running",
+      "steps": "Allow zero; inspect automatic submission/save result; review attempt",
+      "expected_outcome": "One persisted timed attempt",
+      "branches_errors_persistence": "Score without successful persistence is not saved; pending attempt retained for retry",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/06-taking-quizzes.md#use-exam-mode-for-a-test-like-attempt"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-043",
+      "group": "Taking quizzes, saves, recovery and marks",
+      "mode": "LS",
+      "workflow": "Recover failed Study response without duplicate credit",
+      "prerequisites": "Pending/failed response notice",
+      "steps": "Keep page/checkpoint; Retry same response; wait acknowledgement; continue/finish",
+      "expected_outcome": "Same identity saved once",
+      "branches_errors_persistence": "Known expired token may renew once; other failure needs displayed action; never clear browser storage or assume completion",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/06-taking-quizzes.md#use-study-mode-for-guided-learning",
+        "docs/user-manual/18-troubleshooting.md#quiz-resume-and-history-problems"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded main observation",
+          "scope": "normal Linux Qt Local; diagnostic-assisted actual controls",
+          "observation": "Simulated blocked delivery before acceptance; visible Retry saves original Study event once with one learning credit.",
+          "evidence": [
+            "local/evidence/STUDY_PENDING_BEFORE_RETRY.json",
+            "local/evidence/STUDY_RETRY_RESULT.json"
+          ],
+          "remaining": "This is not accepted-commit/lost-ack crash evidence or a shutdown test."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-044",
+      "group": "Taking quizzes, saves, recovery and marks",
+      "mode": "LS",
+      "workflow": "Recover submitted Exam save",
+      "prerequisites": "Submitted score not saved",
+      "steps": "Retry Saving Attempt or Finish Saving Submitted Attempt; wait ack; Review This Attempt",
+      "expected_outcome": "Same pending attempt durably persisted",
+      "branches_errors_persistence": "Checkpoint retained until save; repeated retries must not duplicate; score alone not success",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/06-taking-quizzes.md#use-exam-mode-for-a-test-like-attempt",
+        "docs/user-manual/06-taking-quizzes.md#resume-an-interrupted-quiz"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded main observation",
+          "scope": "normal Linux Qt Local; diagnostic-assisted actual controls",
+          "observation": "Simulated blocked delivery before acceptance; Retry Saving Attempt saves original attempt once, 1/2 score.",
+          "evidence": [
+            "local/evidence/EXAM_PENDING_BEFORE_RETRY.json",
+            "local/evidence/EXAM_RETRY_RESULT.json"
+          ],
+          "remaining": "No new lost-ack/accepted-before-crash evidence."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-045",
+      "group": "Taking quizzes, saves, recovery and marks",
+      "mode": "LS",
+      "workflow": "Resume interrupted browser Study/Exam",
+      "prerequisites": "Valid retained checkpoint for same quiz",
+      "steps": "Dashboard/Unfinished/open quiz \u2192 Resume; inspect mode/position/time; continue; save/finish",
+      "expected_outcome": "Checkpoint restored; Study may reconcile newer acknowledged answers",
+      "branches_errors_persistence": "Expired/malformed/edited content rejects replay; browser profile boundary; persistence not synchronized to arbitrary clients",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/06-taking-quizzes.md#resume-an-interrupted-quiz"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-046",
+      "group": "Taking quizzes, saves, recovery and marks",
+      "mode": "LS",
+      "workflow": "Start Over or clear a browser resume point",
+      "prerequisites": "Known checkpoint; no unresolved saves",
+      "steps": "Open recovery \u2192 Start Over and confirm, or Dashboard Manage \u2192 Clear; cancel if needed",
+      "expected_outcome": "Only named browser recovery removed; saved history persists",
+      "branches_errors_persistence": "Pending/failed saves get priority; clear does not finish durable review; may leave separate server Resume",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/06-taking-quizzes.md#resume-an-interrupted-quiz",
+        "docs/user-manual/07-study-and-review.md#start-with-study-next"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded main observation",
+          "scope": "normal Linux Qt Local; diagnostic-assisted actual controls",
+          "observation": "Dashboard Manage \u2192 Clear: Cancel and confirm tested; saved DB/assets unchanged, browser checkpoint removed.",
+          "evidence": [
+            "local/evidence/RESUME_CLEAR_RESULT.json"
+          ],
+          "remaining": "Player Start Over remains a distinct untested branch."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-047",
+      "group": "Taking quizzes, saves, recovery and marks",
+      "mode": "LS",
+      "workflow": "Resume durable Study and take ownership",
+      "prerequisites": "Acknowledged partial server Study/current quiz",
+      "steps": "Open Resume or Resume and take over; resolve different browser session first; continue acknowledged progress",
+      "expected_outcome": "Current Study ownership and durable progress continued",
+      "branches_errors_persistence": "Stale tab cannot overwrite new owner; changed page rejects; older pages need owner-controlled regeneration; do not clear storage",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/06-taking-quizzes.md#durable-resume-and-another-browser"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-048",
+      "group": "Taking quizzes, saves, recovery and marks",
+      "mode": "LS",
+      "workflow": "Save marks and produce focused practice",
+      "prerequisites": "Supported unchanged source questions",
+      "steps": "Study \u2192 Mark for review; Marked questions/all; select pages; read included/excluded; Start focused quiz; open",
+      "expected_outcome": "Profile-persistent marks; separate generated practice",
+      "branches_errors_persistence": "Learning Scope applies to focused output; image/hotspot marks direct review; action never clears marks; invalid sources explained",
+      "original_status": "failed",
+      "documentation_references": [
+        "docs/user-manual/06-taking-quizzes.md#question-tools-and-marks",
+        "docs/user-manual/14-anki-decks-and-printable-cards.md#mark-questions-during-study-mode"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-049",
+      "group": "Taking quizzes, saves, recovery and marks",
+      "mode": "LS",
+      "workflow": "Manage marks/export selected marks/migrate previous browser marks",
+      "prerequisites": "Saved or eligible older local marks",
+      "steps": "Select marked questions; Export Anki or explicit confirmed Unmark; after matching resume Save previous browser marks",
+      "expected_outcome": "Deck or changed profile mark set; migration retains evidence on failure",
+      "branches_errors_persistence": "Select page vs deselect across pages distinct; selections not mark deletion; text choice export only; backup includes profile marks",
+      "original_status": "failed",
+      "documentation_references": [
+        "docs/user-manual/14-anki-decks-and-printable-cards.md#mark-questions-during-study-mode",
+        "docs/user-manual/06-taking-quizzes.md#question-tools-and-marks"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-050",
+      "group": "Review, learning and history",
+      "mode": "LS",
+      "workflow": "Choose Study next with explainable alternatives",
+      "prerequisites": "Eligible source material/current history",
+      "steps": "Dashboard \u2192 Why this suggestion; inspect reasons/time/exclusions; Start suggested work or More review options",
+      "expected_outcome": "Relevant existing action/generated review opened",
+      "branches_errors_persistence": "Pending saves outrank practice; error is not no-suggestions; no credit from generation; return after ack recalculates",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/07-study-and-review.md#start-with-study-next",
+        "docs/user-manual/03-interface-and-navigation.md#the-dashboard"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-051",
+      "group": "Review, learning and history",
+      "mode": "LS",
+      "workflow": "Generate Adaptive Study",
+      "prerequisites": "Usable included sources, even little history",
+      "steps": "Learning Intelligence \u2192 Study What I Need Most; choose offered size; start; complete normal Study",
+      "expected_outcome": "Balanced Generated Practice retains source lineage",
+      "branches_errors_persistence": "10/20/30/50 where offered; may be smaller; no-history fallback not invented weakness; source content unchanged",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/07-study-and-review.md#use-adaptive-study-for-a-balanced-focus"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-052",
+      "group": "Review, learning and history",
+      "mode": "LS",
+      "workflow": "Generate Smart Review",
+      "prerequisites": "Qualifying weak concepts with usable tagged sources",
+      "steps": "Choose 10/20/30/50; Start Smart Review; complete",
+      "expected_outcome": "Weak-topic Generated Practice",
+      "branches_errors_persistence": "No qualifying evidence/source explains unavailable; fewer than requested permitted; existing sources reused",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/07-study-and-review.md#use-smart-review-for-weak-areas"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-053",
+      "group": "Review, learning and history",
+      "mode": "LS",
+      "workflow": "Generate Concept Review",
+      "prerequisites": "Chosen concept with source questions",
+      "steps": "Topic row \u2192 Study concept; open <=20-question session; complete",
+      "expected_outcome": "Focused Generated Practice for selected concept",
+      "branches_errors_persistence": "No source questions means no generation; concept need not be weakest; source evidence not inflated",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/07-study-and-review.md#use-concept-review-for-one-chosen-concept",
+        "docs/user-manual/08-learning-intelligence.md#launch-concept-review-with-study-concept"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded main observation",
+          "scope": "normal Linux Qt Local; diagnostic-assisted actual controls",
+          "observation": "Concept metadata saved; Study concept generated, graded and completed focused practice.",
+          "evidence": [
+            "local/evidence/053-concept-generated.json",
+            "local/evidence/054-concept-completed.json"
+          ],
+          "remaining": "No-source and large-concept limits not newly tested."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-054",
+      "group": "Review, learning and history",
+      "mode": "LS",
+      "workflow": "Inspect Due Questions and generate due batch",
+      "prerequisites": "Acknowledged source responses/schedules",
+      "steps": "Review Schedule; expand/filter/search queue; select 10/20/30/50; Review Due Questions; complete",
+      "expected_outcome": "Ordered due batch; original source schedule credited",
+      "branches_errors_persistence": "Display filters never change generation queue; Not yet scheduled distinct; immediate corrected retry not independent elapsed interval win",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/07-study-and-review.md#review-due-questions"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-055",
+      "group": "Review, learning and history",
+      "mode": "LS",
+      "workflow": "Generate Topic Retention review",
+      "prerequisites": "Concepts with >=3 counted responses and usable tagged questions",
+      "steps": "Review Schedule \u2192 topic window Due/next2days/all; size; Start Topic Review",
+      "expected_outcome": "Concept-timing Generated Practice",
+      "branches_errors_persistence": "Separate from per-question due; retained estimate does not rewrite base mastery; insufficient eligible sources may reduce/unavailable",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/07-study-and-review.md#follow-the-topic-retention-schedule"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded main observation",
+          "scope": "normal Linux Qt Local; diagnostic-assisted actual controls",
+          "observation": "Eligible Topic Retention review generated and completed; source answer fidelity checked.",
+          "evidence": [
+            "local/evidence/059-topic-retention.json",
+            "local/evidence/060-topic-generated.json",
+            "local/evidence/061-topic-completed.json"
+          ],
+          "remaining": "Other timing windows/insufficient sources remain sampled."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-056",
+      "group": "Review, learning and history",
+      "mode": "LS",
+      "workflow": "Complete/reopen/manage generated practice",
+      "prerequisites": "Saved generated review",
+      "steps": "Answer full selected set; resolve saves; Finish Review; inspect Completed/date/library group; reopen/hide/move as wanted",
+      "expected_outcome": "Completed item/history remain persistent",
+      "branches_errors_persistence": "Final answer alone not complete; focused review never finishes entire source quiz; unfinished retake checkpoint independent",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/07-study-and-review.md#understand-generated-practice",
+        "docs/user-manual/05-quiz-library-and-organization.md#recognize-generated-practice"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-057",
+      "group": "Review, learning and history",
+      "mode": "LS",
+      "workflow": "Include/exclude folders from Learning Scope",
+      "prerequisites": "Saved folder/source set",
+      "steps": "Manage Learning Scope; select active folders; save; inspect Library and current learning views; later include",
+      "expected_outcome": "Saved scope controls active recommendations/evidence views",
+      "branches_errors_persistence": "Hiding independent; history retained; schedules not paused; reinclude can immediately be due; moved quiz follows folder",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/08-learning-intelligence.md#choose-your-learning-scope"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded main observation",
+          "scope": "normal Linux Qt Local; diagnostic-assisted actual controls",
+          "observation": "Exclude/reinclude Uncategorized changes scope eligibility; unrelated content/history preserved.",
+          "evidence": [
+            "local/evidence/055-scope-before-records.json",
+            "local/evidence/056-scope-excluded-records.json",
+            "local/evidence/057-scope-included-records.json"
+          ],
+          "remaining": "Move/hide/date interactions not newly tested."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-058",
+      "group": "Review, learning and history",
+      "mode": "LS",
+      "workflow": "Inspect topics/mastery/trend evidence and choose follow-up",
+      "prerequisites": "Concept tags and any saved responses",
+      "steps": "Topic Intelligence; status/search filters; read coverage/results/recent/overall/trend; How mastery works; Study concept",
+      "expected_outcome": "Evidence-understood choice of practice",
+      "branches_errors_persistence": "Tiny samples provisional; corrected/assisted not independent win; no concept data != no saved Study; display read-only",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/08-learning-intelligence.md#read-the-concept-table",
+        "docs/user-manual/08-learning-intelligence.md#understand-mastery",
+        "docs/user-manual/08-learning-intelligence.md#understand-trend"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-059",
+      "group": "Review, learning and history",
+      "mode": "LS",
+      "workflow": "Use Learning Profile to select next study action",
+      "prerequisites": "Included current evidence",
+      "steps": "Open Learning Profile; inspect summary/strong/weak/activity/retention; Smart Review/topic/schedule link",
+      "expected_outcome": "Appropriate existing next action opened",
+      "branches_errors_persistence": "Little evidence explains limits; profile not readiness guarantee; no source mutation or extra credit",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/08-learning-intelligence.md#use-the-learning-profile-for-a-summary"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-060",
+      "group": "Review, learning and history",
+      "mode": "LS",
+      "workflow": "Inspect Diagnostics and manually review source",
+      "prerequisites": "Enough response data",
+      "steps": "Diagnostics; filter/search/expand confusions and quality signals; inspect source before edit/practice",
+      "expected_outcome": "Advisory issue understood and deliberate next action",
+      "branches_errors_persistence": "Choice confusions exclude matching/hotspot; insufficient evidence not condemned; no automatic rewriting/deletion",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/08-learning-intelligence.md#use-diagnostics-as-a-review-prompt"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-061",
+      "group": "Review, learning and history",
+      "mode": "LS",
+      "workflow": "Browse durable Study History and review session facts",
+      "prerequisites": "Acknowledged Study sessions",
+      "steps": "Dashboard \u2192 Study History; locate/filter/expand session; inspect responses/first difficulty/assistance/completion",
+      "expected_outcome": "Factual saved Study activity visible",
+      "branches_errors_persistence": "Reviewed/correct independently/finished differ; Study is not necessarily Exam History; changes only via explicit reset/delete",
+      "original_status": "passed",
+      "documentation_references": [
+        "docs/user-manual/09-history-results-and-progress.md#browse-study-history",
+        "docs/user-manual/09-history-results-and-progress.md#what-is-saved-after-a-quiz"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-062",
+      "group": "Review, learning and history",
+      "mode": "LS",
+      "workflow": "Inspect Exam History/missed attempt/Analytics",
+      "prerequisites": "Persisted completed attempt",
+      "steps": "Exam History; quiz/attempt; Review saved misses; inspect responses/answers; Analytics summaries; retake/export if desired",
+      "expected_outcome": "Specific factual attempt and aggregate patterns understood",
+      "branches_errors_persistence": "Legacy Study labels distinct; exam trend differs concept trend; no history from unsaved score; manual practice not new scheduled queue",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/09-history-results-and-progress.md#browse-history",
+        "docs/user-manual/09-history-results-and-progress.md#review-one-completed-attempt",
+        "docs/user-manual/09-history-results-and-progress.md#use-analytics-to-compare-exam-results"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-063",
+      "group": "PDF, OCR and image authoring",
+      "mode": "LS",
+      "workflow": "Analyze selectable PDF question bank",
+      "prerequisites": "Readable rights-cleared <=64MiB/2000pages PDF",
+      "steps": "PDF & Image Import; title/content-type/timer; consent; Analyze PDF; open Review & Repair",
+      "expected_outcome": "Temporary extraction draft, not published quiz",
+      "branches_errors_persistence": "Encrypted/malformed/unsupported rejects; auto-type wrong \u2192 explicit parser; selectable text primary; no guessed correctness",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/10-pdf-smart-pdf-and-ocr.md#import-a-selectable-text-pdf"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-064",
+      "group": "PDF, OCR and image authoring",
+      "mode": "LS",
+      "workflow": "Analyze selectable glossary into terminology draft",
+      "prerequisites": "Structured term/definition PDF",
+      "steps": "Select Glossary/terminology or Auto; consent/analyze; inspect paired/unassigned material",
+      "expected_outcome": "Reviewable terminology extraction",
+      "branches_errors_persistence": "Narrative layout unsupported; ambiguity retained; same PDF limits; temporary draft expires",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/10-pdf-smart-pdf-and-ocr.md#import-a-selectable-text-pdf",
+        "docs/user-manual/10-pdf-smart-pdf-and-ocr.md#what-smart-pdf-recognizes"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-065",
+      "group": "PDF, OCR and image authoring",
+      "mode": "LS",
+      "workflow": "Repair and save Question/Terminology Bank",
+      "prerequisites": "Extracted draft and trusted source",
+      "steps": "Status filters/bulk selection; edit text/choices/mode/keys/pairs; exclude unsafe; reconfirm changed; Save Reviewed Bank",
+      "expected_outcome": "Persistent reusable bank with excluded records represented",
+      "branches_errors_persistence": "Select all visible vs clear across filters; included invalid blocks; unassigned not auto-saved; original temporary images later removed",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/10-pdf-smart-pdf-and-ocr.md#review-and-repair-a-pdf-import",
+        "docs/user-manual/10-pdf-smart-pdf-and-ocr.md#save-and-use-a-source-bank"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-066",
+      "group": "PDF, OCR and image authoring",
+      "mode": "LS",
+      "workflow": "Generate practice from Question Bank",
+      "prerequisites": "Persistent bank with active items",
+      "steps": "Saved banks; choose random/unused/sequential/start/range/all; name/timer; generate; open Library quiz",
+      "expected_outcome": "Separate normal playable quiz; bank retained",
+      "branches_errors_persistence": "Used-in-quizzes is generation not learning; invalid range/pool errors; deleting bank does not delete prior quizzes",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/10-pdf-smart-pdf-and-ocr.md#save-and-use-a-source-bank"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-067",
+      "group": "PDF, OCR and image authoring",
+      "mode": "LS",
+      "workflow": "Generate matching/choice from Terminology Bank",
+      "prerequisites": ">=2 active terms matching, >=4 choice",
+      "steps": "Bank selection method/count; practice type/direction/name/timer; generate",
+      "expected_outcome": "Reusable source stays; separate quiz saved",
+      "branches_errors_persistence": "Insufficient distinct alternatives blocks choice; generation count not completion; unused selection distinct from answered",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/10-pdf-smart-pdf-and-ocr.md#save-and-use-a-source-bank",
+        "docs/user-manual/11-matching-terminology-and-image-based-content.md#generate-practice-from-a-terminology-bank"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-068",
+      "group": "PDF, OCR and image authoring",
+      "mode": "LS",
+      "workflow": "Run selected-page OCR on scanned/mixed question PDF",
+      "prerequisites": "Eligible low-text pages; validated local OCR",
+      "steps": "Analyze PDF; offer up to25 pages; OCR selected; inspect per-page statuses; repair/save bank",
+      "expected_outcome": "Embedded text plus ordered selected OCR candidates",
+      "branches_errors_persistence": "Continue Without OCR/cancel supported; one failed page preserves successes; never cloud processing",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/10-pdf-smart-pdf-and-ocr.md#use-ocr-with-a-scanned-or-mixed-pdf"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-069",
+      "group": "PDF, OCR and image authoring",
+      "mode": "LS",
+      "workflow": "Import ordered quiz screenshots with recovery",
+      "prerequisites": "Rights-cleared <=25 supported images; OCR available",
+      "steps": "Select ordered images/title/timer/consent; Import; reload paused processing; Review Successful; verify/reconfirm/save bank",
+      "expected_outcome": "Persistent reviewed bank then generated practice",
+      "branches_errors_persistence": "Per-image16MiB/batch64MiB/12k side/40Mp; failures don't discard successes; exact duplicates identified, not silently removed",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/10-pdf-smart-pdf-and-ocr.md#import-quiz-screenshots"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-070",
+      "group": "PDF, OCR and image authoring",
+      "mode": "LS",
+      "workflow": "Handle missing OCR/expired draft safely",
+      "prerequisites": "Unavailable validated OCR or expired temporary session",
+      "steps": "Read readiness/error; use selectable PDF/manual workflow or restart source import; retain originals",
+      "expected_outcome": "Supported path continued without pretending OCR success",
+      "branches_errors_persistence": "OCR controls disabled; don't substitute unrelated runtime; saved banks/quizzes persist while staging is temporary",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/10-pdf-smart-pdf-and-ocr.md#when-ocr-is-unavailable",
+        "docs/user-manual/10-pdf-smart-pdf-and-ocr.md#troubleshoot-pdf-and-ocr-imports"
+      ],
+      "followup_observations": [
+        {
+          "status": "partial",
+          "scope": "normal candidate with preserved task-draft fault",
+          "observation": "Created selectable-PDF review, preserved and removed its temporary draft, reloaded: explicit unavailable/expired message; canonical records unchanged.",
+          "evidence": [
+            "local/evidence/MISSING_DRAFT_RESULT.json",
+            "local/evidence/110-missing-draft-refused.json"
+          ],
+          "remaining": "Simulated missing draft, not natural TTL expiry; bundled OCR present, missing-OCR-runtime branch untested."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-071",
+      "group": "PDF, OCR and image authoring",
+      "mode": "LS",
+      "workflow": "Extract terminology OCR from images or scanned PDF",
+      "prerequisites": "OCR; <=25 images or one <=25page PDF; rights",
+      "steps": "Terminology images/scanned PDF; title/prompt/direction; consent; Extract; inspect source statuses",
+      "expected_outcome": "Shared matching Review & Repair draft",
+      "branches_errors_persistence": "Do not mix source classes; incomplete/ambiguous pairs retained; temporary original pixels removed after extraction; source failures preserve useful results",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/11-matching-terminology-and-image-based-content.md#import-matching-material-with-ocr"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-072",
+      "group": "PDF, OCR and image authoring",
+      "mode": "LS",
+      "workflow": "Repair/publish OCR matching",
+      "prerequisites": "Verifiable extracted pairs",
+      "steps": "Edit/add/delete/reorder/direction/rounds; inspect unassigned; confirm all pairings; Publish Reviewed Quiz",
+      "expected_outcome": "Persistent normal matching quiz, not bank",
+      "branches_errors_persistence": "Incomplete/duplicates/conflicts block; revalidation; source labels retained; overall pair cap100",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/11-matching-terminology-and-image-based-content.md#review-and-publish-ocr-matching"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-073",
+      "group": "PDF, OCR and image authoring",
+      "mode": "LS",
+      "workflow": "Build image-backed choice/matching/hotspot Study Pack and quiz",
+      "prerequisites": "Rights-cleared <=12 raster images",
+      "steps": "Upload & Continue; title/domain/timer/alt descriptions/source/consent; add question/image; choices/pairs/regions; Create Study Pack & Quiz",
+      "expected_outcome": "Validated installed source pack and playable saved quiz",
+      "branches_errors_persistence": "32MiB/image192MiB/batch80Mp; bad raster rejects; circle center/radius or polygon>=3; Clear Region; keyboard placement alternatives BLOCKED physically",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/11-matching-terminology-and-image-based-content.md#create-image-based-study-material",
+        "docs/user-manual/11-matching-terminology-and-image-based-content.md#add-questions"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-074",
+      "group": "PDF, OCR and image authoring",
+      "mode": "LS",
+      "workflow": "Calibrate installed image hotspot regions",
+      "prerequisites": "Installed supported dataset/target",
+      "steps": "Image Study Editor \u2192 Clickable Regions; load existing; place; Undo/Clear; Test inside/out; Save Region confirm",
+      "expected_outcome": "Derived region saved; original image intact",
+      "branches_errors_persistence": "Invalid shape blocks; no targets \u2192 prep only; pointer/keyboard native interaction BLOCKED",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/11-matching-terminology-and-image-based-content.md#clickable-regions"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-075",
+      "group": "PDF, OCR and image authoring",
+      "mode": "LS",
+      "workflow": "Prepare non-destructive image overlays",
+      "prerequisites": "Supported installed image dataset",
+      "steps": "Image Editor \u2192 Image Prep; blur/white/black/text; Undo/Clear; Save Image Prep",
+      "expected_outcome": "Saved overlay instructions, unchanged source pixels",
+      "branches_errors_persistence": "Not general photo editor; unsaved/invalid shape errors remain visible; existing quiz behavior needs actual workflow verification",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/11-matching-terminology-and-image-based-content.md#image-prep"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-076",
+      "group": "External AI and Law workflows",
+      "mode": "LS",
+      "workflow": "Create reviewed AI choice quiz by manual JSON exchange",
+      "prerequisites": "Optional external provider; verified topic/material",
+      "steps": "AI Quiz Builder Choice; count1\u2013100/audience/source; Generate/Copy; manually send; paste JSON; Validate; repair/reconfirm; Publish",
+      "expected_outcome": "Normal saved quiz after review",
+      "branches_errors_persistence": "<=1MiB/bare or one fence; invalid schema/URLs/counts block; failure retains draft; Start Over discards; provider output not truth",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/12-external-ai-workflows.md#build-choice-questions-from-structured-text",
+        "docs/user-manual/12-external-ai-workflows.md#review-choice-question-output"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-077",
+      "group": "External AI and Law workflows",
+      "mode": "LS",
+      "workflow": "Create reviewed AI matching quiz by JSON exchange",
+      "prerequisites": "External provider optional; 2\u2013100 intended pairs",
+      "steps": "Builder Matching; topic/count; prompt manual exchange; Validate; repair pairs/round/direction; confirm; publish",
+      "expected_outcome": "Normal matching quiz with source metadata",
+      "branches_errors_persistence": "Repeated/missing/conflicting pairs or fields block; edited version revalidated; no API/automatic return",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/12-external-ai-workflows.md#build-matching-and-terminology-content"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-078",
+      "group": "External AI and Law workflows",
+      "mode": "LS",
+      "workflow": "Create AI-assisted Study Pack by ZIP exchange",
+      "prerequisites": "Provider capable of returning actual supported ZIP",
+      "steps": "AI Pack Builder; domain/types/difficulty/style/provider; generate/copy/open; manually return ZIP; validate/warnings/confirm install; generate",
+      "expected_outcome": "Installed reusable pack then chosen quiz",
+      "branches_errors_persistence": "JSON/prose not ZIP; blockers require repaired archive; cancel staging; medical provenance instructions not clinical guarantee",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/12-external-ai-workflows.md#create-an-ai-assisted-study-pack"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded main observation",
+          "scope": "normal Linux Qt Local; diagnostic-assisted actual controls",
+          "observation": "Local prompt/copy stage and authored synthetic ZIP return validated/installed; four matching pairs exact. Multi-answer AI return correctly refused separately.",
+          "evidence": [
+            "local/evidence/AI_PACK_RESULT.json"
+          ],
+          "remaining": "No AI provider contacted; clipboard contents and actual external generation not established."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-079",
+      "group": "External AI and Law workflows",
+      "mode": "LS",
+      "workflow": "Copy a Study choice prompt or Review with AI",
+      "prerequisites": "Supported choice Study question; configured destination for open",
+      "steps": "Question Tools \u2192 Copy Question or Review with AI; inspect prompt; manually paste externally",
+      "expected_outcome": "Clipboard prompt and optional normal external-browser handoff",
+      "branches_errors_persistence": "No quiz title/images; visible correctness only; unavailable matching/hotspot/Exam; no automatic answer retrieval/save",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/12-external-ai-workflows.md#ask-for-an-external-explanation"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-080",
+      "group": "External AI and Law workflows",
+      "mode": "LS",
+      "workflow": "Request explanation for selected missed Exam questions",
+      "prerequisites": "AI helper enabled; persisted supported misses",
+      "steps": "Review attempt; item/combined selection; prepare/copy/open prompt; manual paste",
+      "expected_outcome": "External explanation conversation",
+      "branches_errors_persistence": "Autocopy configurable; unsupported sources excluded; explanation never replaces saved key/history; no API call",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/12-external-ai-workflows.md#ask-for-an-external-explanation",
+        "docs/user-manual/07-study-and-review.md#review-questions-missed-on-one-exam"
+      ],
+      "followup_observations": [
+        {
+          "status": "partial",
+          "scope": "normal Linux Qt Local",
+          "observation": "Missed-question Copy Explain Prompt action exercised; no external provider contacted.",
+          "evidence": [
+            "local/evidence/068-copied-missed-prompt.json"
+          ],
+          "remaining": "Clipboard contents and external explanation outcome unverified."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-081",
+      "group": "External AI and Law workflows",
+      "mode": "LS",
+      "workflow": "Recover failed AI clipboard/provider opening",
+      "prerequisites": "Prepared prompt visible",
+      "steps": "Use manual select/copy; manually open configured provider/recovery link; paste exact content yourself",
+      "expected_outcome": "Explicit human handoff continues",
+      "branches_errors_persistence": "Copy/open distinct statuses; cannot detect every launch failure; LAN HTTP/popup permissions differ; custom absolute URL validated",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/12-external-ai-workflows.md#copying-or-opening-the-provider-did-not-work",
+        "docs/user-manual/certifications-and-training.md#find-renewal-matches"
+      ],
+      "followup_observations": [
+        {
+          "status": "untested",
+          "scope": "coverage disposition",
+          "observation": "Clipboard denial/provider failure not forced in this batch.",
+          "evidence": [],
+          "remaining": "No claim from normal copy action; requires bounded isolated failure experiment."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-082",
+      "group": "External AI and Law workflows",
+      "mode": "LS",
+      "workflow": "Generate/import Law case packet",
+      "prerequisites": "Law case/course; provider or existing packet text",
+      "steps": "Create Case Review; request sections/prompt; manual exchange; Import Case Packet; Save & Preview; inspect recognized sections; Create",
+      "expected_outcome": "Raw saved import plus independent saved Case Review",
+      "branches_errors_persistence": "Unsupported/missing sections not invented; noninteractive Future Study Modes not supported tools; source import retained separately",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/12-external-ai-workflows.md#create-a-law-case-review-with-external-ai",
+        "docs/user-manual/13-study-packs-and-content-packs.md#use-law-study"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-083",
+      "group": "External AI and Law workflows",
+      "mode": "LS",
+      "workflow": "Practice saved Law IRAC/Socratic and notes",
+      "prerequisites": "Saved Case Review with respective sections",
+      "steps": "Read brief; edit IRAC; save; answer Socratic; reveal guidance; save notes; reopen",
+      "expected_outcome": "Saved responses and notes attached to case",
+      "branches_errors_persistence": "Embedded activities only; no standalone IRAC/Socratic/Case Compare; source/raw import not silently overwritten",
+      "original_status": "passed",
+      "documentation_references": [
+        "docs/user-manual/13-study-packs-and-content-packs.md#use-law-study"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-084",
+      "group": "External AI and Law workflows",
+      "mode": "LS",
+      "workflow": "Manage saved Law imports/reviews/export readable case",
+      "prerequisites": "Saved raw packet and/or review",
+      "steps": "Law Saved Imports/Cases; inspect; export case TXT or explicitly delete selected record with confirmation",
+      "expected_outcome": "Readable saved content or deliberate removal",
+      "branches_errors_persistence": "Deleting raw import and case separate; TXT not general import/backup; export may include student answers/notes",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/13-study-packs-and-content-packs.md#use-law-study",
+        "docs/user-manual/15-import-export-and-portability.md#export-law-case-reviews"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-085",
+      "group": "Study Packs and subject spaces",
+      "mode": "LS",
+      "workflow": "Browse installed pack catalog and remember expansion",
+      "prerequisites": "Usable installed learner-facing pack",
+      "steps": "Study Packs; All/IT/Medical/Other filter; expand/collapse datasets",
+      "expected_outcome": "Relevant matching/image/mixed source view",
+      "branches_errors_persistence": "Filters do not move packs; expansion browser-local; empty catalog may mean filter/no usable content",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/13-study-packs-and-content-packs.md#use-an-installed-study-pack"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-086",
+      "group": "Study Packs and subject spaces",
+      "mode": "LS",
+      "workflow": "Generate matching pack round",
+      "prerequisites": "Installed matching dataset >=2 pairs",
+      "steps": "Set bounded Pairs; direction Random/Term/Definition; Create Quiz; choose normal mode",
+      "expected_outcome": "Saved playable quiz; reusable dataset unchanged",
+      "branches_errors_persistence": "Default up to10; cannot exceed data; generated quiz/history persistent independent from source",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/13-study-packs-and-content-packs.md#create-matching-practice"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-087",
+      "group": "Study Packs and subject spaces",
+      "mode": "LS",
+      "workflow": "Generate image/hotspot or mixed pack practice",
+      "prerequisites": "Usable image targets/prepared question set",
+      "steps": "Pack dataset \u2192 Create Quiz; open generated quiz; Study/Exam",
+      "expected_outcome": "Normal saved quiz retaining pack relationship",
+      "branches_errors_persistence": "No automatic source alteration/deletion after attempt; malformed dataset omitted with Details diagnosis",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/13-study-packs-and-content-packs.md#create-image-or-mixed-practice"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-088",
+      "group": "Study Packs and subject spaces",
+      "mode": "LS",
+      "workflow": "Validate/install Content Pack with cancel/collision handling",
+      "prerequisites": "Trusted supported <=256MiB ZIP",
+      "steps": "Content Packs; select; Validate ZIP; read warnings/blockers; confirm Install or Cancel & Remove Staging",
+      "expected_outcome": "Installed source visible in Study Packs",
+      "branches_errors_persistence": "Same identity/path never silently replaced; bad archive leaves installed content; validation not educational correctness",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/13-study-packs-and-content-packs.md#import-a-content-pack-zip"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-089",
+      "group": "Study Packs and subject spaces",
+      "mode": "LS",
+      "workflow": "Inspect/export/delete installed Content Pack",
+      "prerequisites": "Installed package; backup/export if needed",
+      "steps": "Manager \u2192 Details fresh report; Export valid ZIP or Delete unprotected after confirmation",
+      "expected_outcome": "Source inspected/transferred or deliberately removed",
+      "branches_errors_persistence": "Protected pack undeletable; invalid no export; generated quizzes/history remain with necessary media dependencies",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/13-study-packs-and-content-packs.md#manage-installed-content-packs"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-090",
+      "group": "Study Packs and subject spaces",
+      "mode": "LS",
+      "workflow": "Use IT/Medical/Other subject views",
+      "prerequisites": "Installed matching-domain material; visible link or catalog",
+      "steps": "Open subject; choose dataset/activity; generate and study normal quiz",
+      "expected_outcome": "View onto same installed source, no duplicate dataset",
+      "branches_errors_persistence": "Hide link does not delete content; Other excludes dedicated domains; missing data investigate pack Details",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/13-study-packs-and-content-packs.md#understand-subject-study-spaces"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-091",
+      "group": "Portability, cards and print",
+      "mode": "LS",
+      "workflow": "Preflight/select/export Portable Quiz Bundle",
+      "prerequisites": "Eligible ordinary source quizzes/media",
+      "steps": "Quiz Bundles; search/folder/page selection; Check selected; Review/edit blockers; acknowledge warnings; Download",
+      "expected_outcome": "One fully validated bundle preserving supported content, no history",
+      "branches_errors_persistence": "Select filtered spans pages; deselect global; selection retained failures; generated/Mixed/hotspot excluded; blockers stop entire export",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/15-import-export-and-portability.md#export-a-bundle",
+        "docs/user-manual/15-import-export-and-portability.md#when-a-quiz-needs-review"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-092",
+      "group": "Portability, cards and print",
+      "mode": "LS",
+      "workflow": "Export/import multi-part Bundle Collection",
+      "prerequisites": "Selection exceeds one bundle but within overall limits",
+      "steps": "Download collection; extract; read inventory/hashes/counts; import each numbered inner ZIP",
+      "expected_outcome": "Complete partitioned ordinary bundle transfer",
+      "branches_errors_persistence": "Outer collection never importable; <=1000 sources/512MiB download; no silently skipped quiz; format2 receiver required",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/15-import-export-and-portability.md#export-a-bundle"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded main observation",
+          "scope": "normal Linux Qt Local; diagnostic-assisted actual controls",
+          "observation": "101 fixture quizzes exported as independently importable 100+1 inner bundles. Imported copies preserve 202 questions and 404 choices, expected remapping and unrelated data.",
+          "evidence": [
+            "local/evidence/COLLECTION_ARCHIVE.json",
+            "local/evidence/COLLECTION_RESULT.json"
+          ],
+          "remaining": "API fixture setup is not GUI authoring. No collection atomicity/interruption claim; registry appends intentionally."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-093",
+      "group": "Portability, cards and print",
+      "mode": "LS",
+      "workflow": "Validate/import Portable Bundle with collision/cancel",
+      "prerequisites": "Compatible trusted <=128MiB format1/2 bundle",
+      "steps": "Bundles Import \u2192 Validate and Preview; inspect counts/media/folders/RENAMED; confirm Create/Import or Cancel",
+      "expected_outcome": "Independent quizzes with safe names/new local IDs",
+      "branches_errors_persistence": "No overwrite/merge/history; malformed/unsafe excessive rejects before publication; publication failure removes partial import; cancel stages only",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/15-import-export-and-portability.md#import-a-bundle"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-094",
+      "group": "Portability, cards and print",
+      "mode": "LS",
+      "workflow": "Round-trip classic quiz TXT or full readable Library reference",
+      "prerequisites": "Classic choice quiz or collection",
+      "steps": "Library Export; save/edit text and reimport through supported parser, or Download Library Reference",
+      "expected_outcome": "New parsed quiz or human-readable reference file",
+      "branches_errors_persistence": "Rich media/matching/lineage/history not preserved by TXT; library reference not restorable/importable; inspect parsed result",
+      "original_status": "passed",
+      "documentation_references": [
+        "docs/user-manual/15-import-export-and-portability.md#use-quiz-text-files"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-095",
+      "group": "Portability, cards and print",
+      "mode": "LS",
+      "workflow": "Export whole-quiz Anki deck",
+      "prerequisites": "Saved quiz suitable for text cards",
+      "steps": "Anki Tools Quiz \u2192 Preview Cards; check first20; select export quiz; Export .apkg; save",
+      "expected_outcome": "All quiz text front/back cards exported; source retained",
+      "branches_errors_persistence": "Matching/hotspot not rich conversion; preview limited not truncation; Anki import external and untested here",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/14-anki-decks-and-printable-cards.md#export-one-quiz-to-anki"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-096",
+      "group": "Portability, cards and print",
+      "mode": "LS",
+      "workflow": "Export history-wide or attempt-specific missed Anki",
+      "prerequisites": "Recorded misses",
+      "steps": "Missed Questions Anki filters quiz/min count/status; preview/export, or selected misses on attempt review",
+      "expected_outcome": "Deck of intended missed records with context",
+      "branches_errors_persistence": "Recovered later means later completion not correctness; summaries overlap; source/history unchanged",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/14-anki-decks-and-printable-cards.md#export-missed-questions"
+      ],
+      "followup_observations": [
+        {
+          "status": "failed branch / passed separate branch",
+          "scope": "normal Linux Qt Local",
+          "observation": "Attempt-specific missed APKG blocked before native Save As (F5); history-wide missed APKG saves one note with correct answer.",
+          "evidence": [
+            "local/evidence/069-missed-export-refused.json",
+            "local/evidence/HISTORY_ANKI_RESULT.json"
+          ],
+          "remaining": "Repair and Server/other-host checks remain open; history-wide success does not close attempt-specific failure."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-097",
+      "group": "Portability, cards and print",
+      "mode": "LS",
+      "workflow": "Build custom deduplicated Anki deck",
+      "prerequisites": "Supported quiz/history/Law cards",
+      "steps": "Custom Deck; name<=120; select grouped sources; count; Preview; Export",
+      "expected_outcome": "Flat full deduplicated selected deck",
+      "branches_errors_persistence": "Identical front/back deduplicates; preview20; empty/unsupported source needs explicit exclusion; no nested subdecks",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/14-anki-decks-and-printable-cards.md#build-a-custom-deck"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-098",
+      "group": "Portability, cards and print",
+      "mode": "LS",
+      "workflow": "Export Law rule cards by cases/course",
+      "prerequisites": "Case Reviews with recognized Rule Flashcards",
+      "steps": "Law Study Anki; Selected Cases or Entire Course; preview; export",
+      "expected_outcome": "Context-titled .apkg rule cards",
+      "branches_errors_persistence": "No recognized fronts/backs means no deck; case prose not auto-converted; also eligible custom/print source",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/14-anki-decks-and-printable-cards.md#export-law-study-cards"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded main observation",
+          "scope": "normal Linux Qt Local; diagnostic-assisted actual controls",
+          "observation": "Law rule cards exported by Selected Cases and Entire Course through native Save As; each APKG one exact note.",
+          "evidence": [
+            "local/evidence/LAW_ANKI_RESULT.json"
+          ],
+          "remaining": "External Anki import and physical print remain untested."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-099",
+      "group": "Portability, cards and print",
+      "mode": "LS",
+      "workflow": "Prepare printable duplex physical cards",
+      "prerequisites": "Custom supported selection; printer/PDF destination",
+      "steps": "Custom Deck; name; Avery5388 long/short edge; Open layout; Print Cards; choose corresponding system settings; test sheet",
+      "expected_outcome": "3x5 front/back sheets prepared",
+      "branches_errors_persistence": "Native print/control verification BLOCKED; USLetter/no scaling; dense cards may overflow readability; wrong edge reverses alignment",
+      "original_status": "failed",
+      "documentation_references": [
+        "docs/user-manual/14-anki-decks-and-printable-cards.md#print-physical-cards"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded observation",
+          "scope": "normal frozen Linux Qt; native mode menu/Server close owner-assisted where stated",
+          "observation": "Normal synthetic Server marked APKG initial/fallback/cancel verified; rendered Avery retains POST, selected card and deck name.",
+          "evidence": [
+            "normal/evidence/SERVER_OUTPUT_RESULT.json"
+          ],
+          "remaining": "No endpoint/certificate matrix, physical keyboard, physical printing or native Windows/Mac claim. Specific original parent branches remain open."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-100",
+      "group": "Portability, cards and print",
+      "mode": "LS",
+      "workflow": "Import exported .apkg in external Anki",
+      "prerequisites": "Downloaded deck; installed external Anki",
+      "steps": "Anki package-import; select .apkg; inspect cards; manage schedule/sync in Anki",
+      "expected_outcome": "Cards available outside DLMS",
+      "branches_errors_persistence": "External application workflow is documented dependent step, NOT Desktop control/pass; no DLMS history synchronization",
+      "original_status": "blocked",
+      "documentation_references": [
+        "docs/user-manual/14-anki-decks-and-printable-cards.md#import-the-apkg-file-into-anki"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-101",
+      "group": "Exam Plans, certifications and training",
+      "mode": "LS",
+      "workflow": "Create/edit optional Exam Plan",
+      "prerequisites": "Intended dates/timezone/folders/budget",
+      "steps": "Learning Intelligence \u2192 Exam Plans New; name/exam/date/timezone; folders/days/minutes/assumptions; preview notices; Save",
+      "expected_outcome": "Persistent optional plan with live source scope",
+      "branches_errors_persistence": "Excluded/unavailable counts explicit; flat folders; time capacity estimate not measured; stale/error use recovery; opening no credit",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/exam-plans.md#create-a-plan"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-102",
+      "group": "Exam Plans, certifications and training",
+      "mode": "LS",
+      "workflow": "Select/show/hide/pause/delete Dashboard plan",
+      "prerequisites": "Saved plans",
+      "steps": "Use this plan on Dashboard; inspect replaced plan; hide or pause/resume independently; delete confirmed",
+      "expected_outcome": "One chosen Dashboard plan; independent suggestion visibility/state",
+      "branches_errors_persistence": "Show never unpauses; ordinary edit unchecked leaves selection; hidden Study next preference not overridden; delete preserves sources/facts",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/exam-plans.md#choose-the-dashboard-plan"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-103",
+      "group": "Exam Plans, certifications and training",
+      "mode": "LS",
+      "workflow": "Execute/adjust planned daily practice and changes",
+      "prerequisites": "Active included plan material",
+      "steps": "Study next inspect reasons/time; Start suggested; complete ack; View plan progress; edit budgets/date; inspect changes; Mark shown seen",
+      "expected_outcome": "Work counted once; daily target recalculated; seen snapshot acknowledged",
+      "branches_errors_persistence": "No-work states explain paused/day/date/budget/material; no automatic rescheduling; included unavailable stays denominator; future unseen changes not acked",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/exam-plans.md#start-todays-practice",
+        "docs/user-manual/exam-plans.md#changes-resets-and-recovery"
+      ],
+      "followup_observations": [
+        {
+          "status": "passed bounded main observation",
+          "scope": "normal Linux Qt Local; diagnostic-assisted actual controls",
+          "observation": "Daily budget 4\u219212 minutes; suggested two-question practice acknowledged once; added-source change shown then marked seen without answers.",
+          "evidence": [
+            "local/evidence/PLAN_PRACTICE_RESULT.json"
+          ],
+          "remaining": "Date/day/calendar/paused/no-work branches not all covered."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-104",
+      "group": "Exam Plans, certifications and training",
+      "mode": "LS",
+      "workflow": "Add/edit earned certification with independent evidence",
+      "prerequisites": "Earned credential; optional owned raster/PDF evidence",
+      "steps": "My Certifications Add; name/issuer/earned/expiration or no-expire; optional separate badge/certificate; Save; edit/view current evidence",
+      "expected_outcome": "Persistent credential/current period/evidence roles",
+      "branches_errors_persistence": "Unknown dates distinct; empty chooser retains upload; replacing badge not certificate; ambiguity remains explicit; HTML/SVG rejected",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/certifications-and-training.md#add-or-edit-an-earned-credential"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-105",
+      "group": "Exam Plans, certifications and training",
+      "mode": "LS",
+      "workflow": "Sort/persist certification order and inspect expired status",
+      "prerequisites": "Saved credential collection",
+      "steps": "Choose name/earned/expiry sort; Save order; view all/details",
+      "expected_outcome": "Saved honest achievement presentation",
+      "branches_errors_persistence": "Expired/superseded retained; non-expiring supported; full bar not issuer approval; visibility preserves records",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/certifications-and-training.md#add-or-edit-an-earned-credential",
+        "docs/user-manual/certifications-and-training.md#display-evidence-and-safe-recovery"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-106",
+      "group": "Exam Plans, certifications and training",
+      "mode": "LS",
+      "workflow": "Log/edit course exact time and evidence",
+      "prerequisites": "Training fact and optional supported evidence",
+      "steps": "Training library Add; title/provider/date/hours/minutes/details; Save; edit or replace certificate intentionally",
+      "expected_outcome": "Exact total minutes and course/evidence retained",
+      "branches_errors_persistence": "Minutes0\u201359 whole; unknown credit not inferred; empty replacement retains evidence; stale error reopen/reselect upload",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/certifications-and-training.md#log-a-course"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-107",
+      "group": "Exam Plans, certifications and training",
+      "mode": "LS",
+      "workflow": "Allocate training toward selected renewal periods",
+      "prerequisites": "Saved course and credentials/periods",
+      "steps": "Use toward renewal; select intended rows/current or historical; review estimates; Save; explicitly remove links separately",
+      "expected_outcome": "Period-specific allocations retained without duplicating activity time",
+      "branches_errors_persistence": "Unchecked rows unchanged; retry no duplicate; changing course duration never silently changes prior allocation; estimates/submitted/accepted distinct",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/certifications-and-training.md#use-a-course-toward-selected-renewals"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-108",
+      "group": "Exam Plans, certifications and training",
+      "mode": "LS",
+      "workflow": "Set goal/deadlines and detailed renewal requirements",
+      "prerequisites": "Known goal and optionally known official rules",
+      "steps": "Set/Edit goal target/unit/annual/planning date; detailed requirements/categories/caps/source/year; explicitly review suggested replacement; save",
+      "expected_outcome": "Saved planning facts without fabricated compliance",
+      "branches_errors_persistence": "Planning/renewal deadline/expiration separate; unknown not zero; hidden detailed requirements preserved; no automatic date/credit renewal",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/certifications-and-training.md#dates-and-goals"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-109",
+      "group": "Exam Plans, certifications and training",
+      "mode": "LS",
+      "workflow": "Classify historical unclassified date deliberately",
+      "prerequisites": "Unclassified preserved legacy date with evidence",
+      "steps": "Open detailed editor; Classify this date; choose single meaning; save",
+      "expected_outcome": "Explicitly classified field/provenance retained",
+      "branches_errors_persistence": "Never auto-copy to two dates; unknown may stay unclassified; overwritten original cannot be reconstructed",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/certifications-and-training.md#dates-and-goals"
+      ],
+      "followup_observations": [
+        {
+          "status": "untested",
+          "scope": "coverage disposition",
+          "observation": "No purpose-built legacy unclassified-date fixture tested.",
+          "evidence": [],
+          "remaining": "Historical recovery/migration excluded; modern unknown-date creation is not evidence for this branch."
+        }
+      ],
+      "followup_disposition": "additional bounded evidence; original parent not reclassified"
+    },
+    {
+      "id": "WD-110",
+      "group": "Exam Plans, certifications and training",
+      "mode": "LS",
+      "workflow": "Record actual renewal and inspect historical periods",
+      "prerequisites": "Actual renewal known; coherent chronology",
+      "steps": "Manage certification \u2192 Record renewal; old/new expiration/date/evidence; Save; inspect period history",
+      "expected_outcome": "New current period; old documents/allocations retained",
+      "branches_errors_persistence": "No credit carry-forward; no replacement certificate means Add certificate, not old evidence; conflict rejects; correction distinct from renewal",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/certifications-and-training.md#record-an-actual-renewal"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-111",
+      "group": "Exam Plans, certifications and training",
+      "mode": "LS",
+      "workflow": "Record manual renewal relationships",
+      "prerequisites": "Owner-verified issuer relationship/source",
+      "steps": "Renewal relationships; direction/trigger/source/conditions; save; after real confirmation explicitly record target renewal",
+      "expected_outcome": "Stored advisory relation only",
+      "branches_errors_persistence": "Never reverse/transitive/implicit renewal or manufactured credit; presets do not prove acceptance",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/certifications-and-training.md#record-an-actual-renewal"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-112",
+      "group": "Exam Plans, certifications and training",
+      "mode": "LS",
+      "workflow": "Prepare certification/training AI matching with selected context",
+      "prerequisites": "Saved relevant credentials/courses; optional external AI",
+      "steps": "Find renewal matches; select records/courses; Prepare; inspect/edit exact preview; Copy only or Copy & open; manual paste",
+      "expected_outcome": "Selected public/rule context handed off deliberately",
+      "branches_errors_persistence": "No allocations/date/credit changes; private IDs/notes/attachments excluded; provider URLs no prompt; failure manual fallback; external advice not issuer approval",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/certifications-and-training.md#find-renewal-matches",
+        "docs/user-manual/12-external-ai-workflows.md#certification-and-training-ai-matching"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-113",
+      "group": "Maintenance and durable data",
+      "mode": "L/R",
+      "workflow": "Inspect storage health and recent safety backups",
+      "prerequisites": "Selected Local profile or authorized remote host settings",
+      "steps": "Backup & Restore \u2192 Check/refresh storage; read data/free space/partial scan and retained backups",
+      "expected_outcome": "Read-only category measurement/inventory",
+      "branches_errors_persistence": "Desktop native surface differs browser; inaccessible/symlink skipped; figures approximate; outside downloads omitted; no automatic backup pruning",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/17-maintenance-backup-and-data-management.md#check-storage-health"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-114",
+      "group": "Maintenance and durable data",
+      "mode": "L/R",
+      "workflow": "Create/download full portable backup",
+      "prerequisites": "Settled writes/publication; space; trusted chosen output",
+      "steps": "Backup & Restore \u2192 create/download or Desktop Save Backup As; wait validated snapshot; save outside live root; retain",
+      "expected_outcome": "Persistent full dataset recovery ZIP",
+      "branches_errors_persistence": "Busy5s/size/resource/lowspace failures publish nothing; older backups excluded; Desktop pending work must settle; successful chooser not proof saved",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/17-maintenance-backup-and-data-management.md#create-a-backup"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-115",
+      "group": "Maintenance and durable data",
+      "mode": "L/R",
+      "workflow": "Stage/validate full restore and cancel safely",
+      "prerequisites": "Trusted compatible backup, correct target; no pending work",
+      "steps": "Backup & Restore \u2192 select/import backup; Validate; inspect version/counts/warnings; Cancel or proceed",
+      "expected_outcome": "Retained validated staging, current profile unchanged before confirmation",
+      "branches_errors_persistence": "Wrong format/unsafe schema/path/counts rejected; cancel removes stage; remote never restores Local; native retained-copy adapter differs browser",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/17-maintenance-backup-and-data-management.md#restore-a-backup"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-116",
+      "group": "Maintenance and durable data",
+      "mode": "L/R",
+      "workflow": "Confirm restore/reload/reconcile interrupted failure",
+      "prerequisites": "Validated intended snapshot and preserved current recovery",
+      "steps": "Restore This Backup; wait safety backup/replacement/rebuild; reload; inspect recovery state if failure",
+      "expected_outcome": "Snapshot replaces full dataset; trusted playable pages rebuilt",
+      "branches_errors_persistence": "Not merge; local browser old checkpoints cleared/isolated; other clients discard stale; failure may recover previous via safety backup, preserve errors",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/17-maintenance-backup-and-data-management.md#restore-a-backup"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-117",
+      "group": "Maintenance and durable data",
+      "mode": "L/R",
+      "workflow": "Clear saved Exam results only",
+      "prerequisites": "Explicit intent and own backup if needed",
+      "steps": "Reset & Remove \u2192 Clear saved results; read scope; confirm/cancel; inspect",
+      "expected_outcome": "Exam attempts/answers/missed history removed; quizzes/durable Study/learning evidence retained",
+      "branches_errors_persistence": "No ordinary browser automatic safety backup; Desktop private recovery contract separate; failure not proof all changed",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/17-maintenance-backup-and-data-management.md#clear-saved-results-only"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-118",
+      "group": "Maintenance and durable data",
+      "mode": "L/R",
+      "workflow": "Reset Learning Intelligence only",
+      "prerequisites": "Intentional estimate restart; settled work",
+      "steps": "Reset Learning Intelligence; read preservation; confirm; retain safety backup; reopen metrics",
+      "expected_outcome": "Evidence-derived mastery/recommendations/schedules reset; factual histories retained",
+      "branches_errors_persistence": "History must not repopulate cleared estimates; old Study queues may invalidate; failure keep backup/message",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/17-maintenance-backup-and-data-management.md#reset-learning-intelligence"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-119",
+      "group": "Maintenance and durable data",
+      "mode": "L/R",
+      "workflow": "Delete factual Study History only",
+      "prerequisites": "Explicit intent and typed confirmation",
+      "steps": "Delete Study History; scope/typed DELETE STUDY HISTORY; confirm; reload open Study",
+      "expected_outcome": "Study sessions/responses/completions/legacy/evidence removed; Exam remains",
+      "branches_errors_persistence": "Safety backup; old queues invalidated; undo requires containing backup; estimates reset is different",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/17-maintenance-backup-and-data-management.md#delete-study-history",
+        "docs/user-manual/17-maintenance-backup-and-data-management.md#understand-safety-backups"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-120",
+      "group": "Maintenance and durable data",
+      "mode": "L/R",
+      "workflow": "Reset Quiz Library and related results",
+      "prerequisites": "Intended removal; safety backup possible",
+      "steps": "Reset Quiz Library & Results; read scope; confirm; inspect retained source areas",
+      "expected_outcome": "Published quiz identities/artifacts/results/Study-related evidence removed",
+      "branches_errors_persistence": "Packs/banks/Law/settings/certifications/plans retained; plan targets unavailable; browser checkpoints clear; regenerated new quiz not old identity",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/17-maintenance-backup-and-data-management.md#reset-the-quiz-library-and-results"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-121",
+      "group": "Maintenance and durable data",
+      "mode": "L/R",
+      "workflow": "Clear imported/source content without published quizzes",
+      "prerequisites": "Intended reusable source removal",
+      "steps": "Clear Imported/Source Content; scope; confirm; retain safety backup",
+      "expected_outcome": "Removable packs/banks/drafts/staging removed; published quizzes preserved",
+      "branches_errors_persistence": "Protected packs remain; needed dependencies copied; source collection itself not preserved; safety backup needed to recover",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/17-maintenance-backup-and-data-management.md#clear-imported-or-source-content"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-122",
+      "group": "Maintenance and durable data",
+      "mode": "L/R",
+      "workflow": "Reset ordinary application settings",
+      "prerequisites": "Intentional broad preference reset",
+      "steps": "Reset Application Settings; inspect scope; confirm; reopen defaults",
+      "expected_outcome": "Appearance/AI/parsing/navigation/folder definitions/scope reset",
+      "branches_errors_persistence": "Quiz content/history/packs preserved; populated assignments retained but empty folders/hidden definitions lost; evidence reused when scope reincluded",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/17-maintenance-backup-and-data-management.md#reset-application-settings"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-123",
+      "group": "Maintenance and durable data",
+      "mode": "L/R",
+      "workflow": "Reset active profile to fresh state",
+      "prerequisites": "Explicit full active-state removal; external recovery retained",
+      "steps": "Fresh State; scope; confirm; wait; inspect first-run state",
+      "expected_outcome": "Active dataset reset; existing/safety backup ZIPs retained",
+      "branches_errors_persistence": "Certifications/plans/training/marks gone; installed executable intact; checkpoints clear; failure no automatic reset rollback guarantee",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/17-maintenance-backup-and-data-management.md#reset-dlms-to-a-fresh-state"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-124",
+      "group": "Maintenance and durable data",
+      "mode": "L/R",
+      "workflow": "Remove exact DLMS data/profile and stop",
+      "prerequisites": "Verified target; wanted backups copied outside",
+      "steps": "Permanent removal; read exact root; type REMOVE DLMS DATA; final confirm; app shuts down",
+      "expected_outcome": "Target data including internal backups removed; application files retained",
+      "branches_errors_persistence": "Browser manual says relaunch new root; Desktop tombstone prevents auto-recreating same removed profile; no backup from removal itself; native qualification BLOCKED",
+      "original_status": "untested",
+      "documentation_references": [
+        "docs/user-manual/17-maintenance-backup-and-data-management.md#permanently-remove-dlms-data"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-125",
+      "group": "Maintenance and durable data",
+      "mode": "LS",
+      "workflow": "Rebuild derived quiz pages after diagnosed need",
+      "prerequisites": "Canonical quiz data and explicit reason",
+      "steps": "System Tools \u2192 Rebuild All Quiz Pages; confirm; await counts/per-quiz status; inspect affected IDs",
+      "expected_outcome": "Derived HTML/JSON refreshed; canonical questions/IDs/history unchanged",
+      "branches_errors_persistence": "Per-quiz failure preserves previous files; connection failure uncertain may have rebuilt some; not routine update step; remote server owner controls",
+      "original_status": "failed",
+      "documentation_references": [
+        "docs/user-manual/17-maintenance-backup-and-data-management.md#rebuild-all-quiz-pages"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-126",
+      "group": "Browser/server manual boundaries, not Desktop host controls",
+      "mode": "B",
+      "workflow": "Install/launch original browser edition and reopen localhost page",
+      "prerequisites": "Correct original package/platform",
+      "steps": "Follow original edition install; launch local backend; open default browser or existing localhost:9001",
+      "expected_outcome": "Original browser interface using its own data root",
+      "branches_errors_persistence": "Not Desktop package/profile; OS warnings stop this audit; no installation/input performed; Windows/Mac claims outside Linux artifact",
+      "original_status": "not applicable",
+      "documentation_references": [
+        "docs/user-manual/02-installation-and-first-launch.md#choose-the-correct-package",
+        "docs/user-manual/02-installation-and-first-launch.md#install-on-linux",
+        "static/help-getting-started.html#lifecycle"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-127",
+      "group": "Browser/server manual boundaries, not Desktop host controls",
+      "mode": "B",
+      "workflow": "Stop browser local process/enable presence shutdown",
+      "prerequisites": "Eligible browser edition loopback process",
+      "steps": "Shutdown DLMS, or Lifecycle enable presence shutdown; close last page; reopen within grace to cancel",
+      "expected_outcome": "Original local backend stops immediately/after grace",
+      "branches_errors_persistence": "Not Desktop dedicated-window close contract; browser close not unconditional; no save guarantee; LAN disables controls",
+      "original_status": "not applicable",
+      "documentation_references": [
+        "docs/user-manual/16-settings-and-runtime.md#use-browser-presence-shutdown-in-browser-based-local-mode",
+        "docs/user-manual/02-installation-and-first-launch.md#stop-dlms-safely"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-128",
+      "group": "Browser/server manual boundaries, not Desktop host controls",
+      "mode": "B",
+      "workflow": "Host intentional trusted-LAN server and stop from host",
+      "prerequisites": "Separately authorized host/firewall setup",
+      "steps": "Original server launch --host nonloopback; clients use actual host address; host process/service stop",
+      "expected_outcome": "One shared hosted dataset",
+      "branches_errors_persistence": "Desktop Server is client only; no built-in accounts/TLS, no automatic public exposure authorization; host operation BLOCKED",
+      "original_status": "not applicable",
+      "documentation_references": [
+        "docs/user-manual/16-settings-and-runtime.md#lanserver-mode",
+        "static/help-getting-started.html#network"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    },
+    {
+      "id": "WD-129",
+      "group": "Browser/server manual boundaries, not Desktop host controls",
+      "mode": "B",
+      "workflow": "Upgrade/rollback original edition or run source in isolated root",
+      "prerequisites": "Verified compatible backup and separately supported environment",
+      "steps": "Stop normal process; retain profile/preupgrade backup; use supported compatible application/data root; restore/verify",
+      "expected_outcome": "Chosen compatible data restored deliberately",
+      "branches_errors_persistence": "Binary replacement cannot undo schema12; later writes lost with old backup; not executed, no permission inferred for installed data",
+      "original_status": "not applicable",
+      "documentation_references": [
+        "docs/user-manual/02-installation-and-first-launch.md#upgrade-an-existing-installation",
+        "docs/user-manual/02-installation-and-first-launch.md#running-from-source",
+        "docs/user-manual/17-maintenance-backup-and-data-management.md#restore-versus-application-rollback"
+      ],
+      "followup_observations": [],
+      "followup_disposition": "no fresh execution; original assessment retained"
+    }
+  ]
+}

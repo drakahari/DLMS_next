@@ -8,23 +8,17 @@ manual.
 
 ## Current native package targets
 
-The published DLMS 3.2.2 release includes native packages for the targets below.
-The 3.3.0 development target keeps this matrix; its packages and platform
-behavior require fresh native validation before release:
+Use [Choose your DLMS](../choose-your-dlms.md#downloads-stable-original-and-desktop-previews)
+for the current stable browser-edition and separate Desktop preview downloads,
+architectures and qualification limits. Browser-based DLMS 3.3.0 packages open
+a browser; Desktop previews open a dedicated window. Their package names,
+launch procedures and data locations are not interchangeable.
 
-| Platform | Architecture | Canonical package name |
-| --- | --- | --- |
-| Fedora 44 | x86-64 | `DLMS-3.2.2-fedora44-x86_64.tar.gz` |
-| Ubuntu 24.04 | x86-64 | `DLMS-3.2.2-ubuntu24.04-x86_64.tar.gz` |
-| Ubuntu 26.04 | x86-64 | `DLMS-3.2.2-ubuntu26.04-x86_64.tar.gz` |
-| Omarchy Quattro | x86-64 | `DLMS-3.2.2-omarchy-quattro-x86_64.tar.gz` |
-| Windows 11 | x86-64 | `DLMS-3.2.2-windows11-x86_64.zip` |
-| macOS Apple Silicon | arm64 | `DLMS-3.2.2-macos-arm64.zip` |
-
-Choose the package that matches the computer that will run DLMS. A package
-target identifies the environment in which the release is built and verified;
-it does not establish compatibility with every similar or later operating
-system.
+For browser-edition installation commands, see
+[Installation and First Launch](02-installation-and-first-launch.md). Follow the
+specific Desktop release instructions for its AppImage, manager bundle, Windows
+installer or Mac DMG. A Linux build target does not prove universal distribution
+compatibility, and native acceptance on one OS does not qualify another.
 
 ## Packaged DLMS and source runtime
 
@@ -79,8 +73,13 @@ configuration, and browser selection can vary by distribution.
 
 ## Where DLMS stores data
 
-Packaged DLMS keeps its writable workspace outside the application bundle or
-executable. The default application-data locations are:
+All editions keep writable data outside the application payload. The defaults
+below belong to **browser-based DLMS**; Desktop profiles use different roots.
+Use the profile shown in Desktop Local Settings and the
+[edition-specific data-location guide](../choose-your-dlms.md#where-your-data-lives).
+Do not point the browser and Desktop editions at one live data root.
+
+Browser-based default application-data locations:
 
 | Platform | Default data location |
 | --- | --- |
@@ -98,7 +97,20 @@ Source-runtime or explicitly configured launches can use a different data
 location. If you start DLMS through a custom command, service, or launcher,
 record the location chosen by that setup.
 
-## Local desktop mode
+## Desktop Local and Server
+
+Desktop manages a dedicated window and selected Local profile. It can connect
+to a separately configured Server without copying or synchronizing datasets.
+Reopen the same profile with its launcher; do not reconnect through a guessed
+browser URL. Native close/pending-work guards differ from the browser-presence
+grace period below. Follow [Desktop Local and Server](16-settings-and-runtime.md#desktop-local-and-server)
+for mode selection, exact-origin warnings and shutdown behavior.
+
+The hosting instructions below apply to **browser-based DLMS**. Desktop Server
+mode is a client connection to an existing deployment, not a non-loopback bind
+of the Local Desktop backend.
+
+## Browser-based Local mode
 
 Normal desktop use binds DLMS to the loopback interface, ordinarily at
 `127.0.0.1:9001`. The DLMS process runs on the computer and serves the interface

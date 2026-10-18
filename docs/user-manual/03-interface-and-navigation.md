@@ -159,6 +159,20 @@ Quizzes, completed History, and server-derived learning information still come
 from the DLMS host. The completion and cross-client recovery contract is
 explained in [Taking Quizzes](06-taking-quizzes.md#resume-an-interrupted-quiz).
 
+## Read Desktop build and active-dataset information
+
+On **Linux Qt Desktop**, open the compact **Local** or **Server: [name]** mode
+control and choose **About DLMS Desktop…**. The **About DLMS Desktop** dialog
+shows the application version, bundled Local release, Desktop source/build,
+build target/support information and runtime versions. It also identifies the
+active mode and Local profile/origin or the configured Server name/origin.
+
+The bundled Local build does **not** establish the deployed Server's version.
+Use **Close** to dismiss About; the native mode control receives focus again.
+This is a read-only native view, not a Server page or an update command. Other
+Desktop hosts follow their own release-specific menu/prompt arrangement;
+browser-based DLMS does not have this Qt mode-menu action.
+
 ## Use Help when you need task detail
 
 Open **Help** from the system navigation for the Help Center. Its topic cards
