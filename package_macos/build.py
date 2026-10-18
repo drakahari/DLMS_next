@@ -1,4 +1,4 @@
-"""Build a new private arm64 .app/DMG offline; never install or alter security."""
+"""Build the Apple Silicon public preview offline; never install or alter security."""
 from __future__ import annotations
 import argparse
 import hashlib
@@ -50,69 +50,35 @@ def app_inventory(app):
     return files
 
 
-def prepare_materials(stage):
+def prepare_materials(stage, inputs, cache):
     from tools.prepare_ocr_bundle import BundleSources, prepare_bundle
+    from package_macos.preview_materials import prepare, verify
     executable = Path('/opt/homebrew/bin/tesseract').resolve(strict=True)
     tessdata = Path('/opt/homebrew/share/tessdata').resolve(strict=True)
     prefix = Path('/opt/homebrew/Cellar/leptonica')
     libraries = sorted(prefix.glob('*/lib/libleptonica.*.dylib'))
     if len(libraries) != 1:
         raise ValueError('Select an unambiguous installed Leptonica source before packaging')
-    lept = libraries[0].parents[1]
-    header = (lept / 'include/leptonica/allheaders.h').read_text()
-    license_text = header[:header.index('*/') + 2] + '\n'
+    header = (libraries[0].parents[1] / 'include/leptonica/allheaders.h').read_text()
     license_file = stage / 'leptonica-LICENSE.txt'
-    license_file.write_text(license_text)
+    license_file.write_text(header[:header.index('*/') + 2] + '\n')
     tesseract_license = executable.parents[1] / 'LICENSE'
     ocr = prepare_bundle(BundleSources('macos', executable, tessdata,
                          tesseract_license, tesseract_license, license_file),
                          stage / 'ocr', repository_root=ROOT)
-    notices = stage / 'notices'
-    notices.mkdir()
-    shutil.copy2(ROOT / 'LICENSE', notices / 'application-LICENSE')
-    wheelhouse = ROOT / '.gate1/macos/wheelhouse'
-    download = json.loads((wheelhouse.parent / 'wheelhouse.json').read_text())
-    for name, expected in download['wheels'].items():
-        wheel = wheelhouse / name
-        if digest(wheel) != expected:
-            raise ValueError('Downloaded wheel changed: ' + name)
-        with zipfile.ZipFile(wheel) as archive:
-            for item in archive.namelist():
-                if not item.endswith('/') and ('.dist-info/licenses/' in item or '.dist-info/' in item
-                        and Path(item).name.casefold().startswith(('license', 'copying', 'notice'))):
-                    target = notices / name / item
-                    if '..' in Path(item).parts or Path(item).is_absolute():
-                        raise ValueError('Unsafe wheel license member')
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_bytes(archive.read(item))
-    # Record exact local native inputs; their distribution/source obligations
-    # remain unresolved. This inventory is not a grant of redistribution rights.
-    native = {}
-    pending = [executable]
-    while pending:
-        path = pending.pop().resolve()
-        if str(path) in native:
-            continue
-        run(['/usr/bin/lipo', '-verify_arch', 'arm64', str(path)], stdout=subprocess.DEVNULL)
-        linked = subprocess.check_output(['/usr/bin/otool', '-L', str(path)], text=True)
-        native[str(path)] = {'sha256': digest(path), 'links': linked.splitlines()[1:]}
-        for line in linked.splitlines()[1:]:
-            name = line.strip().split(' (', 1)[0]
-            if name.startswith('/opt/homebrew/'):
-                pending.append(Path(name))
-    (notices / 'native-inputs.json').write_text(json.dumps(native, indent=2) + '\n')
-    (notices / 'PRIVATE-CANDIDATE.txt').write_text(
-        'Synthetic-data private candidate only. No redistribution clearance.\n'
-        'No Developer ID signature or notarization. Build uses local ad hoc integrity signatures.\n'
-        'Desktop/icon grants and exact Qt/PDFium/Tesseract/native library source, notice and replacement obligations remain unresolved.\n'
-        'Leptonica notice is reproduced from the installed matching header; no source-offer sufficiency is claimed.\n'
-        'Native immutable upload flags can be deliberately cleared by the same user. Production uploads remain unqualified.\n')
+    notices, native = prepare(stage, inputs, cache)
+    model=native['english_model']
+    for packaged in ocr.rglob('eng.traineddata'):
+        if digest(packaged)!=model['sha256']:
+            raise ValueError('Bundled English model differs from source companion')
+    verify(notices)
     return ocr, notices, native
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--app-only', action='store_true', help='defer DMG creation to normal Terminal if device access is blocked')
+    parser.add_argument('--inputs', type=Path, help='verified wheelhouse/interpreter inputs; defaults to the task preview cache')
     args = parser.parse_args()
     if sys.platform != 'darwin' or platform.machine() != 'arm64' or sys.version_info[:3] != (3, 14, 7):
         raise SystemExit('Requires native arm64 macOS with the pinned Python 3.14.7 environment')
@@ -120,26 +86,29 @@ def main():
     # directories, which Apple codesign refuses. Build in a dedicated private
     # cache outside the provider; retain repository evidence separately.
     from desktop.macos_paths import real_home
-    work = real_home() / '.cache/dlms-desktop-macos-candidate'
+    work = real_home() / '.cache/dlms-desktop-macos-preview'
     for part in (work.parent, work):
         if part.is_symlink() or (part.exists() and (not part.is_dir()
                 or part.stat().st_uid != os.getuid() or part.stat().st_mode & 0o022)):
             raise ValueError('Unsafe private macOS build cache')
     work.mkdir(mode=0o700, parents=True, exist_ok=True)
+    inputs = json.loads((args.inputs or work / 'BUILD_INPUTS.json').read_text())
+    if Path(sys.executable).absolute() != Path(inputs['interpreter']).absolute():
+        raise ValueError('Use the pinned read-only build interpreter')
     stage = Path(tempfile.mkdtemp(prefix='build-', dir=work))
     inventory = runtime_inventory()
     snapshot = hashlib.sha256(json.dumps(inventory, sort_keys=True).encode()).hexdigest()
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
-    ocr, notices, native = prepare_materials(stage)
-    identity = {'application_version': '3.3.0', 'release': 'macos-arm64-private-candidate',
+    ocr, notices, native = prepare_materials(stage, inputs, work)
+    identity = {'application_version': '3.3.0', 'release': 'macos-arm64-preview1',
                 'source_commit': commit + '+snapshot:' + snapshot,
                 'target': 'Apple Silicon macOS 26.6.2 (current host only)',
-                'support': 'Synthetic-data private candidate; ad hoc only, not notarized; production uploads/public release unqualified'}
+                'support': 'Apple Silicon public preview; ad hoc only, not notarized; malicious same-user native processes outside selected-file guarantee'}
     info = stage / 'build-info.json'
     info.write_text(json.dumps(identity, indent=2) + '\n')
     environment = os.environ.copy()
     environment.update(DLMS_TESSERACT_BUNDLE_ROOT=str(ocr), DLMS_MACOS_BUILD_INFO=str(info),
-                       DLMS_MACOS_NOTICES=str(notices), PYINSTALLER_CONFIG_DIR=str(stage / 'pyinstaller-cache'))
+                       DLMS_MACOS_NOTICES=str(notices), DLMS_MACOS_EXCLUSIONS=str(stage / 'EXCLUSIONS.json'), PYINSTALLER_CONFIG_DIR=str(stage / 'pyinstaller-cache'))
     for key in ('QTWEBENGINE_DISABLE_SANDBOX', 'QTWEBENGINE_CHROMIUM_FLAGS'):
         environment.pop(key, None)
     log = stage / 'build.log'
@@ -148,7 +117,7 @@ def main():
              '--distpath', str(stage / 'dist'), '--workpath', str(stage / 'work'),
              str(ROOT / 'package_macos/DLMS-Desktop.spec')], cwd=ROOT, env=environment,
             stdout=output, stderr=subprocess.STDOUT)
-    app = stage / 'dist/DLMS Desktop Candidate.app'
+    app = stage / 'dist/DLMS Desktop.app'
     # Finder metadata may be attached to freshly generated frameworks by the
     # Documents file provider. Remove only signing-incompatible build metadata;
     # never remove quarantine or alter trust/security settings.
@@ -171,10 +140,12 @@ def main():
         if '/opt/homebrew/' in links or str(ROOT) in links:
             raise ValueError('Packaged binary retains a developer-machine link: ' + str(path))
         macho[str(path.relative_to(app))] = {'sha256': digest(path), 'architecture': architectures}
+    from package_macos.preview_bundle import verify_payload
+    verify_payload(app)
     manifest = app_inventory(app)
     manifest_hash = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
     (stage / 'APP_MANIFEST.json').write_text(json.dumps(manifest, sort_keys=True, indent=2) + '\n')
-    provenance = {'baseline': 'ab89dfef650168697fed0e948a3b202cb2eb6ddf', 'head': commit,
+    provenance = {'baseline': 'e084c04a2be7b1e5f593b12fc0f232b7d3c2c75b', 'head': commit,
                   'snapshot_sha256': snapshot, 'runtime_files': inventory, 'macho': macho,
                   'app_manifest_sha256': manifest_hash,
                   'native_inputs': native, 'build_info': identity,
@@ -183,6 +154,7 @@ def main():
                   'signing': 'ad hoc integrity only; no Developer ID; not notarized',
                   'app': str(app), 'qualified': False}
     (stage / 'PROVENANCE.json').write_text(json.dumps(provenance, indent=2) + '\n')
+    (ROOT / '.gate1/macos').mkdir(mode=0o700, parents=True, exist_ok=True)
     (ROOT / '.gate1/macos/CANDIDATE.json').write_text(json.dumps({
         'stage': str(stage), 'app': str(app), 'snapshot_sha256': snapshot,
         'app_manifest_sha256': manifest_hash}, indent=2) + '\n')
@@ -193,10 +165,10 @@ def main():
 
 
 def create_dmg(stage, app):
-    image = stage / 'DLMS-Desktop-macos-arm64-private.dmg'
+    image = stage / 'DLMS-Desktop-3.3.0-macos-arm64-preview1.dmg'
     if image.exists():
         raise FileExistsError('Preserve existing DMG evidence')
-    run(['/usr/bin/hdiutil', 'create', '-format', 'UDZO', '-volname', 'DLMS Desktop Candidate',
+    run(['/usr/bin/hdiutil', 'create', '-format', 'UDZO', '-volname', 'DLMS Desktop Preview',
          '-srcfolder', str(app.parent), str(image)])
     run(['/usr/bin/hdiutil', 'verify', str(image)])
     (stage / 'SHA256SUMS').write_text(digest(image) + '  ' + image.name + '\n')
