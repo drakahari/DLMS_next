@@ -1,0 +1,23 @@
+1. What is two plus two?
+A. Three
+B. Four
+C. Five
+Correct Answer: B
+
+2. Which shape has three sides?
+A. Square
+B. Circle
+C. Triangle
+Correct Answer: C
+
+3. Which word names a color?
+A. Blue
+B. Table
+C. Window
+Correct Answer: A
+
+4. Which item is a fruit?
+A. Pencil
+B. Apple
+C. Chair
+Correct Answer: B
