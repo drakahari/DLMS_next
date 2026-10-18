@@ -3663,14 +3663,28 @@ def _commit_quiz_mutation(conn):
     return _quiz_mutation_service.commit_quiz_mutation(conn)
 
 
-def _stage_quiz_mutation_artifacts(conn, quiz_id, quiz_entry):
+def _stage_quiz_mutation_artifacts(conn, quiz_id, quiz_entry, *, preserve_hotspots=False):
+    rebuild_json = rebuild_quiz_json_from_db
+    if preserve_hotspots:
+        from dlms.services.hotspot_artifacts import preserved_hotspot_bytes, write_preserved_hotspot_json
+        _, json_name = _quiz_artifact_names(quiz_entry)
+        raw = preserved_hotspot_bytes(
+            conn, quiz_id, os.path.join(DATA_FOLDER, json_name),
+            validate_shape=_validate_hotspot_shape,
+            resolve_image=_portable_quiz_media_source,
+            validate_image=_decode_raster_image,
+        )
+        if raw is not None:
+            def rebuild_json(_quiz_id, *, conn, quiz_entry, output_path):
+                write_preserved_hotspot_json(output_path, raw)
+                return True
     return _quiz_mutation_service.stage_quiz_mutation_artifacts(
         conn,
         quiz_id,
         quiz_entry,
         staging_root=_quiz_publication_staging_root,
         quiz_artifact_names=_quiz_artifact_names,
-        rebuild_quiz_json=rebuild_quiz_json_from_db,
+        rebuild_quiz_json=rebuild_json,
         rebuild_quiz_html=rebuild_quiz_html_from_registry,
         data_folder=DATA_FOLDER,
         quiz_folder=QUIZ_FOLDER,
@@ -3712,7 +3726,8 @@ def _rebuild_registered_quiz_artifacts():
         registry_lock=registry_lock,
         load_registry=load_registry,
         get_db=get_db,
-        stage_artifacts=_stage_quiz_mutation_artifacts,
+        stage_artifacts=lambda conn, quiz_id, entry: _stage_quiz_mutation_artifacts(
+            conn, quiz_id, entry, preserve_hotspots=True),
         promote_artifacts=_promote_quiz_mutation_artifacts,
         remove_tree=shutil.rmtree,
         print_message=print,

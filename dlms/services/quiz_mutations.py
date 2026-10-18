@@ -10,6 +10,7 @@ import tempfile
 from types import MappingProxyType
 
 from .generated_practice_lifecycle import COMPLETION_KEY
+from .hotspot_artifacts import HotspotArtifactUnavailable
 
 
 UNCATEGORIZED_FOLDER = "Uncategorized"
@@ -457,7 +458,9 @@ def rebuild_registered_quiz_artifacts(
                 failed.append(report_id)
                 # Never return exception text: paths, SQL and source content
                 # belong in developer diagnostics, not a packaged user's UI.
-                if isinstance(exc, MissingCanonicalQuizQuestions):
+                if isinstance(exc, HotspotArtifactUnavailable):
+                    message = "The original hotspot content or image is missing or inconsistent. This quiz was not rebuilt; its existing files were kept. Rebuild cannot recover hotspot geometry from saved grading records."
+                elif isinstance(exc, MissingCanonicalQuizQuestions):
                     message = "Saved question records are missing, so DLMS cannot rebuild this quiz. Its previous page files were kept. Restore a known-good backup or re-import the original questions as a new quiz."
                 elif isinstance(exc, PermissionError):
                     message = "DLMS could not write the page files. Check data-folder write permissions and retry."

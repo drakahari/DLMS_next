@@ -215,7 +215,26 @@ def study_pack_generate_image(dependencies):
             runtime_questions.append({"number":qnum,"type":"hotspot","question":prompt,"image_url":image_url,"image_alt":image.get("alt_text") or data.get("title") or "Study image","image_edits":image.get("edits") or [],"target":hotspot.get("shape") or {},"target_label":label,"explanation":hotspot.get("explanation") or "","verification":hotspot.get("verification") or {},"image_source":{"organization":source.get("organization") or "","work":source.get("work") or "","url":source.get("url") or image.get("source_url") or "","license":source.get("license") or image.get("license") or "","attribution":source.get("attribution") or image.get("attribution") or ""}})
             concepts=_hotspot_concepts(hotspot, image, hotspot, data, context=f"image dataset hotspot {hotspot.get('id') or label!r}")
             runtime_questions[-1]["concepts"]=concepts
-            db_questions.append({"number":qnum,"type":"choice","question":prompt+" [Image hotspot]","choices":[{"label":"A","text":label,"is_correct":True}],"concepts":concepts,"source":{"organization":source.get("organization") or "","dataset":data.get("title") or dataset_id,"version":pack.get("version") or "","url":source.get("url") or image.get("source_url") or "","license":source.get("license") or image.get("license") or ""}}); qnum+=1
+            runtime = runtime_questions[-1]
+            db_questions.append({
+                "number": qnum, "type": "choice",
+                "question": prompt + " [Image hotspot]",
+                "choices": [{"label": "A", "text": label, "is_correct": True}],
+                "concepts": concepts,
+                # Keep the same media/explanation projection as image-builder
+                # quizzes so server-owned marks can verify this new source.
+                "explanation": runtime["explanation"],
+                "media": {key: runtime[key] for key in (
+                    "image_url", "image_alt", "image_edits", "image_source")},
+                "source": {
+                    "organization": source.get("organization") or "",
+                    "dataset": data.get("title") or dataset_id,
+                    "version": pack.get("version") or "",
+                    "url": source.get("url") or image.get("source_url") or "",
+                    "license": source.get("license") or image.get("license") or "",
+                },
+            })
+            qnum += 1
     if not runtime_questions: flash("This image dataset contains no usable targets.","error"); return redirect("/study-packs")
     title=str(data.get("title") or data["_descriptor"].get("title") or "Image Study").strip(); quiz_title=f"{title} — Image Practice"; safe_pack=re.sub(r"[^a-z0-9]+","_",pack_id).strip("_") or "study"; safe_id=re.sub(r"[^a-z0-9]+","_",dataset_id.lower()).strip("_") or "images"
     quiz_id,html_name=_publish_quiz(quiz_title,runtime_questions,db_questions,filename_prefix=f"study_image_{safe_pack}_{safe_id}",exam_minutes=90,source_pack_id=pack_id,source_dataset_id=dataset_id)
