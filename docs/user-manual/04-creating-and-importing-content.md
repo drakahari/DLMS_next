@@ -12,6 +12,29 @@ are installed and managed through the pack screens.
 
 ![Build Quiz hub showing text upload, External AI, paste, PDF and image, manual-entry, and matching options](images/UM-02-build-quiz-hub.png)
 
+## Select files in Desktop Local or Server
+
+The native dialog labels below describe Linux Qt Desktop; other Desktop hosts
+follow their release-specific prompts. Selecting a supported file opens a native
+chooser. Use its visible
+folder navigation to choose files you own in Documents, Downloads or another
+ordinary local folder; no copying into a hidden application directory is needed.
+Cancel selects/submits no new files and should return you to the originating
+form. Keep the selected format's type/size limits; links, special files and
+unsafe or changing inputs may be refused. Read the native error before retrying.
+
+In **Server mode**, the chooser identifies the exact server origin. Before
+private copies become available, **Allow selected files for this Server?** names
+the origin and selected filenames. Continue only if you trust that destination:
+its page can read those copies and may upload them immediately. Cancel grants
+no new selection. Choosing source material for Local use does not grant a Server
+access to it or to Local databases/recovery files.
+
+After preparation, follow the form's submit/review steps; choosing files alone
+does not establish that DLMS saved or published content. This native consent is
+separate from any checkbox confirming copyright/use permission. Browser-based
+DLMS uses the browser's chooser and upload behavior, not this Desktop dialog.
+
 ## Choose a creation method
 
 | If you have… | Consider using… | What to expect |

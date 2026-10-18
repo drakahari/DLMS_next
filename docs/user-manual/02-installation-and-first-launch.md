@@ -1,14 +1,20 @@
 # 2. Installation and First Launch
 
-For ordinary use, install the native DLMS package built for your operating
+Choose your edition first: **browser-based DLMS** opens your preferred browser;
+**DLMS Desktop** opens its own window and manages a separate Local profile.
+Both can be used locally. See [Choose your DLMS](../choose-your-dlms.md) for
+published downloads, preview limitations and platform-specific instructions.
+
+The installation commands below are for **browser-based DLMS 3.3.0**.
+For ordinary use, install the package built for your operating
 system. The native package contains the local application and its OCR runtime;
 you do not need Python, a separate database server, or a system Tesseract
 installation.
 
-The manual targets 3.3.0 development source, but the package names and launch
-examples in this chapter refer to the latest published release, 3.2.2. No 3.3.0
-package has been accepted for release. For source development or evaluation, see [Running from source](#running-from-source)
-near the end of this chapter.
+The stable browser edition is DLMS 3.3.0. Desktop downloads are separately
+versioned previews; do not substitute a browser-edition executable in a Desktop
+launcher. For source development or evaluation, see
+[Running from source](#running-from-source).
 
 ## Choose the correct package
 
@@ -17,12 +23,11 @@ matches your system from the project's Releases page.
 
 | Platform | Package |
 | --- | --- |
-| Fedora 44, x86-64 | `DLMS-3.2.2-fedora44-x86_64.tar.gz` |
-| Ubuntu 24.04, x86-64 | `DLMS-3.2.2-ubuntu24.04-x86_64.tar.gz` |
-| Ubuntu 26.04, x86-64 | `DLMS-3.2.2-ubuntu26.04-x86_64.tar.gz` |
-| Omarchy Quattro, x86-64 | `DLMS-3.2.2-omarchy-quattro-x86_64.tar.gz` |
-| Windows 11, x86-64 | `DLMS-3.2.2-windows11-x86_64.zip` |
-| macOS Apple Silicon, arm64 | `DLMS-3.2.2-macos-arm64.zip` |
+| Fedora 44, x86-64 | `DLMS-3.3.0-fedora44-x86_64.tar.gz` |
+| Ubuntu 24.04, x86-64 | `DLMS-3.3.0-ubuntu24.04-x86_64.tar.gz` |
+| Ubuntu 26.04, x86-64 | `DLMS-3.3.0-ubuntu26.04-x86_64.tar.gz` |
+| Windows 11, x86-64 | `DLMS-3.3.0-windows11-x86_64.zip` |
+| macOS Apple Silicon, arm64 | `DLMS-3.3.0-macos-arm64.zip` |
 
 The Linux packages are built and tested separately for their named
 distributions; one Linux archive is not a universal build. The documented
@@ -40,7 +45,7 @@ the package between computers.
 3. Run the executable for that package. For example:
 
    ```text
-   ./DLMS-3.2.2-fedora44-x86_64
+   ./DLMS-3.3.0-fedora44-x86_64
    ```
 
 The archive preserves the executable permission. If another transfer method
@@ -51,7 +56,7 @@ try again. Do not substitute a package built for a different Linux target.
 
 1. Extract the ZIP archive; do not run the application from inside the ZIP.
 2. Open the extracted, versioned package folder.
-3. Double-click `DLMS-3.2.2-windows11-x86_64.exe`.
+3. Double-click `DLMS-3.3.0-windows11-x86_64.exe`.
 
 The current Windows package is unsigned. Microsoft Defender SmartScreen may
 therefore warn on first launch. First confirm that the archive came from the
@@ -63,7 +68,7 @@ use **More info** and **Run anyway** if Windows offers those choices.
 The macOS ZIP contains `DLMS.app`, `README.txt`, and `sample_quiz.txt` directly
 at the archive root. There is no extra versioned wrapper around the app.
 
-1. Extract `DLMS-3.2.2-macos-arm64.zip`.
+1. Extract `DLMS-3.3.0-macos-arm64.zip`.
 2. Drag `DLMS.app` into `/Applications`.
 3. In Finder or Applications, Control-click `DLMS.app`, choose **Open**, and
    confirm the first launch.
@@ -85,6 +90,15 @@ It applies to that copied application bundle only.
 
 ## What happens on first launch
 
+**Desktop:** use the Desktop package's documented launcher and named profile.
+The dedicated window identifies Local or Server and the profile/deployment.
+Reopen that same launcher/profile after closing. Desktop owns its Local backend
+and profile-specific origin; opening a guessed localhost address in an external
+browser is not the Desktop reconnect procedure. A Server connection uses the
+server's dataset, never a synchronized copy of Local.
+
+**Browser-based DLMS:**
+
 DLMS creates or opens its application-data directory, starts a local application
 process, and normally opens your default browser after the local server is
 ready. No sign-in or first-run account setup is required.
@@ -105,7 +119,7 @@ requiring you to learn every feature first.
 ## Where DLMS keeps your data
 
 DLMS keeps active user data outside the downloaded or installed application
-package. The default locations are:
+package. The following defaults are for **browser-based DLMS**, not Desktop profiles:
 
 | Platform | Default application-data directory |
 | --- | --- |
@@ -113,7 +127,17 @@ package. The default locations are:
 | Windows | `%APPDATA%\DLMS` |
 | macOS | `~/Library/Application Support/DLMS` |
 
-This directory contains the persistent DLMS workspace, including quizzes,
+**Desktop Local:** the Linux AppImage preview uses
+`${XDG_DATA_HOME:-$HOME/.local/share}/dlms-desktop-appimage-test/profiles/<profile>/`.
+An existing per-user Linux installation may retain
+`~/.local/share/dlms-desktop-pilot/profiles/<profile>/`. Other Desktop platforms
+and explicitly configured roots differ; use the active profile/location shown
+in Local **Settings → Backup & Restore** (expand profile location details) and
+the package instructions. [Choose your DLMS](../choose-your-dlms.md#where-your-data-lives)
+lists the edition-specific locations. Do not point both editions at a live root.
+In Server mode, persistent application data is on the configured server.
+
+The browser-edition directory contains the persistent DLMS workspace, including quizzes,
 settings, results, installed content, and related local data. Moving or
 replacing the application package does not by itself replace this data.
 
@@ -143,6 +167,14 @@ goes through Review & Repair before publication.
 
 ## Local desktop mode and LAN/server mode
 
+The following hosting instructions describe **browser-based DLMS**. To connect
+Desktop to an existing server instead, use the compact mode menu in Local,
+choose **Configure Server…**, enter its exact root URL and a visible name, then
+select the configured **Server**. HTTPS is recommended; HTTP requires explicit
+exact-origin opt-in and has no transport encryption. This does not host a new
+server, copy Local data or grant Local maintenance access. See
+[Desktop Local and Server](16-settings-and-runtime.md#desktop-local-and-server).
+
 DLMS starts in local desktop mode by default. It listens only on the loopback
 interface, so another computer cannot reach it merely because both computers
 are on the same network.
@@ -161,6 +193,16 @@ items even while they share quiz data, History, and server-derived study
 recommendations.
 
 ## Stop DLMS safely
+
+**Desktop:** close the application window normally, or use **Shutdown DLMS**
+in Local. Follow pending-save, download or transition messages; do not force
+termination to bypass them. In Server mode, **Keep open** is the safe default
+when Desktop cannot verify remote saves. Closing Desktop does not stop the
+server or delete results it already saved. Reopen the same profile/launcher;
+Desktop remembers the explicitly selected mode and never silently replaces an
+unreachable Server with Local.
+
+**Browser-based DLMS:**
 
 In normal local desktop mode, use **Shutdown DLMS** when you want to stop the
 application immediately. Closing a browser tab or window is not an unconditional
@@ -207,6 +249,10 @@ packaging procedures merely to use DLMS from source.
 
 ### The browser did not open automatically
 
+This subsection applies to browser-based DLMS. Desktop opens its dedicated
+window; use its startup/error guidance and same-profile launcher instead of
+trying the fixed browser URL below.
+
 Automatic launch may be disabled, may be unavailable in a headless or SSH
 session, or may fail even though DLMS started successfully. For a normal local
 launch, open `http://127.0.0.1:9001/` yourself. A source or terminal launch also
@@ -217,6 +263,11 @@ If the address does not load, confirm that the DLMS process is still running and
 that startup did not report an error.
 
 ### DLMS appears to be already running
+
+For Desktop, return to its existing window. If that window has closed, reopen
+the same profile through the launcher and follow any recovery message. Do not
+start a second writer or remove lock/recovery files. The URL procedure below
+is for browser-based DLMS.
 
 Open `http://127.0.0.1:9001/` first. If the Dashboard responds, reconnect to
 that already-running process instead of starting a second copy. If the address

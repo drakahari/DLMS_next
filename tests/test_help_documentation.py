@@ -300,39 +300,88 @@ class HelpDocumentationTests(unittest.TestCase):
                 self.assertIn(wording, quizzes)
 
     def test_getting_started_and_troubleshooting_explain_dlms_lifecycle(self):
-        getting_started = self._static("help-getting-started.html")
-        troubleshooting = self._static("help-troubleshooting.html")
+        def section(filename, anchor):
+            match = re.search(r'<section\b[^>]*id="' + re.escape(anchor)
+                              + r'"[^>]*>(.*?)</section>', self._static(filename), re.DOTALL)
+            self.assertIsNotNone(match, (filename, anchor))
+            return match.group(1)
 
-        self.assertIn('id="lifecycle"', getting_started)
+        lifecycle = section("help-getting-started.html", "lifecycle")
+        desktop, browser = lifecycle.split("<h3>Browser-based DLMS</h3>", 1)
         for wording in (
-            "normal local desktop mode",
-            "immediate and recommended way to stop the application",
-            "closing the final DLMS browser window may trigger automatic shutdown",
-            "in-app browser/API shutdown and automatic browser-presence shutdown are unavailable",
-            "Closing client browser windows does not stop the server",
-            "Stop the DLMS process or service from the host computer",
-            "http://127.0.0.1:9001/",
-            "instead of starting another server copy",
-            "<strong>Shutdown DLMS</strong>",
-            "Windows, macOS, and Linux",
+            "<h3>DLMS Desktop</h3>",
+            "manages the selected Local profile and backend",
+            "Reopen the same profile through its package launcher",
+            "do not use a guessed localhost URL in an external browser",
+            "Close the Desktop window normally",
+            "<strong>Shutdown DLMS</strong> in Local",
+            "Follow pending-save, download and transition messages rather than forcing termination",
+            "browser-presence grace period below is not the Desktop close procedure",
+            "<strong>Keep open</strong> is the default when Desktop cannot verify remote save state",
+            "Closing Desktop does not stop that server or delete results already saved there",
+            "Check that server's History if uncertain",
+            "Desktop remembers the last selected mode",
+            "an unavailable Server shows a connection problem and an explicit return to Local, never silent fallback",
         ):
-            with self.subTest(page="getting-started", wording=wording):
-                self.assertIn(wording, getting_started)
-
-        self.assertIn('id="browser-closed"', troubleshooting)
+            with self.subTest(section="desktop-lifecycle", wording=wording):
+                self.assertIn(wording, desktop)
         for wording in (
-            "normal local desktop mode",
+            "application/server process owns the data and your browser displays it",
+            "In loopback-only Local use, <strong>Shutdown DLMS</strong> stops it immediately",
+            "If browser-presence shutdown is enabled",
+            "closing its final page may stop it after a grace period of about five minutes",
+            "While it is still running, reopen the access URL printed by its launcher",
+            "http://127.0.0.1:9001/",
+            "In explicitly hosted LAN/server mode, in-app shutdown and browser-presence shutdown are unavailable",
+            "Closing a browser does not stop that server; stop its process or service on the host",
+        ):
+            with self.subTest(section="browser-lifecycle", wording=wording):
+                self.assertIn(wording, browser)
+
+        troubleshooting = section("help-troubleshooting.html", "browser-closed")
+        desktop, browser = troubleshooting.split("<strong>Browser-based DLMS:</strong>", 1)
+        for wording in (
+            "<strong>DLMS Desktop:</strong>",
+            "close its native window normally and follow pending-save/transaction warnings",
+            "Reopen the same profile from its launcher",
+            "its Local address is managed, not a guessed fixed URL",
+            "closing Desktop does not stop the server or delete results already saved there",
+            "An unreachable Server remains identified with an error; return to Local explicitly",
+            "Do not remove locks or recovery records to force reopening",
+        ):
+            with self.subTest(section="desktop-troubleshooting", wording=wording):
+                self.assertIn(wording, desktop)
+        for wording in (
+            "In browser-based Local mode",
             "immediate, recommended way to stop the application",
             "closing the final DLMS browser window may stop the process automatically",
             "in-app browser/API shutdown and automatic browser-presence shutdown are unavailable",
             "Closing client browser windows does not stop the server",
             "Stop the DLMS process or service from the host computer",
             "already-running DLMS process",
+            "instead of starting another server copy",
             "<strong>Shutdown DLMS</strong>",
+            "http://127.0.0.1:9001/",
             "If the address no longer responds",
         ):
-            with self.subTest(page="troubleshooting", wording=wording):
-                self.assertIn(wording, troubleshooting)
+            with self.subTest(section="browser-troubleshooting", wording=wording):
+                self.assertIn(wording, browser)
+
+        downloads = section("help-getting-started.html", "downloads")
+        for wording in (
+            "Browser-based DLMS 3.3.0 is the stable release",
+            "separate Linux, Windows and Apple Silicon Mac previews",
+            "https://github.com/drakahari/DLMS_next/releases",
+            "current files, checksums and platform limitations",
+            "Source Help corrections do not update an already downloaded package",
+            "In Server mode, data belongs to the configured server",
+            "Never point two editions at one live data root",
+        ):
+            with self.subTest(section="edition-downloads", wording=wording):
+                self.assertIn(wording, downloads)
+        macos = section("help-getting-started.html", "macos")
+        self.assertIn("stable <strong>browser-based</strong> macOS package, not Desktop", macos)
+        self.assertIn("Apple Silicon (<code>arm64</code>), not Intel", macos)
 
     def test_dashboard_help_distinguishes_sessions_results_and_browser_recovery(self):
         guide = self._static("help-getting-started.html")
@@ -632,9 +681,35 @@ class HelpDocumentationTests(unittest.TestCase):
         self.assertIn('href="/help/settings#theme-troubleshooting"', troubleshooting)
 
     def test_getting_started_includes_short_trusted_lan_guidance(self):
-        page = self._static("help-getting-started.html")
-        self.assertIn("trusted LAN", page)
-        self.assertIn("public internet", page)
+        match = re.search(r'<section\b[^>]*id="network"[^>]*>(.*?)</section>',
+                          self._static("help-getting-started.html"), re.DOTALL)
+        self.assertIsNotNone(match)
+        desktop, hosting = match.group(1).split("<h3>Browser-based hosting</h3>", 1)
+        for wording in (
+            "<h3>Desktop Server connection</h3>",
+            "deployment's exact root URL",
+            "HTTPS is recommended",
+            "HTTP requires explicit exact-origin opt-in",
+            "neither a private IP nor a Tailscale subnet router guarantees encryption for the remaining HTTP hop or provides application authentication",
+            "Local and Server have separate data and browser storage",
+            "Switching does not copy, merge, synchronize or replay work",
+            "Resolve Local pending saves/transactions before switching",
+            "Server Settings affects server data",
+        ):
+            with self.subTest(section="desktop-network", wording=wording):
+                self.assertIn(wording, desktop)
+        for wording in (
+            "defaults to a loopback bind at <code>127.0.0.1:9001</code>",
+            "Headless/SSH detection affects browser opening, not network binding",
+            "launch it with <code>--host 0.0.0.0</code>",
+            "<code>0.0.0.0</code> is a bind address, not a browser destination",
+            "This is not a Desktop connection command",
+            "supplies no user-login system or TLS",
+            "Use only an appropriately firewalled trusted network",
+            "do not expose it directly to the public Internet",
+        ):
+            with self.subTest(section="browser-hosting", wording=wording):
+                self.assertIn(wording, hosting)
 
     def test_navigation_help_matches_unified_labels_links_and_restore_scope(self):
         from html import unescape

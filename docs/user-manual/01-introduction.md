@@ -5,16 +5,20 @@ improving your own learning material. It brings quiz building, document import,
 practice, testing, study history, targeted review, and portable content into one
 desktop-style workspace.
 
-The interface opens in a web browser, but DLMS is not a website hosted by a
-third party. In normal use, the application runs on your computer and the
-browser connects to that local process. Your quizzes, results, settings, and
-other DLMS data stay in your user account's application-data directory unless
-you deliberately export or share them.
+Browser-based DLMS opens in your preferred browser; DLMS Desktop opens its own
+window. Both support Local use on your computer. Desktop can also connect to an
+explicitly configured Server, whose data remains on that host. Switching modes
+does not copy or synchronize datasets. Your Local quizzes, results and settings
+stay in the selected edition/profile's application-data directory unless you
+deliberately export or transfer them.
 
-This manual documents the DLMS 3.3.0 development target. The latest published
-release remains 3.2.2. The owner accepted the Ubuntu 24.04 package at the
-checkpoint recorded in the [manual coverage notes](UPDATE-COVERAGE-3.3.0.md);
-other platform acceptance is separate.
+This manual covers shared DLMS 3.3.0 workflows and identifies Desktop-specific
+steps where the host differs. Browser-based DLMS 3.3.0 is stable; Desktop is
+published separately as platform previews. See
+[Choose your DLMS](../choose-your-dlms.md) for downloads and qualification limits.
+Source corrections do not alter the Help bundled in an already published package;
+check your edition and build before comparing controls. Historical
+[manual coverage notes](UPDATE-COVERAGE-3.3.0.md) retain their original baseline.
 It is written for people using the application; native-build and release-engineering procedures remain in the
 repository's maintainer documentation.
 

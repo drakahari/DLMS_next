@@ -9,11 +9,29 @@ Start with the narrowest action that solves the problem. Before a substantial
 reset, upgrade, or transfer, create a backup and keep a copy outside the live
 DLMS data directory.
 
+## Check the edition, mode and destination first
+
+**Desktop Local (Linux Qt preview):** Settings → Backup & Restore and Settings →
+Reset & Remove are native managed pages. Check the visible profile before any
+action; expand its location details if needed. Use the Desktop instructions
+below. Native confirmations, pending-save checks and recovery are part of the
+action; do not look for or enable the browser-only destructive routes.
+
+**Desktop Server:** Settings belongs to the displayed server. Backup, reset and
+removal there affect that server's dataset and files, not your Local profile.
+Its deployed version determines available controls. Return to Local to use Local
+managed actions. Desktop cannot promise Local recovery guarantees for a server.
+
+**Browser-based DLMS:** the browser procedures below operate on the data root of
+the application/server serving that page. “On this device” means that host, which
+may be a different computer from the browser. Screenshots of web controls do
+not depict Desktop's native replacement pages.
+
 ## Choose the right data tool
 
 | Goal | Use | Main effect |
 | --- | --- | --- |
-| Protect or move the complete persistent workspace | **Create & Download Backup** | Creates a portable recovery ZIP containing persistent DLMS data. |
+| Protect or move the complete persistent workspace | Desktop Local **Save Backup As…**; browser/server **Create & Download Backup** | Creates a portable recovery ZIP containing persistent DLMS data. |
 | Replace the workspace with a saved recovery point | **Restore from Backup** | Validates, previews, and then restores a DLMS backup after confirmation. |
 | Move selected quizzes without personal history | **Portable Quiz Bundle** | Transfers eligible quiz content, not the whole installation. |
 | Repair stale playable quiz pages | **Rebuild All Quiz Pages** | Regenerates derived page files without changing canonical quiz data. |
@@ -58,6 +76,27 @@ Clearing history does not necessarily shrink the database file; SQLite can reuse
 the freed space. There is no artificial database size cap.
 
 ## Create a backup
+
+### Desktop Local: choose the saved ZIP destination
+
+1. Open **Settings → Backup & Restore** and check the displayed Local profile.
+2. Choose **Save Backup As…**. In **Save Local DLMS backup**, use the visible
+   folder navigation to choose Documents, Downloads or another ordinary local
+   folder and a new `.zip` filename. Cancel requests no backup and returns to
+   Settings.
+3. Wait for the completed-save message. An existing destination is refused,
+   leaving that file unchanged; choose a different name. A chooser, compression
+   progress or transfer message alone does not establish that a backup was saved.
+4. After success, **Open containing folder** opens the chosen output's folder.
+   Keep important backups outside the Local profile and verify restored content
+   before depending on a transfer.
+
+Native feedback appears both with the action and in the bottom status area.
+Resolve a refusal, error or pending-save message before retrying. Recent safety
+backups are listed separately; saving outside the profile does not move internal
+databases, journals or recovery evidence there.
+
+### Browser-based DLMS or deployed Server
 
 Open **Settings → Backup & Restore**, then choose **Create & Download Backup**.
 DLMS creates a ZIP snapshot and sends it to your browser as a download. The
@@ -123,6 +162,35 @@ copy.
 
 ## Restore a backup
 
+### Desktop Local: import a validated private snapshot
+
+1. Open **Settings → Backup & Restore** and check the affected Local profile.
+2. Choose **Import a DLMS backup…**. In **Select a Local DLMS backup**, navigate
+   visibly to an owned ZIP in Documents, Downloads or another ordinary local
+   folder. Symbolic links, special files and unsafe paths are refused. The
+   preview's disposable-profile restrictions still apply; this is not approval
+   to adopt personal data.
+3. Wait while Desktop copies and validates a private snapshot. Selecting a file
+   has not changed the active dataset.
+4. Read the native confirmation: verify the destination profile, archive name,
+   size, SHA-256 and content summary. **No** cancels without importing. **Yes**
+   authorizes that staged snapshot for that destination, not any other file.
+   Input changes or a stale confirmation are refused.
+5. Allow the managed operation to finish. Full dataset checks and a safety backup
+   precede live replacement. Follow the final status and check Library and
+   History. Do not treat an available page as proof that an unresolved restore
+   succeeded.
+6. If interrupted or uncertain, reopen the **same Desktop profile** and follow
+   its recovery message. Keep the original ZIP and retained recovery material;
+   do not clear journals, recovery markers or browser storage to bypass refusal.
+
+Restore replaces the Local dataset; it never merges it or synchronizes with a
+Server. Accepted pending work must settle first. Desktop may restart its Local
+backend/renderer and quarantine pre-restore browser evidence; refreshing an old
+page is not the recovery procedure.
+
+### Browser-based DLMS or deployed Server
+
 Restore replaces the current persistent workspace; it is not an additive quiz
 import. Use it only with a DLMS backup you trust.
 Older backups without a Learning Scope setting restore with all folders included.
@@ -174,6 +242,26 @@ repeating destructive actions until you know which workspace is active.
 *Opening this page changes no data. Read each action’s scope before confirming.*
 
 ## Understand safety backups
+
+In **Desktop Local**, each action names the selected profile and uses a native
+confirmation (including typed confirmation where required). Accepted pending
+Study, Exam, Study mistakes or Review work must settle before conflicting
+maintenance. Desktop retains its managed transaction/recovery evidence and
+private recovery copy, plus a safety backup where applicable. If a result is
+unresolved, follow its recovery message; the profile may remain unavailable
+until reconciliation. Do not interpret a browser-only failure as Desktop's
+rollback contract.
+
+The seven native maintenance buttons are **Clear Exam results**, **Delete Study
+history**, **Reset Learning Intelligence**, **Reset Quiz Library and results**,
+**Clear removable source material**, **Restore default settings**, and
+**Fresh-state reset**. The eighth, **Remove selected disposable profile…**, has
+the separate removal restrictions described below. The sections below retain
+the familiar browser headings; use the corresponding native button for Local.
+
+The following confirmation and automatic-backup details describe the **browser
+edition/server web controls**. Shared data scopes still apply, but Desktop uses
+its native managed entry points instead of these browser POST controls.
 
 The **Reset & Remove** control on Backup & Restore only opens the action page.
 All eight destructive controls explain their scope before execution. Six scoped
@@ -339,13 +427,24 @@ backups kept inside DLMS.
 
 ## Permanently remove DLMS data
 
+**Desktop Local:** the native action is **Remove selected disposable profile…**.
+Check its profile and warnings; this preview retains an external intentional-
+removal record and synthetic recovery copy. The selected profile name is **not
+recreated automatically** on relaunch. Preserve the record and follow supported
+new-profile/recovery guidance; do not remove it to force a fresh launch. The
+application payload remains installed. This destructive preview action is for
+purpose-built disposable data, not a normal uninstall or personal-data cleanup.
+
+**Browser-based DLMS/server:**
+
 **Remove DLMS Data from This Computer** is the broadest and least recoverable
 data action. It deletes the verified DLMS application-data directory—including
 quizzes, History, settings, packs, source banks, drafts, assets, caches, and
 all manual or safety backup ZIPs stored there—and then shuts down DLMS.
 
 It does not uninstall the DLMS executable or remove source files. Launching the
-application again creates a new empty data directory.
+browser-based application again creates a new empty data directory. That promise
+does not apply to Desktop's intentionally removed profile.
 
 To enable the action, type the exact phrase shown by the page:
 

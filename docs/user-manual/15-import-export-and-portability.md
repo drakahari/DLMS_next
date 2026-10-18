@@ -21,6 +21,50 @@ different jobs. Choose the narrowest format that preserves what you need.
 These formats are not interchangeable. Renaming one ZIP, text file, or Anki
 package to look like another format does not convert it.
 
+## Save a Desktop download
+
+These native instructions describe **Linux Qt Desktop**. Browser-based DLMS
+uses your browser's download behavior; other Desktop hosts follow their
+release-specific prompts. A Server export contains that server's data, not
+Local content.
+
+1. Deliberately choose the supported export/download action on its page, such
+   as **Download Quiz Library Reference (TXT)**, a quiz's **Export**, or
+   **Export to Anki**. Wait for the completed private download and native Save As.
+2. Check the chooser title: **Save Local [profile] export** or
+   **Save Server [origin] export** identifies the current dataset. Navigate
+   visibly to Documents, Downloads or another ordinary folder you own and
+   choose a new filename. Keep the suggested format's extension; changing an
+   extension does not convert the contents. Managed application storage,
+   symbolic-link paths and unsafe/shared-writable destinations are refused.
+3. Choose **Save** and wait for **Export saved: [path]**. Progress or a web
+   download/request message alone is not proof that the destination was saved.
+   The last successfully saved export folder is remembered separately for the
+   current Local profile/dataset or Server identity. If unavailable, choose a
+   valid folder again.
+4. To export again, use the page's action again and choose another unused name.
+   An existing name produces **Export not saved** and leaves the original file
+   unchanged; it is not an overwrite prompt. Dismiss the message and repeat the
+   export with a different name. For marked questions, the explicit
+   **Download Anki package** fallback is another deliberate download action;
+   it also uses native Save As.
+5. **Cancel** in Save As publishes no file to the chosen destination; the
+   completed private download is retained. With the same page still active,
+   Desktop restores the previously focused native/web control. If cancellation
+   or a refusal leaves keyboard focus unusable, record the host/build and
+   message rather than assuming the export succeeded.
+
+For **Export publication unconfirmed**, inspect the selected folder and retain
+recovery evidence before repeating: a complete output may exist even if final
+cleanup/acknowledgment failed. If the page, mode or dataset changes, a stale
+Save As result is refused. Do not switch datasets or force-close while an
+export is being published.
+
+Local **Save Backup As…** is a separate managed workflow; follow
+[Create a backup](17-maintenance-backup-and-data-management.md#create-a-backup)
+for that operation. These source instructions describe the controls and guards;
+they do not establish physical keyboard or native acceptance on another OS.
+
 ## Move quizzes with a Portable Quiz Bundle
 
 A **Portable Quiz Bundle** is the normal way to move a curated collection of

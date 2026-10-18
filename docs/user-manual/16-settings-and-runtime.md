@@ -6,9 +6,9 @@ main navigation, then choose a category. Each category saves independently, so
 saving an Appearance change does not silently replace your Parsing or External
 AI preferences.
 
-This chapter also explains the difference between normal local desktop use and
-LAN/server use. That distinction affects who can reach DLMS and how the
-application can be stopped.
+This chapter distinguishes Desktop Local/Server connections from browser-based
+Local use and intentional LAN/server hosting. Those choices determine the active
+dataset, who can reach it, and which application close/shutdown controls apply.
 
 ## Choose a settings area
 
@@ -141,13 +141,47 @@ Preview is a source-transformation check, not the final parsed question
 collection. **Yes, Build My Quiz** proceeds to parsing and publication; verify
 the resulting question count and answer keys afterward.
 
-## Understand how DLMS is running
+## Desktop Local and Server
+
+The compact mode control shows **Local** or **Server: [name]**. The window title
+identifies the active Local profile or Server; the control's details show the
+full Server origin. In Local, open the mode menu, choose **Configure Server…**,
+enter the exact root URL and a visible name, then select the configured Server.
+Root-mounted HTTP/HTTPS deployments are supported; credentials, extra paths and
+cross-origin redirects are not accepted. HTTPS is recommended. Private HTTP
+requires an explicit warning/opt-in for that exact origin; neither a private IP
+nor a Tailscale subnet router encrypts every HTTP hop or supplies application
+login protection.
+
+Local and each Server origin use separate browser storage. Switching does not
+copy, merge or synchronize quizzes, history, settings or pending actions. Save
+or resolve Local work first; pending saves, downloads and managed operations can
+refuse switching. Server switching/close warnings do not establish that a remote
+save succeeded. Check that server's History when uncertain. Desktop remembers
+the last explicit mode; an unavailable Server shows a connection error with an
+explicit return to Local, not silent fallback.
+
+Server Settings belongs to the displayed deployment. Its backup/reset actions
+affect **server data**, not the Local Desktop profile. Return to Local for
+Desktop-managed **Backup & Restore** and **Reset & Remove**. Local Settings
+identifies the affected profile, retains recovery evidence and checks pending
+work. See [Maintenance](17-maintenance-backup-and-data-management.md).
+
+Close the Desktop window normally or use **Shutdown DLMS** in Local. Follow
+pending-save/transition warnings. In Server mode, **Keep open** is the default
+when remote save state cannot be verified; closing does not delete results
+already saved on the server. Reopen the same profile with its launcher. The
+visible **Application Lifecycle** browser-presence setting is not a replacement
+for Desktop's native close/save guards; the grace-period instructions below
+describe browser-based DLMS only.
+
+## Understand how browser-based DLMS is running
 
 The browser is DLMS's interface, but the DLMS application process runs on the
 host computer. Opening or closing one browser page is therefore not the same as
 starting or stopping the application.
 
-### Local desktop mode
+### Browser-based Local mode
 
 Normal DLMS use is loopback-only, usually at
 `http://127.0.0.1:9001/`. Only the host computer can reach that address. A
@@ -183,7 +217,7 @@ not turn a LAN/server launch back into local desktop mode.
 
 ![Application Lifecycle settings in LAN server mode with browser-presence shutdown disabled and host shutdown guidance](images/UM-25-lan-server-lifecycle.png)
 
-## Use browser-presence shutdown in local mode
+## Use browser-presence shutdown in browser-based Local mode
 
 **Settings → Application Lifecycle** provides an optional convenience for
 eligible local desktop use. When enabled, open DLMS pages report that they are
