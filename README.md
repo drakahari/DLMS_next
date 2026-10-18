@@ -4,7 +4,7 @@
 
 ## Choose your DLMS
 
-**Want the original stable release? [Download browser-based DLMS 3.3.0](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0).**
+**Latest published release: DLMS 3.3.0** — original stable browser-based edition. **[Download stable 3.3.0](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0).**
 
 | Choose | What you get |
 | --- | --- |
@@ -31,7 +31,7 @@ Choose **one package for your system** from the original browser-based **DLMS 3.
 
 <a id="macos-apple-silicon"></a>
 
-**Open it:** extract the archive and run its DLMS executable; on Mac, open the extracted `DLMS.app` in Finder. Follow the included `README.txt` for your platform. The local interface normally opens in your browser; if needed, visit [http://127.0.0.1:9001/](http://127.0.0.1:9001/). These packages are unsigned; the Mac app is not notarized. Use only the operating system's normal approval flow; stop if approval is unavailable or the system reports malware or damage. Do not disable security protections or remove quarantine.
+**Open it:** extract the archive and run its DLMS executable; on Mac, open the extracted `DLMS.app` in Finder. Follow the included `README.txt` for your platform. In an interactive desktop session the local interface normally opens in your browser; if needed, visit [http://127.0.0.1:9001/](http://127.0.0.1:9001/). These packages are unsigned; the Mac app is not notarized. Use only the operating system's normal approval flow; stop if approval is unavailable or the system reports malware or damage. Do not disable security protections or remove quarantine.
 
 Before upgrading an existing installation, keep a verified backup: [3.3.0 release notes and rollback guidance](docs/releases/3.3.0.md). Replacing an executable does not undo a data migration.
 
@@ -92,15 +92,24 @@ The original browser-based 3.3.0 release has distribution-specific Linux `.tar.g
 3. Review imported content, then use **Study Mode** or **Exam Mode**. History, Analytics and Learning Intelligence help you decide what to revisit.
 4. Use **Settings → Backup & Restore** to keep backups outside the live data folder. Do not point the two editions at one live database.
 
-Close Desktop normally when finished and follow any pending-work warning. In browser-based DLMS, use **Shutdown DLMS** in the sidebar to stop the local process explicitly. Its optional browser-presence shutdown applies only in eligible local sessions, not a general Server shutdown guarantee. If the local process is still running, revisit its address rather than starting another copy.
+Close Desktop normally when finished and follow any pending-work warning.
+
+In browser-based DLMS, the local application process owns the session. When finished,
+use **Shutdown DLMS** in the sidebar for an immediate,
+explicit stop. In an eligible loopback-only desktop session, the optional
+browser-presence shutdown feature may stop DLMS after the final DLMS browser
+presence disappears and its grace period expires. Do not rely on that behavior
+when the feature is disabled or DLMS is running in LAN/server mode. If the
+process is still running, revisit the local address instead of starting another
+server copy.
 
 [Read the user manual](docs/user-manual/README.md) for the everyday workflows.
 
 DLMS 3.3.0 includes durable Study history, optional Exam Plans,
 earned-certification and training records, and 26 manually selected themes.
 See the [release notes](docs/releases/3.3.0.md) and
-[release evidence](docs/releases/3.3.0-RELEASE-CHECKLIST.md). The five original browser-based native
-packages were built from commit `af6766a8c59da513870014141c60aaa1edd1d232`.
+[release evidence](docs/releases/3.3.0-RELEASE-CHECKLIST.md). For these original browser-based packages, the build record is separate from Desktop.
+The five native packages were built from commit `af6766a8c59da513870014141c60aaa1edd1d232`.
 All five native builders passed; broader packaged OCR, persistence and restore
 checks ran on Fedora. The additional Ubuntu 24.04 harness was canceled, so
 those broader checks are not claimed for every platform.
@@ -265,10 +274,11 @@ historical and was not regenerated for this release.
 Omarchy users can optionally install the separately maintained
 [DLMS Companion for Omarchy](https://github.com/drakahari/omarchy-dlms). Its
 Quattro bar widget shows due questions and opens DLMS review in the browser.
-The companion targets browser-based DLMS and is optional. The original Linux
-packages work independently; Desktop also needs no Omarchy plugin. The companion
-is not bundled with DLMS packages or source. See the plugin repository for installation and update
-instructions.
+DLMS runs without the plugin. The companion targets browser-based DLMS and is
+optional; Desktop also needs no Omarchy plugin. For the older browser-based 3.2.2
+release, the generic AppImage remains distro-neutral; that does not qualify the
+Desktop preview on every Linux distribution. The companion is not bundled with
+DLMS packages or source. See its repository for installation and update instructions.
 
 ## Data, privacy, and portability
 
@@ -393,6 +403,21 @@ manual diagnosis only, use the freshly built app path in place of `dist/DLMS.app
 ```bash
 ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app releases/DLMS-3.3.0-macos-arm64.zip
 ```
+
+For the original browser-based Mac package, the bundled guide describes
+**Control-click → Open** where macOS offers it; otherwise use **Privacy & Security →
+Open Anyway**. Removing quarantine is not part of the normal installation. Stop
+if the normal approval flow is unavailable or macOS reports malware or damage.
+
+**Historical troubleshooting reference, not a setup instruction:** the original
+browser-based help mentions `xattr -dr com.apple.quarantine /Applications/DLMS.app`.
+That removes quarantine. Do not use it as a Desktop installation workaround; use
+the normal per-app approval flow above and stop if approval is unavailable.
+
+The macOS ZIP exposes all three directly at
+its archive root: `DLMS.app`, `README.txt`, and `sample_quiz.txt`, with no wrapper
+directory around the app. This layout is for the original stable ZIP, not the
+Desktop DMG.
 
 The bundle executable is `DLMS.app/Contents/MacOS/DLMS`. Do not place a wrapper
 directory around the app or include build/runtime data.
