@@ -15,7 +15,7 @@ import tarfile
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
-BASE='e084c04a2be7b1e5f593b12fc0f232b7d3c2c75b'
+BASE='717dd01a5efa9c6cbc8f95f463e70714ec198597'
 SHARED={
  'DLMS-Desktop-3.3.0-preview1-source-python.tar.zst':'40d78ccaad2cb0aadcca96f7f9cfeff06cba11e2de794ec45146954190b141f1',
  'DLMS-Desktop-3.3.0-preview1-source-qt-pyside.tar':'2d5f30392243200188b7df70563ba9d40e9847d695c979f628e38543d9d6ff73',

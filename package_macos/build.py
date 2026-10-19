@@ -100,7 +100,7 @@ def main():
     snapshot = hashlib.sha256(json.dumps(inventory, sort_keys=True).encode()).hexdigest()
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     ocr, notices, native = prepare_materials(stage, inputs, work)
-    identity = {'application_version': '3.3.0', 'release': 'macos-arm64-preview1',
+    identity = {'application_version': '3.3.0', 'release': 'macos-focus-fix-20261019',
                 'source_commit': commit + '+snapshot:' + snapshot,
                 'target': 'Apple Silicon macOS 26.6.2 (current host only)',
                 'support': 'Apple Silicon public preview; ad hoc only, not notarized; malicious same-user native processes outside selected-file guarantee'}
@@ -117,7 +117,7 @@ def main():
              '--distpath', str(stage / 'dist'), '--workpath', str(stage / 'work'),
              str(ROOT / 'package_macos/DLMS-Desktop.spec')], cwd=ROOT, env=environment,
             stdout=output, stderr=subprocess.STDOUT)
-    app = stage / 'dist/DLMS Desktop.app'
+    app = stage / 'dist/DLMS Desktop Focus Candidate.app'
     # Finder metadata may be attached to freshly generated frameworks by the
     # Documents file provider. Remove only signing-incompatible build metadata;
     # never remove quarantine or alter trust/security settings.
@@ -145,7 +145,7 @@ def main():
     manifest = app_inventory(app)
     manifest_hash = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
     (stage / 'APP_MANIFEST.json').write_text(json.dumps(manifest, sort_keys=True, indent=2) + '\n')
-    provenance = {'baseline': 'e084c04a2be7b1e5f593b12fc0f232b7d3c2c75b', 'head': commit,
+    provenance = {'baseline': 'c1268daaf8a1dab2919b912c117a1ac4f86ea6c6', 'handoff': '717dd01a5efa9c6cbc8f95f463e70714ec198597', 'head': commit,
                   'snapshot_sha256': snapshot, 'runtime_files': inventory, 'macho': macho,
                   'app_manifest_sha256': manifest_hash,
                   'native_inputs': native, 'build_info': identity,
@@ -165,10 +165,10 @@ def main():
 
 
 def create_dmg(stage, app):
-    image = stage / 'DLMS-Desktop-3.3.0-macos-arm64-preview1.dmg'
+    image = stage / 'DLMS-Desktop-3.3.0-macos-arm64-focus-fix-20261019.dmg'
     if image.exists():
         raise FileExistsError('Preserve existing DMG evidence')
-    run(['/usr/bin/hdiutil', 'create', '-format', 'UDZO', '-volname', 'DLMS Desktop Preview',
+    run(['/usr/bin/hdiutil', 'create', '-format', 'UDZO', '-volname', 'DLMS Focus Candidate',
          '-srcfolder', str(app.parent), str(image)])
     run(['/usr/bin/hdiutil', 'verify', str(image)])
     (stage / 'SHA256SUMS').write_text(digest(image) + '  ' + image.name + '\n')
