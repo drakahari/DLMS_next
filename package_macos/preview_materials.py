@@ -15,7 +15,13 @@ import tarfile
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
-BASE='717dd01a5efa9c6cbc8f95f463e70714ec198597'
+BASE='a8cd5182b6870e8bfdc1fca569b2cda9f191a1be'
+SOURCE_STATE='Git HEAD plus reviewed Qt printing and Mac packaging overlay'
+PRINT_PATHS=frozenset({'desktop/qt_printing.py','desktop/shell.py',
+    'templates/anki/printable.html','templates/anki/custom.html',
+    'tests/outputs/test_qt_printing.py','tests/outputs/gui_qt_printing.py',
+    'docs/quality/qt-avery-print-20261019/HANDOFF.md',
+    'docs/quality/qt-avery-print-20261019/SOURCE_ACCEPTANCE.md'})
 SHARED={
  'DLMS-Desktop-3.3.0-preview1-source-python.tar.zst':'40d78ccaad2cb0aadcca96f7f9cfeff06cba11e2de794ec45146954190b141f1',
  'DLMS-Desktop-3.3.0-preview1-source-qt-pyside.tar':'2d5f30392243200188b7df70563ba9d40e9847d695c979f628e38543d9d6ff73',
@@ -43,8 +49,38 @@ def _member(name):
     return path
 
 
-def prepare(stage, inputs, cache):
+def verified_source(root=ROOT, expected_head=BASE):
+    """Bind the actual pinned Git HEAD and complete explicitly reviewed overlay."""
+    def git(*args):
+        return subprocess.check_output(['git', *args], cwd=root)
+    head=git('rev-parse','HEAD').decode().strip()
+    if head!=expected_head:
+        raise ValueError('Unexpected release source HEAD')
+    if git('ls-files','--others','--exclude-standard','-z'):
+        raise ValueError('Untracked source must be reviewed before packaging')
+    changed=git('diff','--name-only','-z','HEAD','--').decode().split('\0')
+    changed=sorted(name for name in changed if name)
+    if not changed or any(name not in PRINT_PATHS and not name.startswith(
+            ('package_macos/','docs/macos-preview/','tests/macos/')) for name in changed):
+        raise ValueError('Expected only the reviewed Qt printing and Mac packaging overlay')
+    patch=git('diff','--binary','HEAD','--')
+    source={'application_base':head,'source_state':SOURCE_STATE,
+            'clean_unmodified_build':False,
+            'reviewed_runtime_changes':[name for name in changed if name.startswith(('desktop/','templates/'))],
+            'packaging_patch':{'file':'PACKAGING_CHANGES.patch',
+                               'sha256':hashlib.sha256(patch).hexdigest(),
+                               'changed_files':changed,'format':'git diff --binary HEAD'}}
+    return source,patch
+
+
+def prepare(stage, inputs, cache, *, source=None, patch=None):
     """Require native-source completion and collect exact notice/source bindings."""
+    actual,actual_patch=verified_source()
+    if source is None and patch is None:
+        source,patch=actual,actual_patch
+    if source!=actual or patch!=actual_patch:
+        raise ValueError('Packaging source changed before notice preparation')
+    identity,overlay=source,patch
     native=cache/'sources/native'
     index=json.loads((native/'NATIVE_SOURCES.json').read_text())
     if index.get('complete') is not True or index.get('unresolved')!=[]:
@@ -119,7 +155,9 @@ def prepare(stage, inputs, cache):
         shutil.copyfile(ROOT/name,notices/Path(name).name)
     for name in ('REDISTRIBUTION.md','BUILD_AND_REPLACEMENT.md','RELEASE_PROPOSAL.md'):
         shutil.copyfile(ROOT/'docs/macos-preview'/name,notices/name)
-    exact={'format':1,'platform':'macos-arm64-preview','application_base':BASE,
+    (notices/'PACKAGING_CHANGES.patch').write_bytes(overlay)
+    (notices/'PACKAGING_SOURCE.json').write_text(json.dumps(identity,sort_keys=True,indent=2)+'\n')
+    exact={'format':1,'platform':'macos-arm64-preview',**identity,
            'wheels':wheels,'native_producers':index,'wheel_native':wheel_index,
            'shared_source_archives':sources,
            'scope':'Technical correspondence; not a claim of reproducible vendor binaries or legal certification',
@@ -127,7 +165,7 @@ def prepare(stage, inputs, cache):
            'signing':'ad hoc only; no Developer ID or notarization',
            'selected_files':'Consent/origin/path/descriptor/hash safeguards retained; malicious same-user native process excluded from guarantee'}
     (notices/'EXACT_INPUTS.json').write_text(json.dumps(exact,sort_keys=True,indent=2)+'\n')
-    (notices/'SOURCE_MATERIALS.json').write_text(json.dumps({'format':1,'application_base':BASE,
+    (notices/'SOURCE_MATERIALS.json').write_text(json.dumps({'format':1,**identity,
         'shared_archives':sources,'native_index':'native/NATIVE_SOURCES.json',
         'wheel_native_index':'wheel-native/WHEEL_NATIVE_SOURCES.json','unresolved':[]},indent=2)+'\n')
     manifest={p.relative_to(notices).as_posix():digest(p) for p in files(notices)}
@@ -143,16 +181,28 @@ def verify(root):
         raise ValueError('Mac recipient materials differ from exact manifest')
     required={'REDISTRIBUTION.md','BUILD_AND_REPLACEMENT.md','RELEASE_PROPOSAL.md',
               'LICENSE','ICON_PROVENANCE.md','EXACT_INPUTS.json','SOURCE_MATERIALS.json',
-              'native/NATIVE_SOURCES.json','wheel-native/WHEEL_NATIVE_SOURCES.json'}
+              'native/NATIVE_SOURCES.json','wheel-native/WHEEL_NATIVE_SOURCES.json',
+              'PACKAGING_SOURCE.json','PACKAGING_CHANGES.patch'}
     if not required<=actual.keys(): raise ValueError('Required Mac recipient materials missing')
     source=json.loads((root/'SOURCE_MATERIALS.json').read_text())
     if source.get('unresolved')!=[]: raise ValueError('Mac corresponding source unresolved')
+    identity=json.loads((root/'PACKAGING_SOURCE.json').read_text())
+    exact=json.loads((root/'EXACT_INPUTS.json').read_text())
+    if (identity.get('application_base')!=BASE or identity.get('clean_unmodified_build') is not False
+            or identity.get('source_state')!=SOURCE_STATE
+            or identity.get('packaging_patch',{}).get('sha256')!=digest(root/'PACKAGING_CHANGES.patch')
+            or any(record.get(key)!=item for record in (source,exact) for key,item in identity.items())):
+        raise ValueError('Incorrect application source or packaging overlay identity')
     return value
 
 
 def deliver_companions(stage,cache,delivery):
     """Export source and notices only after the artifact is qualified separately."""
     verify(stage/'notices')
+    identity,patch=verified_source()
+    if (json.loads((stage/'notices/PACKAGING_SOURCE.json').read_text())!=identity
+            or (stage/'notices/PACKAGING_CHANGES.patch').read_bytes()!=patch):
+        raise ValueError('Source changed since the qualified build')
     delivery=Path(delivery);delivery.mkdir(mode=0o700,parents=True,exist_ok=False)
     for name in SHARED: shutil.copyfile(cache/'sources/shared'/name,delivery/name)
     with tarfile.open(delivery/'DLMS-Desktop-3.3.0-macos-preview1-source-native.tar.zst','x:zst') as archive:
@@ -179,6 +229,11 @@ def deliver_companions(stage,cache,delivery):
                 raise ValueError('Private/build path in source export')
             path=ROOT/relative
             if path.is_symlink() or not path.is_file(): raise ValueError('Nonregular source input')
+            source_manifest[name]=digest(path)
+            archive.add(path,arcname='DLMS-source/'+name,recursive=False)
+        for name in ('PACKAGING_SOURCE.json','PACKAGING_CHANGES.patch'):
+            if name in source_manifest: raise ValueError('Generated source identity conflicts with source file')
+            path=stage/'notices'/name
             source_manifest[name]=digest(path)
             archive.add(path,arcname='DLMS-source/'+name,recursive=False)
     (delivery/'APPLICATION_SOURCE_MANIFEST.json').write_text(json.dumps(source_manifest,sort_keys=True,indent=2)+'\n')

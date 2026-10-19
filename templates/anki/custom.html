@@ -279,7 +279,7 @@
                 </div>
                 <div class="anki-print-settings"><h3>Print settings only</h3><div class="anki-two-field-row">
                     <label><span>Template</span><select disabled><option>Avery 5388 — 3 × 5, 3 per sheet</option></select></label>
-                    <label><span>Duplex flip</span><select name="duplex_flip"><option value="long">Long edge — same card order</option><option value="short">Short edge — reverse back order</option></select></label>
+                    <label><span>Duplex flip</span><select name="duplex_flip"><option value="long"{% if request.form.get('duplex_flip', 'long') != 'short' %} selected{% endif %}>Long edge — same card order</option><option value="short"{% if request.form.get('duplex_flip') == 'short' %} selected{% endif %}>Short edge — reverse back order</option></select></label>
                 </div></div>
                 <div class="anki-custom-selection-toolbar" aria-label="Selected card controls">
                     <span class="anki-custom-selection-count" id="ankiSelectedCount" aria-live="polite">0 cards selected</span>

@@ -50,7 +50,7 @@ def app_inventory(app):
     return files
 
 
-def prepare_materials(stage, inputs, cache):
+def prepare_materials(stage, inputs, cache, source, patch):
     from tools.prepare_ocr_bundle import BundleSources, prepare_bundle
     from package_macos.preview_materials import prepare, verify
     executable = Path('/opt/homebrew/bin/tesseract').resolve(strict=True)
@@ -66,7 +66,7 @@ def prepare_materials(stage, inputs, cache):
     ocr = prepare_bundle(BundleSources('macos', executable, tessdata,
                          tesseract_license, tesseract_license, license_file),
                          stage / 'ocr', repository_root=ROOT)
-    notices, native = prepare(stage, inputs, cache)
+    notices, native = prepare(stage, inputs, cache, source=source, patch=patch)
     model=native['english_model']
     for packaged in ocr.rglob('eng.traineddata'):
         if digest(packaged)!=model['sha256']:
@@ -95,13 +95,17 @@ def main():
     inputs = json.loads((args.inputs or work / 'BUILD_INPUTS.json').read_text())
     if Path(sys.executable).absolute() != Path(inputs['interpreter']).absolute():
         raise ValueError('Use the pinned read-only build interpreter')
+    from package_macos.preview_materials import verified_source
+    source, patch = verified_source()
+    commit = source['application_base']
     stage = Path(tempfile.mkdtemp(prefix='build-', dir=work))
     inventory = runtime_inventory()
     snapshot = hashlib.sha256(json.dumps(inventory, sort_keys=True).encode()).hexdigest()
-    commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
-    ocr, notices, native = prepare_materials(stage, inputs, work)
-    identity = {'application_version': '3.3.0', 'release': 'macos-focus-fix-20261019',
+    ocr, notices, native = prepare_materials(stage, inputs, work, source, patch)
+    identity = {'application_version': '3.3.0', 'release': 'macos-arm64-public-preview',
                 'source_commit': commit + '+snapshot:' + snapshot,
+                'application_base': commit, 'source_state': source['source_state'],
+                'packaging_patch_sha256': source['packaging_patch']['sha256'],
                 'target': 'Apple Silicon macOS 26.6.2 (current host only)',
                 'support': 'Apple Silicon public preview; ad hoc only, not notarized; malicious same-user native processes outside selected-file guarantee'}
     info = stage / 'build-info.json'
@@ -117,7 +121,7 @@ def main():
              '--distpath', str(stage / 'dist'), '--workpath', str(stage / 'work'),
              str(ROOT / 'package_macos/DLMS-Desktop.spec')], cwd=ROOT, env=environment,
             stdout=output, stderr=subprocess.STDOUT)
-    app = stage / 'dist/DLMS Desktop Focus Candidate.app'
+    app = stage / 'dist/DLMS Desktop.app'
     # Finder metadata may be attached to freshly generated frameworks by the
     # Documents file provider. Remove only signing-incompatible build metadata;
     # never remove quarantine or alter trust/security settings.
@@ -142,22 +146,28 @@ def main():
         macho[str(path.relative_to(app))] = {'sha256': digest(path), 'architecture': architectures}
     from package_macos.preview_bundle import verify_payload
     verify_payload(app)
+    if verified_source() != (source, patch) or runtime_inventory() != inventory:
+        raise ValueError('Source changed during build; do not create a DMG')
     manifest = app_inventory(app)
     manifest_hash = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
     (stage / 'APP_MANIFEST.json').write_text(json.dumps(manifest, sort_keys=True, indent=2) + '\n')
-    provenance = {'baseline': 'c1268daaf8a1dab2919b912c117a1ac4f86ea6c6', 'handoff': '717dd01a5efa9c6cbc8f95f463e70714ec198597', 'head': commit,
+    provenance = {'baseline': commit, 'head': commit, 'source': source,
+                  'reused_evidence': {'accepted_combined_source': '5e5fa245ffb23617890d237c1d6c02a67ff093b1',
+                      'historical_shared_repair_commit': 'c1268daaf8a1dab2919b912c117a1ac4f86ea6c6',
+                      'historical_handoff_commit': '717dd01a5efa9c6cbc8f95f463e70714ec198597'},
                   'snapshot_sha256': snapshot, 'runtime_files': inventory, 'macho': macho,
                   'app_manifest_sha256': manifest_hash,
                   'native_inputs': native, 'build_info': identity,
                   'python': platform.python_version(), 'macos': platform.mac_ver()[0],
                   'dependencies': {d.metadata['Name']: d.version for d in importlib.metadata.distributions()},
                   'signing': 'ad hoc integrity only; no Developer ID; not notarized',
-                  'app': str(app), 'qualified': False}
+                  'app': app.name, 'qualified': False}
     (stage / 'PROVENANCE.json').write_text(json.dumps(provenance, indent=2) + '\n')
     (ROOT / '.gate1/macos').mkdir(mode=0o700, parents=True, exist_ok=True)
-    (ROOT / '.gate1/macos/CANDIDATE.json').write_text(json.dumps({
-        'stage': str(stage), 'app': str(app), 'snapshot_sha256': snapshot,
-        'app_manifest_sha256': manifest_hash}, indent=2) + '\n')
+    receipt = ROOT / '.gate1/macos' / ('CANDIDATE-' + stage.name + '.json')
+    with receipt.open('x') as output:
+        output.write(json.dumps({'stage': str(stage), 'app': str(app),
+            'snapshot_sha256': snapshot, 'app_manifest_sha256': manifest_hash}, indent=2) + '\n')
     if not args.app_only:
         create_dmg(stage, app)
     print(json.dumps({'stage': str(stage), 'app': str(app), 'native_binaries': len(macho)}, indent=2))
@@ -165,10 +175,14 @@ def main():
 
 
 def create_dmg(stage, app):
-    image = stage / 'DLMS-Desktop-3.3.0-macos-arm64-focus-fix-20261019.dmg'
+    if app.name != 'DLMS Desktop.app' or {
+            path.name for path in app.parent.iterdir() if not path.name.startswith('.')
+    } != {'DLMS Desktop.app'}:
+        raise ValueError('Public DMG must contain only the direct DLMS Desktop.app entry')
+    image = stage / 'DLMS-Desktop-3.3.0-macos-arm64-preview.dmg'
     if image.exists():
         raise FileExistsError('Preserve existing DMG evidence')
-    run(['/usr/bin/hdiutil', 'create', '-format', 'UDZO', '-volname', 'DLMS Focus Candidate',
+    run(['/usr/bin/hdiutil', 'create', '-format', 'UDZO', '-volname', 'DLMS Desktop',
          '-srcfolder', str(app.parent), str(image)])
     run(['/usr/bin/hdiutil', 'verify', str(image)])
     (stage / 'SHA256SUMS').write_text(digest(image) + '  ' + image.name + '\n')
