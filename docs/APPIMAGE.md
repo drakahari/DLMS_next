@@ -112,13 +112,15 @@ native binary; ELF files do not carry Windows-style Explorer icon resources.
 Do not point a launcher at a temporary AppImage mount/extraction directory.
 No automatic menu installation or removal is performed or claimed validated here.
 
-DLMS-145 keeps **one artwork source**, `static/favicon.ico`. Despite its historical
-extension, that file contains a 1024×1024 PNG. macOS already passes it to PyInstaller
-for the app-bundle icon; that behavior is preserved. Windows previously omitted
-the EXE `icon` argument entirely. `tools/native_icons.py` now creates a real ICO
-with 16/24/32/48/64/128/256-pixel entries in PyInstaller's work directory, and
-`DLMS.spec` supplies it on Windows. AppImage PNGs are derived from the same source.
-No duplicate artwork or generated icon binaries are tracked.
+The canonical artwork master is `desktop_assets/dlms-icon-master.png`, an exact
+copy of the retained 1024×1024 PNG at the historical `static/favicon.ico` path.
+The owner identifies it as AI-generated; see
+[provenance and rights status](../desktop_assets/ICON_PROVENANCE.md).
+`python -m package_fedora.prepare_desktop_icons` derives the tracked hicolor PNGs,
+Windows ICO and macOS ICNS without redesigning it. Browser `DLMS.spec` uses the
+same artwork: Windows conversion creates a multi-size ICO in the work directory,
+macOS uses the generated ICNS, and AppImage creates its PNG from the master.
+The browser favicon URL and existing Desktop icon filenames remain compatible.
 
 A Windows native rebuild must confirm the embedded icon in Explorer and a fresh
 shortcut. Existing executables are not changed; stale Explorer icon caches can

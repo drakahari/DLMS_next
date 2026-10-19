@@ -1,6 +1,6 @@
 # DLMS Desktop Mac preview: third-party software
 
-The application and original DLMS badge are MIT. Retain LICENSE and
+The application code is MIT. Retain LICENSE and
 desktop_assets/ICON_PROVENANCE.md. Third-party terms remain applicable. This is
 a technical correspondence record, not legal certification or a claim that
 vendor binaries can be reproduced bit for bit.
@@ -44,3 +44,8 @@ This preview is ad hoc signed only, without Developer ID or notarization.
 Checksums bind files but do not independently establish publisher identity.
 
 Preparing this kit does not authorize a merge, release tag, upload or publication.
+
+Artwork update: current source restores the owner-identified AI-generated round blue
+icon. See desktop_assets/ICON_PROVENANCE.md for established provenance, owner redistribution permission and unknown
+generation details; the former geometric badge MIT statement must not be applied
+to the restored image. Existing published artifacts and their notices are unchanged.

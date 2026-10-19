@@ -22,7 +22,9 @@ def main():
         if target.exists() or target.is_symlink():raise FileExistsError('Notice entry point exists; preserve it')
         if materials['format'] == 2:
             target.write_text('''DLMS Desktop uses Qt/PySide/WebEngine and other third-party libraries.
-Application and original badge: MIT; Copyright (c) 2026 Mike Buchanan.
+Application code: MIT; Copyright (c) 2026 Mike Buchanan.
+Original round blue icon: see _internal/desktop_assets/ICON_PROVENANCE.md;
+owner-authorized use/redistribution; generator and creation terms remain unknown.
 Third-party copyrights and licenses remain applicable; this is not legal certification.
 
 Read the exact-build licenses and redistribution information:

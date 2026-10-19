@@ -49,7 +49,7 @@ def main():
         p=a.appdir/'AppRun';p.write_text(p.read_text().replace('--appimage-launch "$@"', '"$@"'))
     shutil.copyfile(root/'io.github.drakahari.DLMSDesktop.AppImageTest.desktop',
                     a.appdir/'io.github.drakahari.DLMSDesktop.AppImageTest.desktop')
-    icon=target/'_internal/desktop_assets/dlms_omarchy.png'
+    icon=target/'_internal/desktop_assets/dlms-icon-master.png'
     shutil.copyfile(icon,a.appdir/'io.github.drakahari.DLMSDesktop.AppImageTest.png')
     (a.appdir/'.DirIcon').symlink_to('io.github.drakahari.DLMSDesktop.AppImageTest.png')
     build=json.loads((target/'_internal/desktop_assets/build-info.json').read_text())

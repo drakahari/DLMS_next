@@ -20,7 +20,7 @@ EXCLUDE = ('tests/closure/', 'tests/windows/browser_environment_probe.py',
 DOCUMENTS = ('docs/choose-your-dlms.md', 'docs/desktop-hosts.md',
              'docs/desktop-validation.md', 'docs/publication-prerequisites.md',
              'docs/desktop-license.md', 'desktop_assets/ICON_PROVENANCE.md',
-             'desktop_assets/dlms-badge.svg',
+             'desktop_assets/dlms-icon-master.png',
              'tools/run_consolidation_checks.py', 'tools/prepare_public_snapshot.py',
              'tools/validate_publication_patch.py',
              'tools/macos_download_dependencies.py', 'tools/macos_prepare_environment.py',
@@ -29,7 +29,7 @@ DOCUMENTS = ('docs/choose-your-dlms.md', 'docs/desktop-hosts.md',
 # Only these deliberate new publication inputs may be untracked. Never let a
 # new ignored/local file become public merely because it sits under tests/.
 NEW_INPUTS = ('docs/desktop-license.md', 'desktop_assets/ICON_PROVENANCE.md',
-              'desktop_assets/dlms-badge.svg', 'tests/test_public_source_snapshot.py')
+              'desktop_assets/dlms-icon-master.png', 'tests/test_public_source_snapshot.py')
 
 
 def sha(data: bytes) -> str:

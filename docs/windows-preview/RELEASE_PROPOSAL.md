@@ -14,7 +14,7 @@ prerequisites. It is per-user and unsigned; Windows may display security warning
 No signing certificate was purchased or generated.
 
 Download the installer **and all accompanying notices/source files**. The cleared
-original DLMS badge is MIT; dependency licenses and replacement/build instructions
+geometric replacement badge used in that preview is MIT; dependency licenses and replacement/build instructions
 remain applicable. Read SOURCE_MATERIALS.json and REDISTRIBUTION.md. Checksums
 detect mismatches but are not an independent publisher signature.
 
@@ -45,3 +45,8 @@ runtime's embedded source materials continue to identify its original build.
 This text and the prepared artifacts need owner approval before any merge,
 installation, tag, release upload or publication. This proposal does not claim
 that those actions have occurred or that every future Runtime change is covered.
+
+Artwork history: this release text describes its already-built geometric badge.
+Current source restores the original round blue icon, identified by the owner as
+AI-generated and separately authorized for use/redistribution. See
+`desktop_assets/ICON_PROVENANCE.md`; existing artifacts are not changed.

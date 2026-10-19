@@ -1,0 +1,209 @@
+{
+  "format": 1,
+  "canonical_master": "desktop_assets/dlms-icon-master.png",
+  "master_sha256": "be929c60a0a63373d698934930bac8af686d3a8242072e25954118f783b1af93",
+  "retained_from_public_commit": "5e5fa245ffb23617890d237c1d6c02a67ff093b1",
+  "pillow_used": "12.3.0",
+  "transformation": "Exact retained master bytes; RGBA and LANCZOS resizing only. No redraw, crop, recolor or background removal.",
+  "resources": [
+    {
+      "path": "desktop_assets/dlms-icon-master.png",
+      "sha256": "be929c60a0a63373d698934930bac8af686d3a8242072e25954118f783b1af93",
+      "format": "PNG",
+      "size": [
+        1024,
+        1024
+      ]
+    },
+    {
+      "path": "static/favicon.ico",
+      "sha256": "be929c60a0a63373d698934930bac8af686d3a8242072e25954118f783b1af93",
+      "format": "PNG",
+      "size": [
+        1024,
+        1024
+      ]
+    },
+    {
+      "path": "desktop_assets/dlms_omarchy.png",
+      "sha256": "f14a4011e95c2823ab7b29da3904010338a6ad22222d9aabf367189945c06888",
+      "format": "PNG",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "path": "desktop_assets/icons/hicolor/1024x1024/apps/io.github.drakahari.DLMSDesktop.png",
+      "sha256": "948cfd08749f778e0d0b7d6bed29664fc617f20094f58938dedfcbb54d7e3c92",
+      "format": "PNG",
+      "size": [
+        1024,
+        1024
+      ]
+    },
+    {
+      "path": "desktop_assets/icons/hicolor/128x128/apps/io.github.drakahari.DLMSDesktop.png",
+      "sha256": "157647bdd6f3c7b375acd877484eb8f747645013a7689ae8f2476538e1140e95",
+      "format": "PNG",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "path": "desktop_assets/icons/hicolor/16x16/apps/io.github.drakahari.DLMSDesktop.png",
+      "sha256": "c912b2e65be92b83633e3560505347d946fb95d62270f08fd4dd303f061a0e54",
+      "format": "PNG",
+      "size": [
+        16,
+        16
+      ]
+    },
+    {
+      "path": "desktop_assets/icons/hicolor/24x24/apps/io.github.drakahari.DLMSDesktop.png",
+      "sha256": "51784f5c75f77410644d8e282957f6c849d963ac2b849cb137e6f17b05ad813c",
+      "format": "PNG",
+      "size": [
+        24,
+        24
+      ]
+    },
+    {
+      "path": "desktop_assets/icons/hicolor/256x256/apps/io.github.drakahari.DLMSDesktop.png",
+      "sha256": "e58831e6d4638aece2a15c4bb8ed9cd8514b46c74e7f0ad9fbc96a51d2bb8f74",
+      "format": "PNG",
+      "size": [
+        256,
+        256
+      ]
+    },
+    {
+      "path": "desktop_assets/icons/hicolor/32x32/apps/io.github.drakahari.DLMSDesktop.png",
+      "sha256": "5d44f4388b7d11b1582d38b6b003bed1aed9791faa529ead34ea692812fd2912",
+      "format": "PNG",
+      "size": [
+        32,
+        32
+      ]
+    },
+    {
+      "path": "desktop_assets/icons/hicolor/48x48/apps/io.github.drakahari.DLMSDesktop.png",
+      "sha256": "b41725c4cb31a6727bb4eecc1b979c1f2a346e8fdbf00a51f8be80c99a373f5e",
+      "format": "PNG",
+      "size": [
+        48,
+        48
+      ]
+    },
+    {
+      "path": "desktop_assets/icons/hicolor/512x512/apps/io.github.drakahari.DLMSDesktop.png",
+      "sha256": "e231a3ec9f822b9ab32981aa7a9b771e82f9e6e2e8a48791d48760fca9303da4",
+      "format": "PNG",
+      "size": [
+        512,
+        512
+      ]
+    },
+    {
+      "path": "desktop_assets/icons/hicolor/64x64/apps/io.github.drakahari.DLMSDesktop.png",
+      "sha256": "f14a4011e95c2823ab7b29da3904010338a6ad22222d9aabf367189945c06888",
+      "format": "PNG",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "path": "desktop_assets/icons/macos/DLMSDesktop.icns",
+      "sha256": "78a9be61a62521fe05e70df70572ea76e608b1c03457f5f815ab815aa38447fe",
+      "format": "ICNS",
+      "size": [
+        1024,
+        1024
+      ],
+      "frames": [
+        [
+          16,
+          16,
+          2
+        ],
+        [
+          32,
+          32,
+          2
+        ],
+        [
+          128,
+          128,
+          1
+        ],
+        [
+          128,
+          128,
+          2
+        ],
+        [
+          256,
+          256,
+          1
+        ],
+        [
+          256,
+          256,
+          2
+        ],
+        [
+          512,
+          512,
+          1
+        ],
+        [
+          512,
+          512,
+          2
+        ]
+      ]
+    },
+    {
+      "path": "desktop_assets/icons/windows/DLMSDesktop.ico",
+      "sha256": "38b499c975e10641c8f4df0600ac71817d141b16fb5248404bf031c572896d2c",
+      "format": "ICO",
+      "size": [
+        256,
+        256
+      ],
+      "frames": [
+        [
+          16,
+          16
+        ],
+        [
+          24,
+          24
+        ],
+        [
+          32,
+          32
+        ],
+        [
+          48,
+          48
+        ],
+        [
+          64,
+          64
+        ],
+        [
+          128,
+          128
+        ],
+        [
+          256,
+          256
+        ]
+      ]
+    }
+  ],
+  "permission": "Owner authorized use and redistribution on 2026-10-19; generator/creation details unknown; see ICON_PROVENANCE.md"
+}

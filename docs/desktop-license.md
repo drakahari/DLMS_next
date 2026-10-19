@@ -2,7 +2,7 @@
 
 Copyright (c) 2026 Mike Buchanan
 
-The Desktop-authored code, documentation, original badge artwork and synthetic
+The Desktop-authored code, documentation and synthetic
 fixtures that Mike Buchanan owns or is authorized to license are licensed under
 the [MIT License](../LICENSE). This grant includes Desktop contributions to the
 canonical application, platform hosts, packaging tools, tests and CI.
@@ -12,9 +12,12 @@ artwork, fonts, dependencies, or material depicted in existing documentation.
 Preserve their copyright notices, attribution and applicable terms. Existing
 browser-based DLMS remains under its existing MIT license.
 
-The original Desktop badge and generated resources are described in
-[artwork provenance](../desktop_assets/ICON_PROVENANCE.md). No previously selected
-private-use icon is included in this proposed source snapshot.
+The canonical icon is the restored original round blue artwork, identified by
+the owner as AI-generated. Its retained master, generated resources and recorded
+redistribution permission and unknown generation details are described in
+[artwork provenance](../desktop_assets/ICON_PROVENANCE.md). The owner has
+separately authorized artwork use and redistribution. Do not invent a generator
+license or extend the code MIT grant to an unknown service.
 
 Source licensing is separate from binary redistribution. A build that bundles
 Qt/WebEngine, Python, PDF/OCR libraries or other dependencies must satisfy those
