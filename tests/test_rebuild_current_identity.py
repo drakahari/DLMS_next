@@ -126,6 +126,65 @@ class RebuildCurrentIdentityTests(unittest.TestCase):
         self.assertEqual(self.records(), records)
         self.assertIn('complete content', result['failure_details'][0]['message'])
 
+    def test_flat_derived_stubs_regenerate_only_with_complete_canonical_answers(self):
+        quizzes = []
+        for kind in ('choice', 'matching'):
+            questions = [lifecycle.GeneratedPracticeLifecycleTests.matching()] if kind == 'matching' else None
+            qid, entry, path = self.create(questions)
+            html = Path(dlms.QUIZ_FOLDER, entry['html'])
+            quizzes.append((kind, qid, path, html))
+            for stub in ([{'stale': True}], [{'number': 1, 'previous': True}], [{}]):
+                path.write_text(json.dumps(stub))
+                html.write_text('stale derived HTML')
+                records = self.records()
+                result = dlms._rebuild_registered_quiz_artifacts()
+                self.assertEqual(result['failed'], [], result)
+                payload = json.loads(path.read_bytes())
+                self.assertEqual(payload[0]['type'], kind)
+                self.assertEqual(self.records(), records)
+                self.assertIn(f'window.QUIZ_ID = {qid};', html.read_text())
+                if kind == 'choice':
+                    self.assertEqual(payload[0]['correct'], ['A'])
+                else:
+                    self.assertEqual([(p['left'], p['right']) for p in payload[0]['pairs']],
+                                     [('Alpha', 'First'), ('Beta', 'Second')])
+        # A stub must never authorize fabrication from incomplete DB rows.
+        refused = []
+        for kind, qid, path, html in quizzes:
+            path.write_text('[{"stale":true}]')
+            before, previous_html = path.read_bytes(), html.read_bytes()
+            table = 'choices' if kind == 'choice' else 'matching_pairs'
+            with closing(dlms.get_db()) as conn, conn:
+                conn.execute('DELETE FROM '+table+' WHERE question_id IN (SELECT id FROM questions WHERE quiz_id=?)', (qid,))
+            records = self.records()
+            refused.append(qid)
+            self.assertEqual(dlms._rebuild_registered_quiz_artifacts()['failed'], refused)
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual(html.read_bytes(), previous_html)
+            self.assertEqual(self.records(), records)
+
+    def test_stub_detection_keeps_mixed_nested_and_spatial_authority_refusal(self):
+        qid, entry, path = self.create()
+        full = json.loads(path.read_bytes())[0]
+        unknown = {**full, 'unpersisted_instruction':'Keep this content'}
+        cases = [
+            [{'stale': True}, unknown], [unknown, {'stale': True}],
+            [None, unknown], [unknown, None],
+            [{'previous': {'question':'Unmapped nested content'}}],
+            [{'type':'hotspot', 'stale':True}],
+            [{'target':{'type':'circle','x':.5,'y':.5,'radius':.1}}],
+            [{'question':'Represented question', 'unpersisted_instruction':'Keep'}],
+        ]
+        html = Path(dlms.QUIZ_FOLDER, entry['html'])
+        for payload in cases:
+            path.write_text(json.dumps(payload))
+            before, previous_html, records = path.read_bytes(), html.read_bytes(), self.records()
+            result = dlms._rebuild_registered_quiz_artifacts()
+            self.assertEqual(result['failed'], [qid], payload)
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual(html.read_bytes(), previous_html)
+            self.assertEqual(self.records(), records)
+
     def test_unknown_nested_content_and_reserved_media_cannot_be_silently_dropped(self):
         qid, entry, path = self.create()
         original = json.loads(path.read_bytes())

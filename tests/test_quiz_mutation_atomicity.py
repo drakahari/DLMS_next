@@ -561,12 +561,14 @@ class QuizMutationAtomicityTests(unittest.TestCase):
         failed_json.write_bytes(b'[{"previous": true}]')
         before = self._canonical_snapshot()
         original_replace = dlms.os.replace
+        promotion_failures = []
 
         def fail_first_html_promotion(source, target):
             if (
                 "mutation_" in str(source)
                 and os.path.abspath(target) == os.path.abspath(failed_html)
             ):
+                promotion_failures.append((source, target))
                 raise RuntimeError("simulated rebuild promotion failure")
             return original_replace(source, target)
 
@@ -576,6 +578,7 @@ class QuizMutationAtomicityTests(unittest.TestCase):
             response = self._post_rebuild_all()
 
         self.assertEqual(200, response.status_code)
+        self.assertEqual(1, len(promotion_failures), 'The intended publication fault must actually be exercised')
         self.assertEqual("partial", response.get_json()["status"])
         self.assertEqual(1, response.get_json()["rebuilt"])
         self.assertEqual([self.quiz_id], response.get_json()["failed"])

@@ -95,6 +95,22 @@ def equivalent_quiz_json_bytes(path, canonical):
         'number', 'type', 'question', 'explanation', 'concepts', 'source', 'image_url', 'image_alt',
         'image_edits', 'image_source', 'source_number', 'composition_sources',
     }
+    # A flat marker-only array is an unusable derived stub, not a playable
+    # assessment carrying extra authority. The caller has already validated
+    # canonical records/media and applied the separate hotspot-authority guard.
+    # Decide for the entire payload: one represented question or nested value
+    # is enough to retain the normal full-content refusal rules.
+    assessment_keys = (question_keys - {'number'}) | {
+        'text', 'media', 'choices', 'correct', 'pairs', 'round_size', 'direction',
+        'target', 'target_label',
+    }
+    if all(isinstance(item, dict) and not (set(item) & assessment_keys)
+           and all(not isinstance(value, (dict, list)) for value in item.values())
+           for item in payload):
+        return None
+    if any(isinstance(item, dict) for item in payload) and any(
+            not isinstance(item, dict) for item in payload):
+        raise UnreconstructibleQuizContent('Mixed malformed and represented quiz content')
     for original in payload:
         if not isinstance(original, dict):
             return None
