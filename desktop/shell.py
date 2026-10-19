@@ -889,6 +889,10 @@ class DesktopWindow(QMainWindow):
         self.profile.downloadRequested.connect(self._server_download)
         self.view = QWebEngineView(self)
         self.view.setPage(ServerPage(self.profile, self, server["origin"], parent=self.view))
+        # WebEngine's outer view can default to NoFocus while its internal
+        # focus proxy accepts keys. Save an explicit interactive policy before
+        # the loading cover propagates NoFocus to that proxy.
+        self.view.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._server_loaded_url = None
         self._server_theme = ""
         self._server_has_document = False

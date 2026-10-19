@@ -1,3 +1,17 @@
+> Unpublished focused Mac candidate `macos-focus-fix-20261019`.
+> Exact source/handoff: `717dd01a5efa9c6cbc8f95f463e70714ec198597`;
+> shared runtime correction: `c1268daaf8a1dab2919b912c117a1ac4f86ea6c6`.
+> Uncommitted shared Qt Server focus correction, test tooling and packaging identity
+> overlay are recorded separately.
+> Bundle: `DLMS Desktop Focus Candidate.app`. During this task open only via
+> the verified task wrapper with its fixed synthetic data-root/profile. The bare
+> app retains the public Preview default directory; do not open against existing
+> installed/personal storage. No installation/release is authorized. Ad hoc only,
+> no Developer ID/notarization; downloaded/quarantined approval is unqualified for
+> this artifact. Same-user malicious native processes remain outside the selected
+> file snapshot guarantee. Historical Preview1 instructions below are reference,
+> not this candidate's identity or qualification.
+
 # Proposed Mac preview release — approval required
 
 **DLMS Desktop 3.3.0 Preview 1 — Apple Silicon**
