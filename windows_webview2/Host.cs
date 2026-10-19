@@ -378,6 +378,82 @@ sealed partial class DesktopRenderer : Form {
     bool averyInitialNavigation;
     int averyRecords;
     long serverCoverSerial;
+    // Avery-only native print authority. No path, printer or command is accepted
+    // from page JavaScript; the private observer only asks for the native UI.
+    const string AveryPrintWorld="DLMSDesktopAveryPrint",AveryPrintBinding="__dlmsAveryPrint";
+    internal const string AveryPrintObserver=@"(function(nonce){
+        'use strict';
+        if(self!==top)return;
+        let sequence=0;
+        document.addEventListener('keydown',function(e){
+            if(e.isTrusted&&e.repeat&&(e.key==='Enter'||e.key===' ')&&e.target instanceof Element&&
+               e.target.closest('button')===document.querySelector('button[onclick=""window.print()""]')){
+                e.preventDefault();e.stopImmediatePropagation();
+            }
+        },true);
+        document.addEventListener('click',function(e){
+            if(!e.isTrusted||e.button!==0||!navigator.userActivation.isActive)return;
+            const button=e.target instanceof Element?e.target.closest('button'):null;
+            if(!button||button!==document.querySelector('button[onclick=""window.print()""]')||
+               button.type!=='button'||button.disabled||button.textContent.trim()!=='Print Cards')return;
+            e.preventDefault();e.stopImmediatePropagation();
+            __dlmsAveryPrint(JSON.stringify({nonce:nonce,sequence:++sequence}));
+        },true);
+    })";
+    internal sealed class AveryPrintPermit {
+        internal readonly int Context;internal readonly string Nonce,Identity;
+        long sequence;
+        internal AveryPrintPermit(int context,string nonce,string identity){Context=context;Nonce=nonce;Identity=identity;}
+        internal bool Take(int context,string nonce,long next,bool current) {
+            if(!current||Context<=0||context!=Context||nonce!=Nonce||next<=0||next!=sequence+1)return false;
+            sequence=next;return true;
+        }
+    }
+    AveryPrintPermit averyPrint;
+    async Task ConfigureAveryPrint(Navigation nav,ulong id) {
+        averyPrint=null;
+        if(!AveryPrintCurrent(nav,id))return;
+        var context=await Cdp("Page.createIsolatedWorld",new{frameId=mainFrame,worldName=AveryPrintWorld,grantUniveralAccess=false});
+        if(!AveryPrintCurrent(nav,id))return;
+        int contextId=Convert.ToInt32(context["executionContextId"]);
+        var permit=new AveryPrintPermit(contextId,Guid.NewGuid().ToString("N"),documentIdentity);
+        averyPrint=permit;
+        var result=await Cdp("Runtime.evaluate",new{contextId=contextId,
+            expression=AveryPrintObserver+"("+json.Serialize(permit.Nonce)+");true",returnByValue=true});
+        if(!ReferenceEquals(averyPrint,permit)||!AveryPrintCurrent(nav,id)||result.ContainsKey("exceptionDetails")) {
+            if(ReferenceEquals(averyPrint,permit))averyPrint=null;
+            throw new InvalidOperationException("Avery print context changed");
+        }
+        AveryState("print-ready");
+    }
+    bool AveryPrintCurrent(Navigation nav,ulong id) {
+        return averyParent!=null&&ReferenceEquals(averyParent.averyChild,this)&&
+            !closing&&!disposed&&!requestPolicyFailed&&browserPolicyReady&&!documentHadChildFrame&&
+            AveryLeaseCurrent(averyLease)&&Current(nav,id)&&nav.Completed&&documentIdentity!=null&&
+            view.CoreWebView2!=null&&AveryUrl(view.CoreWebView2.Source,"/anki/printable");
+    }
+    void AveryPrintRequested(string args) {
+        try {
+            var data=json.Deserialize<Dictionary<string,object>>(args);
+            if(TextValue(data,"name")!=AveryPrintBinding)return;
+            Navigation nav;ulong id=activeNavigation;var permit=averyPrint;
+            if(permit==null||!navigations.TryGetValue(id,out nav))return;
+            string payload=TextValue(data,"payload");if(payload.Length>256)return;
+            var request=json.Deserialize<Dictionary<string,object>>(payload);
+            if(request.Count!=2||!(request["sequence"] is int))return;
+            // No await/re-entrant page evaluation between the final native
+            // ownership check, one-use consume, and printing THIS child.
+            if(!permit.Take(Convert.ToInt32(data["executionContextId"]),TextValue(request,"nonce"),
+                Convert.ToInt64(request["sequence"]),AveryPrintCurrent(nav,id)&&permit.Identity==documentIdentity)) {
+                AveryState("print-refused");return;
+            }
+            view.CoreWebView2.ShowPrintUI(CoreWebView2PrintDialogKind.Browser);
+            AveryStatus("Print preview opened. Choose a printer or Save as PDF, or Cancel. Return keeps the source selection.");
+            AveryState("print-ui-requested"); // Not evidence of a saved/printed file.
+        }catch(Exception) {
+            if(!closing&&!disposed){AveryStatus("The print dialog could not open. Return to the source deck and retry the preview.");AveryState("print-ui-failed");}
+        }
+    }
     sealed class AveryOpen {
         public CoreWebView2NewWindowRequestedEventArgs Args;
         public CoreWebView2Deferral Deferral;
@@ -423,7 +499,7 @@ sealed partial class DesktopRenderer : Form {
         if(kind=="policy-blocked")AveryState("resource-refused-"+TextValue(fields,"reason"));
         if(kind=="load-finish") {
             bool ok=fields.ContainsKey("ok")&&Convert.ToBoolean(fields["ok"]);
-            AveryStatus(ok?"Avery preview. Return closes this view and preserves the source deck. Printing, downloads and file selection are unavailable here.":"Avery preview did not load. Return to the source deck; no selection was changed.");
+            AveryStatus(ok?"Avery preview. Use Print Cards for the native print dialog; Return preserves the source deck. Downloads and file selection remain unavailable.":"Avery preview did not load. Return to the source deck; no selection was changed.");
             AveryState(ok?"rendered":"load-failed");
             var detail=new Dictionary<string,object>();
             foreach(string key in new[]{"error","http_status","identity_error","navigation_success"})if(fields.ContainsKey(key))detail[key]=fields[key];
@@ -516,7 +592,7 @@ sealed partial class DesktopRenderer : Form {
             core.Profile.ProfilePath!=averyParent.view.CoreWebView2.Profile.ProfilePath||
             !(String.IsNullOrEmpty(core.Source)||core.Source=="about:blank"))throw new InvalidOperationException("Avery destination profile or blank state mismatch");
         ConfigureControllerSettings();
-        await core.AddScriptToExecuteOnDocumentCreatedAsync("Object.defineProperty(window,'print',{value:()=>alert('Printing is unavailable in this Avery preview. Return to the source deck.'),writable:false,configurable:false})");
+        await core.AddScriptToExecuteOnDocumentCreatedAsync("Object.defineProperty(window,'print',{value:()=>alert('Use the Print Cards button to open the native print dialog.'),writable:false,configurable:false})");
         if(!AveryLeaseCurrent(lease))throw new InvalidOperationException("Avery owner changed during settings initialization");
     }
     async Task VerifyBorrowedAveryPolicy() {
@@ -576,6 +652,7 @@ sealed partial class DesktopRenderer : Form {
         if(averyClose==null)averyClose=CloseAveryControllerCore();return averyClose;
     }
     async Task CloseAveryControllerCore() {
+        averyPrint=null;
         closing=true;browserPolicyReady=false;averyPolicyReady.TrySetResult(false);
         if(averyLease!=null)averyLease.Cancelled=true;
         // BrowserSurface cancels a late CreateController result on disposal.
@@ -700,6 +777,7 @@ sealed partial class DesktopRenderer : Form {
             var previousAI=navigations.TryGetValue(activeNavigation,out prior)&&prior.Completed&&
                 aiContext!=0&&aiActions!=null&&aiIdentity!=null&&aiIdentity==documentIdentity?aiActions.Policy():null;
             generation++;activeNavigation=e.NavigationId;pickers.Clear();
+            averyPrint=null;
             RetireAI();
             var next=new Navigation{Url=e.Uri,Previous=documentIdentity,Started=DateTime.UtcNow,Generation=generation};
             next.PreviousAIActions=previousAI;
@@ -854,8 +932,9 @@ sealed partial class DesktopRenderer : Form {
             var data=json.Deserialize<Dictionary<string,object>>(e.ParameterObjectAsJson);int context=Convert.ToInt32(data["executionContextId"]);
             foreach(string frame in mainContexts.Where(pair=>pair.Value==context).Select(pair=>pair.Key).ToArray())mainContexts.Remove(frame);
             if(context==aiContext)RetireAI();
+            if(averyPrint!=null&&context==averyPrint.Context)averyPrint=null;
         };
-        core.GetDevToolsProtocolEventReceiver("Runtime.executionContextsCleared").DevToolsProtocolEventReceived+=(s,e)=>{mainContexts.Clear();RetireAI();};
+        core.GetDevToolsProtocolEventReceiver("Runtime.executionContextsCleared").DevToolsProtocolEventReceived+=(s,e)=>{mainContexts.Clear();RetireAI();averyPrint=null;};
         core.GetDevToolsProtocolEventReceiver("Log.entryAdded").DevToolsProtocolEventReceived+=(s,e)=> {
             var data=json.Deserialize<Dictionary<string,object>>(e.ParameterObjectAsJson);var entry=(Dictionary<string,object>)data["entry"];
             if(TextValue(entry,"text")=="File chooser dialog can only be shown with a user activation."&&activationWarnings++<16)
@@ -867,6 +946,10 @@ sealed partial class DesktopRenderer : Form {
         core.GetDevToolsProtocolEventReceiver("Page.fileChooserOpened").DevToolsProtocolEventReceived+=async(s,e)=>await PickerOpened(e.ParameterObjectAsJson);
         Emit("initialization", "file-chooser");await Cdp("Page.setInterceptFileChooserDialog",new{enabled=true});
         if(averyParent==null)await InstallAIObserver();
+        else {
+            core.GetDevToolsProtocolEventReceiver("Runtime.bindingCalled").DevToolsProtocolEventReceived+=(s,e)=>AveryPrintRequested(e.ParameterObjectAsJson);
+            await Cdp("Runtime.addBinding",new{name=AveryPrintBinding,executionContextName=AveryPrintWorld});
+        }
         if(averyParent==null&&mode=="local") {
             Emit("initialization", "local-print");
             // Closed-purpose PDF request, matching Local window.print semantics.
@@ -1161,6 +1244,7 @@ sealed partial class DesktopRenderer : Form {
                 mainFrame=frame;documentIdentity=identity;
                 nav.Completed=true;
                 if(averyParent==null&&okAIStatus(e.HttpStatusCode))await ConfigureAI(nav,e.NavigationId);
+                if(averyParent!=null&&okAIStatus(e.HttpStatusCode))await ConfigureAveryPrint(nav,e.NavigationId);
 #if DLMS_AI_TEST
                 // Separate, explicitly marked source-host probe. Normal builds
                 // contain neither this timing fault nor a way to enable it.
