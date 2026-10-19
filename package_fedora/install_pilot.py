@@ -17,7 +17,7 @@ import shutil
 APP_ID = "io.github.drakahari.DLMSDesktop"
 VERSION = "pilot-01"
 PROFILE = "pilot01"
-ARTWORK_SHA256 = "1ec18ded1259863148e89e3021a2defe185aaaeb1a68dc7d9747690467aa8315"
+ARTWORK_SHA256 = "f14a4011e95c2823ab7b29da3904010338a6ad22222d9aabf367189945c06888"
 SIZES = (16, 24, 32, 48, 64)
 MARKER_NAME = ".dlms-desktop-installed-pilot.json"
 

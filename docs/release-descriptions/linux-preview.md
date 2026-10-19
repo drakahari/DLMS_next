@@ -50,7 +50,7 @@ Profiles and origins persist outside the AppImage under `${XDG_DATA_HOME:-$HOME/
 
 Checksums below detect file mismatches, not independent publisher identity. Ordinary users need only the AppImage (or the alternative tar bundle), not the source companions.
 
-**Source and notices:** MIT application/original badge; third-party terms remain
+**Source and notices:** MIT application/geometric replacement badge; third-party terms remain
 applicable. Deliver the notices archive and all five source companions alongside
 both binaries. They include Qt/PySide, native/Python and AppImage runtime sources,
 patches, notices and build/library-replacement instructions. This technical
@@ -85,3 +85,8 @@ a54a658ef66909a3d25ee64cfe80ce42e521a3e54e87198961581c3f696106ef  DLMS-Desktop-3
 ```
 
 </details>
+
+Artwork history: this release text describes its already-built geometric badge.
+Current source restores the original round blue icon, identified by the owner as
+AI-generated; see desktop_assets/ICON_PROVENANCE.md for its distinct rights status.
+No previously published artifact is changed by this source update.

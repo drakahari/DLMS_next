@@ -87,7 +87,7 @@ if sys.platform == "darwin":
         analysis.binaries,
         analysis.datas,
         name="DLMS.app",
-        icon=str(project_root / "static" / "favicon.ico"),
+        icon=str(project_root / "desktop_assets/icons/macos/DLMSDesktop.icns"),
         bundle_identifier="io.github.drakahari.DLMS",
         version=app_bundle_version,
         info_plist={
@@ -101,7 +101,7 @@ else:
         from PyInstaller.config import CONF
         from tools.native_icons import windows_icon
         platform_icon = str(windows_icon(
-            project_root / "static" / "favicon.ico",
+            project_root / "desktop_assets/dlms-icon-master.png",
             Path(CONF["workpath"]) / "dlms-windows.ico",
         ))
     executable = EXE(

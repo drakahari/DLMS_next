@@ -31,7 +31,7 @@ Deliver **both binaries and all six companions** together. The notice archive's
 `distribution-kit/SOURCE_MATERIALS.json` binds the five source companions; its
 `MANIFEST.json` binds the notice texts. Notices cover exact wheel files, Ubuntu
 copyrights, Qt/PySide, Chromium, OCR and the AppImage runtime. Third-party terms
-remain applicable alongside the MIT application and original DLMS badge. Technical
+remain applicable alongside the MIT application code. Technical
 source correspondence is not legal certification or a bit-reproducibility claim.
 
 | Companion | Contents |
@@ -249,3 +249,8 @@ physical printing, power-loss, real disk exhaustion and other-platform Desktop
 qualification are not established. No full-parity or universal-Linux claim is made.
 Windows/macOS public binaries remain deferred for their specific runtime/update,
 upload-protection and native signing/qualification decisions.
+
+Artwork update: current source restores the owner-identified AI-generated round blue
+icon. See desktop_assets/ICON_PROVENANCE.md for established provenance, owner redistribution permission and unknown
+generation details; the former geometric badge MIT statement must not be applied
+to the restored image. Existing published artifacts and their notices are unchanged.

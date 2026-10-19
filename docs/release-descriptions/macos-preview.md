@@ -21,7 +21,7 @@ Start in Local mode to create or import learning material, then choose Study or 
 
 ### Local, Server and data boundaries
 
-DLMS Local and Server modes are enabled, including file selection, TXT/PDF/image imports, OCR, Study, exports and native backup/restore/reset. Local and Server keep separate storage, origins, credentials and privileges. A Server outage does not silently switch to Local. AI handoff opens the normal default browser/profile without automatic paste or submission. The cleared MIT DLMS badge is included.
+DLMS Local and Server modes are enabled, including file selection, TXT/PDF/image imports, OCR, Study, exports and native backup/restore/reset. Local and Server keep separate storage, origins, credentials and privileges. A Server outage does not silently switch to Local. AI handoff opens the normal default browser/profile without automatic paste or submission. The geometric replacement badge used in that preview is included.
 
 The app uses a new, separately marked `~/Library/Application Support/DLMS Desktop Preview` namespace and profile `default`. Existing Candidate, Personal and legacy data is not automatically discovered, adopted, migrated or deleted. Server connections use the server you choose. A first connection may require a macOS access prompt and a retry.
 
@@ -65,3 +65,8 @@ These are Mac-specific bindings, not substituted Linux or Windows binary-license
 - [RUNTIME_SOURCE_MATCH.json](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-macos/RUNTIME_SOURCE_MATCH.json)
 
 </details>
+
+Artwork history: this release text describes its already-built geometric badge.
+Current source restores the original round blue icon, identified by the owner as
+AI-generated; see desktop_assets/ICON_PROVENANCE.md for its distinct rights status.
+No previously published artifact is changed by this source update.

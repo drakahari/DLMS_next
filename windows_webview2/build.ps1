@@ -38,6 +38,6 @@ if ($AiRaceProbe) {
     $defines = @('/define:DLMS_AI_TEST')
     'INSTRUMENTED source-host timing probe; never package' | Set-Content "$payload/../AI-RACE-PROBE"
 }
-& $compiler /nologo /target:winexe /platform:x64 /optimize+ @defines "/out:$payload/DLMS-WebView2-Host.exe" /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll "/reference:$payload/Microsoft.Web.WebView2.Core.dll" $hostSource $surfaceSource $metadataSource $handoffSource $aiSource $aiScripts $aiLease $requestProtocol
+& $compiler /nologo /target:winexe /platform:x64 /optimize+ "/win32icon:$projectRoot/desktop_assets/icons/windows/DLMSDesktop.ico" @defines "/out:$payload/DLMS-WebView2-Host.exe" /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll "/reference:$payload/Microsoft.Web.WebView2.Core.dll" $hostSource $surfaceSource $metadataSource $handoffSource $aiSource $aiScripts $aiLease $requestProtocol
 if ($LASTEXITCODE -ne 0) { throw 'Host compilation failed; retain failed payload' }
 Get-ChildItem $payload -File -Recurse | Get-FileHash -Algorithm SHA256 | Select-Object Path,Hash | ConvertTo-Json | Set-Content "$payload/../SHA256.json"

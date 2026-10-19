@@ -1,6 +1,6 @@
 # DLMS Desktop Windows preview: third-party software
 
-DLMS application/Desktop additions and the original badge are MIT; retain LICENSE
+DLMS application/Desktop code is MIT; retain LICENSE
 and ICON_PROVENANCE.md. Third-party software keeps its own terms. This is a
 technical redistribution record, not legal certification. The exact Windows
 input mapping is EXACT_INPUTS.json; SOURCE_MATERIALS.json binds companion files.
@@ -58,3 +58,8 @@ reverse engineering to debug those modifications is imposed. Deliver **all**
 SOURCE_MATERIALS.json companions alongside an approved binary release. Preparing
 them locally is not public delivery. Keep LGPL/GPL texts and rebuild/replacement
 instructions. The binary is unsigned; checksums do not establish publisher identity.
+
+Artwork update: current source restores the owner-identified AI-generated round blue
+icon. See desktop_assets/ICON_PROVENANCE.md for established provenance, owner redistribution permission and unknown
+generation details; the former geometric badge MIT statement must not be applied
+to the restored image. Existing published artifacts and their notices are unchanged.

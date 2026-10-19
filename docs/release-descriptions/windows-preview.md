@@ -44,7 +44,7 @@ The installer already includes license/notice texts. All required source and not
 
 `SOURCE_MATERIALS.json` indexes the original runtime source companions.
 
-`FINAL_DISTRIBUTION.json` additionally binds the unchanged runtime, revised installer and final installer-source supplement. See `REDISTRIBUTION.md`, `BUILD_AND_REPLACEMENT.md` and `INSTALLER_SOURCE_SUPPLEMENT.md`. Anyone redistributing the binary must preserve the applicable notices and accompanying source obligations. The original DLMS badge is MIT-licensed.
+`FINAL_DISTRIBUTION.json` additionally binds the unchanged runtime, revised installer and final installer-source supplement. See `REDISTRIBUTION.md`, `BUILD_AND_REPLACEMENT.md` and `INSTALLER_SOURCE_SUPPLEMENT.md`. Anyone redistributing the binary must preserve the applicable notices and accompanying source obligations. The geometric replacement badge used in that preview is MIT-licensed.
 
 The files below are available for verification, licensing, redistribution and rebuilding. Ordinary users do not need to download them to run the installer; the system prerequisites above still apply. Preserve all applicable source/notices and the final installer supplement when redistributing the binary. No release assets are changed by this description refresh.
 
@@ -66,3 +66,8 @@ The files below are available for verification, licensing, redistribution and re
 - [SOURCE_MATERIALS.json](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-windows/SOURCE_MATERIALS.json)
 
 </details>
+
+Artwork history: this release text describes its already-built geometric badge.
+Current source restores the original round blue icon, identified by the owner as
+AI-generated and separately authorized for use/redistribution. See
+`desktop_assets/ICON_PROVENANCE.md`; existing artifacts are not changed.

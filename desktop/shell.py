@@ -343,7 +343,7 @@ class DesktopWindow(QMainWindow):
         self._retirement_wait_active = False
         self.browser_retirements = []
         self.setWindowTitle("DLMS Desktop")
-        icon_path = PROJECT / "desktop_assets/dlms_omarchy.png"
+        icon_path = PROJECT / "desktop_assets/dlms-icon-master.png"
         icon = QIcon(str(icon_path))
         if icon.isNull():
             raise RuntimeError(f"The owner-selected Desktop icon is unavailable: {icon_path}")

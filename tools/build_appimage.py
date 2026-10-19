@@ -59,7 +59,7 @@ def stage_appdir(binary: Path, destination: Path, root: Path = ROOT) -> None:
     (destination / "AppRun").write_text(APPRUN, encoding="utf-8")
     (destination / "AppRun").chmod(0o755)
     (destination / "dlms.desktop").write_text(DESKTOP, encoding="utf-8")
-    desktop_icon(root / "static/favicon.ico", destination / "dlms.png")
+    desktop_icon(root / "desktop_assets/dlms-icon-master.png", destination / "dlms.png")
     (destination / ".DirIcon").symlink_to("dlms.png")
     applications = destination / "usr/share/applications"
     applications.mkdir(parents=True)

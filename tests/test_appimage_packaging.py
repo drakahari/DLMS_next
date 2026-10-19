@@ -44,7 +44,7 @@ def appdir(tool, tmp_path):
 def test_appdir_layout_artwork_and_desktop(tool, appdir):
     directory, digest = appdir
     tool.verify_appdir(directory, digest)
-    with Image.open(ROOT / "static/favicon.ico") as original:
+    with Image.open(ROOT / "desktop_assets/dlms-icon-master.png") as original:
         expected = original.convert("RGBA").resize((256, 256), Image.Resampling.LANCZOS)
     with Image.open(directory / "dlms.png") as icon:
         assert icon.tobytes() == expected.tobytes()
@@ -125,7 +125,7 @@ def test_native_spec_icon_branch_preserves_platform_contract(tool, monkeypatch, 
         assert exe.call_args.kwargs["icon"] is None
         assert exe.call_args.kwargs["console"] is True
     else:
-        assert bundle.call_args.kwargs["icon"] == str(ROOT / "static/favicon.ico")
+        assert bundle.call_args.kwargs["icon"] == str(ROOT / "desktop_assets/icons/macos/DLMSDesktop.icns")
         assert bundle.call_args.kwargs["name"] == "DLMS.app"
         assert exe.call_args.kwargs["console"] is False
 

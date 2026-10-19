@@ -21,7 +21,7 @@ Finder application. File selection, TXT/PDF/image import, OCR, study, exports an
 native backup/restore remain enabled. Local and Server retain separate storage,
 credentials, origins and privileges; outage never silently switches to Local.
 Normal browser handoff uses your actual default browser/profile without automatic
-paste or submission. The original MIT DLMS badge is included.
+paste or submission. The geometric replacement badge used in that preview is included.
 
 Open the DMG and copy `DLMS Desktop.app` to a new location that does not overwrite
 an existing app or private Candidate launcher. Double-click that single app.
@@ -68,3 +68,8 @@ publication. No such action has occurred.
 
 Apple references: [Safely open apps](https://support.apple.com/en-us/102445) and
 [Developer ID](https://developer.apple.com/developer-id/).
+
+Artwork history: this release text describes its already-built geometric badge.
+Current source restores the original round blue icon, identified by the owner as
+AI-generated; see desktop_assets/ICON_PROVENANCE.md for its distinct rights status.
+No previously published artifact is changed by this source update.

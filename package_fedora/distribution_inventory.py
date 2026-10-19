@@ -131,8 +131,16 @@ def audit(payload: Path,analysis: Path,pyz: Path,project: Path) -> dict:
     def classify(source: Path | None,rel: str):
         if rel.startswith('_internal/static/vendor/'):
             return 'asset:sortablejs',{'kind':'third-party JavaScript','name':'SortableJS','version':'1.15.0','origin':'captured static/vendor; MIT text shipped','license_expression':'MIT'}
-        if rel.startswith('_internal/desktop_assets/') and ('icon' in rel or rel.endswith('dlms_omarchy.png')):
-            return 'asset:owner-icon',{'kind':'artwork','name':'original geometric DLMS badge','version':'1','origin':'desktop_assets/ICON_PROVENANCE.md; original grid lettering, no imported artwork/font','license_expression':'MIT'}
+        if (rel == '_internal/static/favicon.ico'
+                or rel.startswith('_internal/desktop_assets/icons/')
+                or rel in ('_internal/desktop_assets/dlms-icon-master.png',
+                           '_internal/desktop_assets/dlms_omarchy.png')):
+            return 'asset:owner-icon', {'kind': 'artwork',
+                'name': 'original round blue DLMS badge', 'version': 'retained-1024-master',
+                'origin': 'desktop_assets/ICON_PROVENANCE.md; owner identifies AI-generated artwork',
+                'license_expression': 'LicenseRef-DLMS-Owner-Authorized-Artwork',
+                'permission': 'Owner authorized use and redistribution of the image and resized derivatives on 2026-10-19; see ICON_PROVENANCE.md',
+                'unresolved': 'AI generator/service terms and creation record remain unknown; do not invent a third-party license'}
         if rel in copied_ocr and copied_ocr[rel].is_file() and digest(payload/rel)==digest(copied_ocr[rel]):
             info=rpm_info(copied_ocr[rel])
             if info:return 'rpm:'+info['name']+'@'+info['version']+'-'+info['release'],dict(kind='Fedora OCR input',**info)

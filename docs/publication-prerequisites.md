@@ -12,8 +12,11 @@ Before approving that snapshot:
 - The owner has granted MIT permission for owned/authorized Desktop code,
   documentation and synthetic fixtures: see [source licensing](desktop-license.md).
   The existing MIT text remains intact; third-party terms are not replaced.
-- The eight previously flagged icon resources use a new original badge, not the
-  earlier private-use input: see [provenance](../desktop_assets/ICON_PROVENANCE.md).
+- The canonical icon now restores the retained original round blue master,
+  identified by the owner as AI-generated: see [provenance](../desktop_assets/ICON_PROVENANCE.md).
+  The owner has separately authorized artwork use and redistribution. Keep
+  that recorded permission distinct from the code MIT grant; no generator or
+  creation terms were established.
   Preserve other existing public attribution and do not assume ownership of
   third-party material depicted in inherited documentation.
 
