@@ -1,0 +1,27 @@
+{
+  "synthetic_only": true,
+  "quiz": {
+    "filename": "neutral-quiz.txt",
+    "question_count": 4,
+    "correct_choice_labels": [
+      "B",
+      "C",
+      "A",
+      "B"
+    ],
+    "all_correct_study_or_exam": "4/4;100%",
+    "source_order_must_be_preserved": true
+  },
+  "ocr": {
+    "files": [
+      "ocr-question.png",
+      "scanned.pdf"
+    ],
+    "review_before_publication": true,
+    "scanned_pdf_question": "Which port is HTTPS?",
+    "scanned_pdf_correct_label": "C",
+    "scanned_pdf_correct_text": "443",
+    "engine_output_may_vary": true
+  },
+  "backup": "Generate from the new synthetic profile with native Save Backup As; no prebuilt backup or profile is supplied."
+}
