@@ -142,7 +142,7 @@ class RebuildCurrentIdentityTests(unittest.TestCase):
                 payload = json.loads(path.read_bytes())
                 self.assertEqual(payload[0]['type'], kind)
                 self.assertEqual(self.records(), records)
-                self.assertIn(f'window.QUIZ_ID = {qid};', html.read_text())
+                self.assertIn(f'window.QUIZ_ID = {qid};', html.read_text(encoding='utf-8'))
                 if kind == 'choice':
                     self.assertEqual(payload[0]['correct'], ['A'])
                 else:
@@ -295,6 +295,17 @@ class RebuildCurrentIdentityTests(unittest.TestCase):
             altered[0][change] = {'question':'Changed', 'correct':['C'], 'image_url':'/quiz_assets/different.png',
                                   'source':{'license':'Different'}, 'explanation':'Different', 'concepts':['Different']}[change]
             self.assertIsNone(equivalent_quiz_json_bytes(path, altered), change)
-        path.unlink(); path.symlink_to(Path(dlms.QUIZ_FOLDER, entry['html']))
+
+    def test_symlink_runtime_is_not_equivalent(self):
+        qid, entry, path = self.create()
+        with closing(dlms.get_db()) as conn:
+            canonical = dlms._quiz_json_payload_from_db(conn.cursor(), qid)
+        path.unlink()
+        try:
+            path.symlink_to(Path(dlms.QUIZ_FOLDER, entry['html']))
+        except OSError as exc:
+            if getattr(exc, 'winerror', None) == 1314:
+                self.skipTest('Windows account lacks symlink privilege; equivalent fixture runs on Linux')
+            raise
         with self.assertRaisesRegex(ValueError, 'not a regular file'):
             equivalent_quiz_json_bytes(path, canonical)
