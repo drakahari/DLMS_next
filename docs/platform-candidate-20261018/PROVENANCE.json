@@ -1,0 +1,97 @@
+{
+  "runtime_base": "bfdffb720f743e9d720cd07292ec7e1ec325e059",
+  "source_commit": "4b50e2b3fb39dd478d355bf785b319805579076c",
+  "docs_commit": "4b50e2b3fb39dd478d355bf785b319805579076c",
+  "release": "linux-330-safety-20261018",
+  "source_manifest_sha256": "98a2f82a7132f05a14dec4816f5f31d2d1648f17af21cc0246bad2dfb0f553fc",
+  "payload_inventory_sha256": "fa14280f9c8175d2eb759a9d8e41d4e33f1699f529ca669972ad3cd49acfddb4",
+  "appimage_inventory_sha256": "f1c960e13aa486201110ad33553b4fb8da0160c7d1c9e52942e8a721fa1d8cf2",
+  "candidate_inventory": "de541711dcf8de7398c94fe1e4612dddbf5c2863eb9a0e16e8fb610a587d21c9",
+  "distribution_manifest_sha256": "408fba25701c1829c93ccd5f65630602ae2028a02865164ed9bdb35dfdde1c39",
+  "same_payload": true,
+  "tar_checked_entries": 7224,
+  "normal_entry_unchanged_by_notice_correction": true,
+  "tool_inputs": {
+    "tool": {
+      "repository": "https://github.com/AppImage/appimagetool",
+      "release": "continuous",
+      "commit": "854e19e951900cf141245b384d45735942521abe",
+      "asset_id": 610035789,
+      "url": "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage",
+      "sha256": "95cbe7cce9717fce90c484e34052ee7c7f1d7635b33c12525b4776826a7d29b6",
+      "bytes": 15092216,
+      "retrieved": "2026-10-13",
+      "verification": "GitHub-published asset digest matches; no DLMS publisher signature"
+    },
+    "runtime": {
+      "repository": "https://github.com/AppImage/type2-runtime",
+      "release": "continuous",
+      "commit": "8f39b89e2ac31e1640b3d3f7e9a5108e6ce805fa",
+      "asset_id": 596078161,
+      "url": "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64",
+      "sha256": "156f4bdbde9c52d01814600013e0a273f0118dc2de98975f3c8c63427ec79074",
+      "bytes": 944632,
+      "retrieved": "2026-10-13",
+      "verification": "GitHub-published asset digest matches; no DLMS publisher signature"
+    }
+  },
+  "producer_image": "sha256:0cbc551e1b75bcd723ebd97289691eac0cf5ee8bd858f129c53cc912ec01ed27",
+  "materials_revision": "Corrected stale historical source/overlay guidance after independent review; previous artifacts retained privately",
+  "artifacts": {
+    "DLMS-Desktop-3.3.0-preview1-source-appimage-runtime.tar.zst": {
+      "sha256": "25b94c37be7bf97d085051976d3ad1f3720f9e9704320ae77eef30424caefb94",
+      "bytes": 24526166
+    },
+    "DLMS-Desktop-3.3.0-preview1-source-native.tar.zst": {
+      "sha256": "28e1043e31599a4611ee22f8492cbe84b9c2e42cfac2e1cc6d62e3fb8ac4fd46",
+      "bytes": 413729904
+    },
+    "DLMS-Desktop-3.3.0-preview1-source-python.tar.zst": {
+      "sha256": "40d78ccaad2cb0aadcca96f7f9cfeff06cba11e2de794ec45146954190b141f1",
+      "bytes": 100114172
+    },
+    "DLMS-Desktop-3.3.0-preview1-source-qt-pyside.tar": {
+      "sha256": "2d5f30392243200188b7df70563ba9d40e9847d695c979f628e38543d9d6ff73",
+      "bytes": 1037721600
+    },
+    "DLMS-Desktop-3.3.0-safety-20261018-linux-x86_64.AppImage": {
+      "sha256": "af46249a70520c2f5374419ccf7760aabee230887cc4eacaee2e02e74c12b9a5",
+      "bytes": 257432056
+    },
+    "DLMS-Desktop-3.3.0-safety-20261018-linux-x86_64.tar.zst": {
+      "sha256": "0268dd5ab14e173449e5a36dcb5bdd7e1cc809c0187abceacb67842e85792cb6",
+      "bytes": 269137734
+    },
+    "DLMS-Desktop-3.3.0-safety-20261018-notices.tar.zst": {
+      "sha256": "766f24c894d3dbf0805a797497edbe93a81de9b17bc74199b388e2a0fd28f87f",
+      "bytes": 2004809
+    },
+    "DLMS-Desktop-3.3.0-safety-20261018-source-application.tar.zst": {
+      "sha256": "59acf45f4be60a99a7c62b2ea04a6c6cbe4bda23b52badb34865a6012ec1ddc3",
+      "bytes": 51238884
+    }
+  },
+  "documentation_pr": "https://github.com/drakahari/DLMS_next/pull/21",
+  "documentation_ci": [
+    {
+      "run": 39170427754,
+      "conclusion": "success",
+      "event": "push"
+    },
+    {
+      "run": 39170431062,
+      "conclusion": "success",
+      "event": "pull_request"
+    }
+  ],
+  "source_additions_beyond_runtime": [
+    "docs/quality/workflow-final-safety-20261018.md",
+    "docs/quality/workflow-recovery-followup-20261018.md",
+    "docs/quality/workflow-remaining-20261018.json",
+    "docs/quality/workflow-remaining-20261018.md"
+  ],
+  "qualification_environment": "Fedora44 x86_64 COSMIC Wayland; native Ubuntu/Omarchy/Windows/Mac for this exact candidate pending",
+  "dependency_pins_changed": false,
+  "runtime_changed": false,
+  "preparation_documents_not_bundled": "The preparation commit containing this file was created after the build. Only documentation and copied sanitized synthetic fixtures differ from pinned build source."
+}
