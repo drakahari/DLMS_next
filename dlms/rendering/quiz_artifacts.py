@@ -4,6 +4,7 @@ import json
 import os
 import re
 import secrets
+import stat
 import time
 
 from dlms.rendering.safety import (
@@ -11,6 +12,141 @@ from dlms.rendering.safety import (
     _html_text,
     _json_for_inline_script,
 )
+
+
+class UnreconstructibleQuizContent(ValueError):
+    """Rebuild cannot prove complete content from these saved records."""
+
+
+def validate_rebuild_metadata(cur, quiz_id):
+    """Do not let permissive derived serializers discard corrupt authority."""
+    def invalid_constant(_value):
+        raise ValueError('Non-JSON numeric constant')
+    for row in cur.execute('SELECT media_json FROM questions WHERE quiz_id=?', (quiz_id,)):
+        try:
+            media = json.loads(row[0] or '{}', parse_constant=invalid_constant)
+            if not isinstance(media, dict):
+                raise ValueError('Media must be an object')
+            if set(media) - {'image_url', 'image_alt', 'image_edits', 'image_source',
+                             'source_number', 'composition_sources'}:
+                raise ValueError('Unsupported or reserved media fields')
+        except (TypeError, ValueError) as exc:
+            raise UnreconstructibleQuizContent('Saved media metadata is invalid') from exc
+    for row in cur.execute('SELECT verification_json FROM matching_pairs WHERE question_id IN '
+                           '(SELECT id FROM questions WHERE quiz_id=?)', (quiz_id,)):
+        try:
+            verification = json.loads(row[0] or '{}', parse_constant=invalid_constant)
+            if not isinstance(verification, dict):
+                raise ValueError('Verification must be an object')
+        except (TypeError, ValueError) as exc:
+            raise UnreconstructibleQuizContent('Saved matching metadata is invalid') from exc
+    from dlms.services.quiz_readiness import quiz_readiness
+    if not quiz_readiness(cur, quiz_id)['ready']:
+        raise UnreconstructibleQuizContent('Saved questions or answers are incomplete or invalid')
+
+
+def validate_rebuild_images(payload, *, resolve_image, validate_image):
+    """Verify required local playable images without fetching remote content."""
+    checked = set()
+    for item in payload:
+        if not item.get('image_url'):
+            continue
+        path = resolve_image(item['image_url'])
+        if not path or not os.path.isfile(path):
+            raise UnreconstructibleQuizContent('Required playable image is unavailable')
+        if path not in checked:
+            try:
+                validate_image(path)
+            except (OSError, ValueError) as exc:
+                raise UnreconstructibleQuizContent('Required playable image is invalid') from exc
+            checked.add(path)
+
+
+def equivalent_quiz_json_bytes(path, canonical):
+    """Preserve a current assessment's bytes during a no-op Rebuild only.
+
+    Fingerprints remain byte-bound. Compare the *whole* ordered assessment,
+    filling only absent player defaults; never compare just grading keys or
+    rewrite a session. Hotspots have a separate authoritative-content guard.
+    A missing/broken derived ordinary file can still be regenerated from DB.
+    Unknown fields cannot be proved reconstructible, so refuse rather than
+    silently dropping them. This is not a legacy-checkpoint compatibility path.
+    """
+    try:
+        metadata = os.lstat(path)
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISREG(metadata.st_mode):
+        raise ValueError('Playable content is not a regular file')
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0))
+    with os.fdopen(descriptor, 'rb') as source:
+        opened = os.fstat(source.fileno())
+        if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (metadata.st_dev, metadata.st_ino):
+            raise ValueError('Playable content changed while opening')
+        raw = source.read()
+    try:
+        payload = json.loads(raw)
+    except (ValueError, UnicodeError):
+        return None
+    if not isinstance(payload, list) or not payload:
+        return None
+    normalized = []
+    question_keys = {
+        'number', 'type', 'question', 'explanation', 'concepts', 'source', 'image_url', 'image_alt',
+        'image_edits', 'image_source', 'source_number', 'composition_sources',
+    }
+    for original in payload:
+        if not isinstance(original, dict):
+            return None
+        kind = original.get('type', 'choice')
+        allowed = question_keys | ({'pairs', 'round_size', 'direction'} if kind == 'matching' else {'choices', 'correct'})
+        if set(original) - allowed:
+            raise UnreconstructibleQuizContent('Playable content contains fields not reconstructible from saved records')
+        item = dict(original)
+        item.setdefault('type', 'choice')
+        item.setdefault('explanation', '')
+        item.setdefault('concepts', [])
+        if isinstance(item.get('source'), dict):
+            source = dict(item['source'])
+            if set(source) - {'organization', 'dataset', 'version', 'url', 'license'}:
+                raise UnreconstructibleQuizContent('Source content contains fields not reconstructible from saved records')
+            for key in ('organization', 'dataset', 'version', 'url', 'license'):
+                source.setdefault(key, None)
+            item['source'] = source
+        if item['type'] == 'matching':
+            item.setdefault('round_size', None)
+            item.setdefault('direction', 'term_to_definition')
+            if not isinstance(item.get('pairs'), list):
+                return None
+            pairs = []
+            for original_pair in item['pairs']:
+                if not isinstance(original_pair, dict):
+                    return None
+                if set(original_pair) - {'left', 'right', 'category', 'explanation', 'verification'}:
+                    raise UnreconstructibleQuizContent('Matching content contains fields not reconstructible from saved records')
+                pair = dict(original_pair)
+                pair.setdefault('category', '')
+                pair.setdefault('explanation', '')
+                pair.setdefault('verification', {})
+                pairs.append(pair)
+            item['pairs'] = pairs
+        elif item['type'] != 'choice':
+            raise UnreconstructibleQuizContent('Unsupported playable question type')
+        elif isinstance(item.get('choices'), list):
+            for choice in item['choices']:
+                if not isinstance(choice, dict):
+                    return None
+                if set(choice) - {'label', 'text', 'is_correct'}:
+                    raise UnreconstructibleQuizContent('Choice content contains fields not reconstructible from saved records')
+        normalized.append(item)
+    # JSON comparison distinguishes false from 0, retains list order, and
+    # includes all source/media/answer metadata. Object key order is irrelevant.
+    try:
+        equal = json.dumps(normalized, sort_keys=True, allow_nan=False) == json.dumps(
+            canonical, sort_keys=True, allow_nan=False)
+    except (TypeError, ValueError):
+        return None
+    return raw if equal else None
 
 
 def _write_staged_quiz_json(

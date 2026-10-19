@@ -1,0 +1,67 @@
+{
+  "base": "bfdffb720f743e9d720cd07292ec7e1ec325e059",
+  "status": "uncommitted source review; no build/install",
+  "findings": [
+    {
+      "id": 1,
+      "component": "shared missed-question prompt copy; Qt observation",
+      "scope": "shared exact-text defect; original Fedora symptom cause unresolved",
+      "status": "source correction verified; original physical and Server branch pending",
+      "impact": "combined clipboard may not match prompt; no grading/history loss",
+      "correction": "synchronous original-text copy-event binding and truthful denial feedback; no native authorization change",
+      "remaining": "normal Fedora/Wayland and affected Windows/Mac; source Server async write pending"
+    },
+    {
+      "id": 2,
+      "component": "Windows WebView2 NewWindowRequested",
+      "scope": "native Windows Local confirmed; native Server unverified",
+      "status": "native implementation handoff pending",
+      "impact": "Avery form POST becomes GET; receiver405",
+      "correction": "Avery-only engine-owned destination and deferral with per-view policy/state/lifetime; no GET endpoint change",
+      "remaining": "native implementation/review and Local/Server rendered output; physical printing separate"
+    },
+    {
+      "id": 3,
+      "component": "shared Rebuild derived artifacts/current Study identity",
+      "scope": "shared source confirmed; Windows normal observation",
+      "status": "source repair and focused contracts/Firefox verified",
+      "impact": "unchanged current quiz loses Resume eligibility; facts retained",
+      "correction": "preserve full-equivalent current raw bytes; refuse incomplete/unprovable authority; real edits still stale",
+      "remaining": "affected normal candidate/native reopen; no historical recovery"
+    },
+    {
+      "id": 4,
+      "component": "shared sidebar normalization and Marked destination shell",
+      "scope": "shared browser/Desktop; Mac owner report",
+      "status": "source repair and focused Firefox verified",
+      "impact": "declared Marked link omitted and destination lacked canonical sidebar",
+      "correction": "canonical GET link, reused sidebar seed, selected state and existing narrow toggle",
+      "remaining": "affected normal/native qualification"
+    },
+    {
+      "id": 5,
+      "component": "external Mac test wrapper integrity/open procedure",
+      "scope": "Mac test tooling; candidate payload verification passed",
+      "status": "procedure correction specified; native recipe/test pending",
+      "impact": "dirty wrapper fails strict signature; non-fail-fast command still opened",
+      "correction": "fresh staged wrapper, targeted prohibited metadata handling before signing, strict verify/inventory before open",
+      "remaining": "native recipe and intentional-failure control; preserve quarantine/originals"
+    },
+    {
+      "id": 6,
+      "component": "Windows native Save As dialog input",
+      "scope": "Windows native dialog; cause unresolved",
+      "status": "same-directory diagnostic handoff pending; no runtime change",
+      "impact": "one full-path input rejected before publication; basename alternative worked elsewhere",
+      "correction": "compare equivalent destinations/literal input first; preserve path/collision/no-replace guards",
+      "remaining": "native same-directory control and only demonstrated correction"
+    }
+  ],
+  "preserved_limits": [
+    "Original evidence unchanged",
+    "No historical recovery/migration",
+    "Mac overwrite refusal unqualified, not failed",
+    "Mac Rebuild/new Server-save omitted, not passed",
+    "Native printing/accessibility and other platforms not inferred"
+  ]
+}

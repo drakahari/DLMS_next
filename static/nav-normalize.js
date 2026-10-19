@@ -146,6 +146,7 @@
     if (key === 'certifications') return path.startsWith('/certifications');
     if (key === 'history') return path === '/history' || path.startsWith('/review');
     if (key === 'analytics') return path === '/dashboard';
+    if (key === 'marked') return path === '/marked-questions';
     if (key === 'learning') return path === '/learning-intelligence' || path === '/learning-profile' || path === '/review-schedule' || path === '/learning-diagnostics' || path.startsWith('/exam-plans');
     if (key === 'anki') return path === '/anki' || path.startsWith('/anki/');
     if (key === 'settings') return path === '/settings' || path.startsWith('/settings/') || path === '/admin/maintenance';
@@ -218,6 +219,10 @@
       if (!canonicalSeed.querySelector('a[href="/exam-plans"]')) {
         canonicalSeed.querySelector('a[href="/learning-profile"]')?.insertAdjacentHTML('beforebegin', sub('/exam-plans','branch','Exam Plans', false));
       }
+      if (!canonicalSeed.querySelector('a[href="/marked-questions"]')) {
+        canonicalSeed.querySelector('a[href="/anki"]')?.closest('.dashboard-nav-group')
+          ?.insertAdjacentHTML('beforebegin', item('marked','/marked-questions','star','Marked questions'));
+      }
       applyStudyAreaVisibility(studyAreaVisibility);
       return;
     }
@@ -243,6 +248,7 @@
       item('history','/history','history','Exam History'),
       item('analytics','/dashboard','analytics','Analytics'),
       `<div class="dashboard-nav-group">${item('learning','/learning-intelligence','learning','Learning Intelligence')}${learningOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/learning-intelligence','branch','Topic Intelligence', path === '/learning-intelligence')}${sub('/exam-plans','branch','Exam Plans', path.startsWith('/exam-plans'))}${sub('/learning-profile','branch','Learning Profile', path === '/learning-profile')}${sub('/review-schedule','branch','Review Schedule', path === '/review-schedule')}${sub('/learning-diagnostics','branch','Diagnostics', path === '/learning-diagnostics')}</div>` : ''}</div>`,
+      item('marked','/marked-questions','star','Marked questions'),
       `<div class="dashboard-nav-group">${item('anki','/anki','anki','Anki Tools')}${ankiOpen ? `<div class="dashboard-nav-submenu normalized-open">${sub('/anki/custom','branch','Custom Deck & Printable Cards', path === '/anki/custom')}${sub('/anki/law','branch','Law Study Anki', path === '/anki/law')}</div>` : ''}</div>`
     ].join('');
 
