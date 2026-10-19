@@ -17,10 +17,19 @@ redesign; its provenance and owner redistribution permission are recorded in
 desktop_assets/ICON_PROVENANCE.md.
 
 In Desktop, Avery **Print Cards** creates a US Letter PDF and offers the native
-Save As chooser. Save it, then open it to print at actual size (100%). Cancellation,
+Save As chooser. Save it, then use Preview or another PDF viewer’s Print command
+to print at actual size (100%). Desktop offers Save As PDF rather than a direct
+hardware-printer dialog. Cancellation,
 failure and refusal have visible feedback; existing destinations are not replaced.
-Selection, deck name and duplex setting survive Return. Physical printer alignment
-remains unqualified. The original POST-only layout route is unchanged.
+Selection, deck name and duplex setting survive Return with the updated shared
+Server templates. Older Server templates can still print PDFs, but require the
+shared template update to retain a nondefault short-edge setting on Return.
+Physical printer alignment remains unqualified. The original POST-only layout
+route is unchanged. Genuine native Save As/save/cancel acceptance for this package
+remains pending: the bounded native automation could not reach Avery through
+the exposed navigation controls. Source Qt output checks used simulated chooser responses and do not
+resolve that gap. See the post-build COMMIT_ARTIFACT_ACCEPTANCE.md record under
+docs/quality/qt-avery-print-20261019 for exact scope.
 
 Open the DMG and copy `DLMS Desktop.app` to a new location that does not overwrite
 an existing app or private Candidate launcher. Double-click that single app.

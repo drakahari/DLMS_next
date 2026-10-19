@@ -67,3 +67,12 @@ print action, output, cancellation and refusal. Do not port its native host code
 to Qt or claim it passed from these results. Shared template IDs/Return fields
 above are the only coordination surface; preserve `window.print()` and the
 POST-only layout contract when integrating. No Windows native code was changed.
+
+## Post-build commit/artifact and native-attempt record
+
+See [COMMIT_ARTIFACT_ACCEPTANCE.md](COMMIT_ARTIFACT_ACCEPTANCE.md) for the exact
+reviewed overlay commit/hash, immutable DMG/source correspondence, bounded genuine
+native-dialog attempt and pending acceptance. This is a documentation addendum;
+the packaged runtime and original prebuild evidence are unchanged. Desktop saves
+a PDF for external printing. Older Server templates can print; nondefault
+short-edge Return restoration still requires the shared template update.
