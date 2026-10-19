@@ -1,5 +1,8 @@
 """Packaging-only checks; no Qt import or installed application is required."""
 from pathlib import Path
+import hashlib
+import json
+import tarfile
 import subprocess
 import tempfile
 import unittest
@@ -164,6 +167,95 @@ Load command 5
             (Path(directory) / 'dangling').symlink_to('missing')
             with self.assertRaises(FileNotFoundError):
                 verify_payload(directory)
+
+
+class PackagingIdentityTests(unittest.TestCase):
+    def test_prepare_preserves_application_identity_through_dependency_loops(self):
+        from package_macos import preview_materials as materials
+        identity, overlay = materials.verified_source()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); cache = root / 'cache'; stage = root / 'stage'; stage.mkdir()
+            native = cache / 'sources/native'; native.mkdir(parents=True)
+            wheel_native = cache / 'sources/wheel-native'; wheel_native.mkdir()
+            shared = cache / 'sources/shared'; shared.mkdir()
+            for name in ('source.tar.gz', 'formula.rb', 'producer.patch', 'eng.traineddata'):
+                (native / name).write_text('synthetic ' + name)
+            index = {'complete': True, 'unresolved': [], 'producers': [{
+                'name': 'fixture', 'source': {'file': 'source.tar.gz', 'sha256': materials.digest(native / 'source.tar.gz')},
+                'formula': 'formula.rb', 'formula_sha256': materials.digest(native / 'formula.rb'),
+                'patches': [{'file': 'producer.patch', 'sha256': materials.digest(native / 'producer.patch')}]}],
+                'english_model': {'file': 'eng.traineddata', 'sha256': materials.digest(native / 'eng.traineddata')}}
+            (native / 'NATIVE_SOURCES.json').write_text(json.dumps(index))
+            (wheel_native / 'wheel-source.tar.gz').write_bytes(b'synthetic wheel source')
+            (wheel_native / 'WHEEL_NATIVE_SOURCES.json').write_text(json.dumps(
+                {'complete': True, 'unresolved': [], 'sources': [{
+                    'file': 'wheel-source.tar.gz', 'sha256': materials.digest(wheel_native / 'wheel-source.tar.gz')}]}))
+            (shared / 'upstream-source.tar').write_bytes(b'synthetic upstream')
+            archive = shared / 'DLMS-Desktop-3.3.0-preview1-notices.tar.zst'
+            with tarfile.open(archive, 'w:zst'):
+                pass
+            with patch.object(materials, 'SHARED', {'upstream-source.tar': materials.digest(shared / 'upstream-source.tar')}), \
+                    patch.object(materials, 'NOTICES_SHA', materials.digest(archive)):
+                notices, _ = materials.prepare(stage, {'wheels': {}, 'wheelhouse': str(root)}, cache,
+                                                source=identity, patch=overlay)
+                materials.verify(notices)
+            self.assertEqual((notices / 'PACKAGING_CHANGES.patch').read_bytes(), overlay)
+            for name in ('EXACT_INPUTS.json', 'SOURCE_MATERIALS.json', 'PACKAGING_SOURCE.json'):
+                record = json.loads((notices / name).read_text())
+                self.assertEqual(record['application_base'], identity['application_base'])
+                self.assertEqual(record['packaging_patch'], identity['packaging_patch'])
+
+    def test_actual_head_and_exact_overlay_are_separate(self):
+        from package_macos.preview_materials import BASE, ROOT, verified_source
+        source, overlay = verified_source()
+        actual = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT).decode().strip()
+        self.assertEqual(source['application_base'], actual)
+        self.assertEqual(actual, BASE)
+        self.assertIs(source['clean_unmodified_build'], False)
+        self.assertEqual(source['packaging_patch']['sha256'], hashlib.sha256(overlay).hexdigest())
+        self.assertIn('package_macos/preview_materials.py', source['packaging_patch']['changed_files'])
+
+    def test_wrong_head_is_refused(self):
+        from package_macos.preview_materials import verified_source
+        with self.assertRaisesRegex(ValueError, 'Unexpected release source HEAD'):
+            verified_source(expected_head='0' * 40)
+
+    def test_untracked_and_unreviewed_runtime_changes_are_refused(self):
+        from package_macos.preview_materials import BASE, verified_source
+        for results in ([BASE.encode(), b'unreviewed.py\0'],
+                        [BASE.encode(), b'', b'desktop/backend.py\0']):
+            with self.subTest(results=results), patch(
+                    'package_macos.preview_materials.subprocess.check_output', side_effect=results):
+                with self.assertRaises(ValueError):
+                    verified_source()
+
+    def test_rehashed_false_metadata_and_changed_overlay_are_refused(self):
+        from package_macos.preview_materials import verified_source, verify
+        source, overlay = verified_source()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ('REDISTRIBUTION.md', 'BUILD_AND_REPLACEMENT.md', 'RELEASE_PROPOSAL.md',
+                         'LICENSE', 'ICON_PROVENANCE.md', 'native/NATIVE_SOURCES.json',
+                         'wheel-native/WHEEL_NATIVE_SOURCES.json'):
+                path = root / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_text('fixture')
+            def write_materials(identity, exact, patch_bytes):
+                for name, value in (('PACKAGING_SOURCE.json', identity), ('EXACT_INPUTS.json', exact),
+                                    ('SOURCE_MATERIALS.json', {**identity, 'unresolved': []})):
+                    (root / name).write_text(json.dumps(value))
+                (root / 'PACKAGING_CHANGES.patch').write_bytes(patch_bytes)
+                manifest = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                            for p in root.rglob('*') if p.is_file() and p.name != 'MANIFEST.json'}
+                (root / 'MANIFEST.json').write_text(json.dumps(
+                    {'format': 1, 'platform': 'macos-arm64-preview', 'sha256': manifest}))
+            write_materials(source, source, overlay)
+            verify(root)
+            stale = {**source, 'application_base': '717dd01a5efa9c6cbc8f95f463e70714ec198597'}
+            for identity, exact, patch_bytes in ((source, stale, overlay), (stale, stale, overlay),
+                                                  (source, source, overlay + b'changed')):
+                with self.subTest(identity=identity['application_base'], exact=exact['application_base']):
+                    write_materials(identity, exact, patch_bytes)
+                    with self.assertRaisesRegex(ValueError, 'Incorrect application source'):
+                        verify(root)
 
 
 if __name__ == '__main__':

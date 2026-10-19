@@ -889,6 +889,8 @@ class DesktopWindow(QMainWindow):
         self.profile.downloadRequested.connect(self._server_download)
         self.view = QWebEngineView(self)
         self.view.setPage(ServerPage(self.profile, self, server["origin"], parent=self.view))
+        from .qt_printing import install as install_printing
+        install_printing(self.view.page(), self)
         # WebEngine's outer view can default to NoFocus while its internal
         # focus proxy accepts keys. Save an explicit interactive policy before
         # the loading cover propagates NoFocus to that proxy.
@@ -1370,8 +1372,8 @@ class DesktopWindow(QMainWindow):
         self.profile.downloadRequested.connect(self._download)
         self.view = QWebEngineView(self)
         page = LocalPage(self.profile, self, parent=self.view)
-        page.printRequested.connect(self._print_pdf)
-        page.pdfPrintingFinished.connect(self._pdf_finished)
+        from .qt_printing import install as install_printing
+        install_printing(page, self)
         self.view.setPage(page)
         shell = QWidget(self)
         layout = QVBoxLayout(shell)

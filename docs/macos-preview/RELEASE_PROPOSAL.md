@@ -1,32 +1,41 @@
-> Unpublished focused Mac candidate `macos-focus-fix-20261019`.
-> Exact source/handoff: `717dd01a5efa9c6cbc8f95f463e70714ec198597`;
-> shared runtime correction: `c1268daaf8a1dab2919b912c117a1ac4f86ea6c6`.
-> Uncommitted shared Qt Server focus correction, test tooling and packaging identity
-> overlay are recorded separately.
-> Bundle: `DLMS Desktop Focus Candidate.app`. During this task open only via
-> the verified task wrapper with its fixed synthetic data-root/profile. The bare
-> app retains the public Preview default directory; do not open against existing
-> installed/personal storage. No installation/release is authorized. Ad hoc only,
-> no Developer ID/notarization; downloaded/quarantined approval is unqualified for
-> this artifact. Same-user malicious native processes remain outside the selected
-> file snapshot guarantee. Historical Preview1 instructions below are reference,
-> not this candidate's identity or qualification.
-
 # Proposed Mac preview release — approval required
 
-**DLMS Desktop 3.3.0 Preview 1 — Apple Silicon**
+**DLMS Desktop 3.3.0 Preview — Apple Silicon**
+
+Public source: `a8cd5182b6870e8bfdc1fca569b2cda9f191a1be`, plus the separately
+recorded Mac public-packaging changes and shared Qt Avery printing correction
+supplied in the exact source companion. The source record explicitly lists these
+runtime changes; this is not a clean, unmodified build of the base commit.
 
 This preview packages the DLMS Local backend and Server client in one normal
 Finder application. File selection, TXT/PDF/image import, OCR, study, exports and
 native backup/restore remain enabled. Local and Server retain separate storage,
 credentials, origins and privileges; outage never silently switches to Local.
 Normal browser handoff uses your actual default browser/profile without automatic
-paste or submission. The geometric replacement badge used in that preview is included.
+paste or submission. The original round blue DLMS icon is restored without a
+redesign; its provenance and owner redistribution permission are recorded in
+desktop_assets/ICON_PROVENANCE.md.
+
+In Desktop, Avery **Print Cards** creates a US Letter PDF and offers the native
+Save As chooser. Save it, then use Preview or another PDF viewer’s Print command
+to print at actual size (100%). Desktop offers Save As PDF rather than a direct
+hardware-printer dialog. Cancellation,
+failure and refusal have visible feedback; existing destinations are not replaced.
+Selection, deck name and duplex setting survive Return with the updated shared
+Server templates. Older Server templates can still print PDFs, but require the
+shared template update to retain a nondefault short-edge setting on Return.
+Physical printer alignment remains unqualified. The original POST-only layout
+route is unchanged. Genuine native Save As/save/cancel acceptance for this package
+remains pending: the bounded native automation could not reach Avery through
+the exposed navigation controls. Source Qt output checks used simulated chooser responses and do not
+resolve that gap. See the post-build COMMIT_ARTIFACT_ACCEPTANCE.md record under
+docs/quality/qt-avery-print-20261019 for exact scope.
 
 Open the DMG and copy `DLMS Desktop.app` to a new location that does not overwrite
 an existing app or private Candidate launcher. Double-click that single app.
-It uses a new, separately marked `DLMS Desktop Preview` data namespace and profile
-`default`. No automatic import, migration, installation replacement or production
+It uses the separately marked `DLMS Desktop Preview` data namespace and profile
+`default`; an existing valid preview root is reused without adopting unmarked data.
+No automatic import, migration, installation replacement or production
 server change is performed. Choose your Server through the native mode control.
 A first local-network connection can require macOS permission and a retry.
 
@@ -48,8 +57,10 @@ and change bytes after verification. Such a process is outside this preview's
 guarantee. This is **not Linux-equivalent irrevocable sealing**. A remote page
 alone does not receive an API to clear flags or select arbitrary private paths.
 
-Download all accompanying notices and exact application/Qt/Python/Mac-native
-source companions. Read REDISTRIBUTION.md and BUILD_AND_REPLACEMENT.md. SHA-256
+Ordinary users need only the DMG. Matching notices and exact application, Qt,
+Python and Mac-native source companions accompany the distribution for licensing,
+inspection and rebuilding; retain their availability together. See
+REDISTRIBUTION.md and BUILD_AND_REPLACEMENT.md. SHA-256
 checksums detect mismatches; they do not independently verify the publisher.
 
 Reuse of accepted Mac Local and synthetic Server walkthrough evidence is labeled
@@ -69,7 +80,6 @@ publication. No such action has occurred.
 Apple references: [Safely open apps](https://support.apple.com/en-us/102445) and
 [Developer ID](https://developer.apple.com/developer-id/).
 
-Artwork history: this release text describes its already-built geometric badge.
-Current source restores the original round blue icon, identified by the owner as
-AI-generated; see desktop_assets/ICON_PROVENANCE.md for its distinct rights status.
-No previously published artifact is changed by this source update.
+The restored round blue artwork is owner-identified as AI-generated. Its known
+provenance, owner permission and unknown generation details are recorded separately
+from the code license. Previously published artifacts remain unchanged.

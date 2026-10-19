@@ -1,25 +1,20 @@
-> Unpublished focused Mac candidate `macos-focus-fix-20261019`.
-> Exact source/handoff: `717dd01a5efa9c6cbc8f95f463e70714ec198597`;
-> shared runtime correction: `c1268daaf8a1dab2919b912c117a1ac4f86ea6c6`.
-> Uncommitted shared Qt Server focus correction, test tooling and packaging identity
-> overlay are recorded separately.
-> Bundle: `DLMS Desktop Focus Candidate.app`. During this task open only via
-> the verified task wrapper with its fixed synthetic data-root/profile. The bare
-> app retains the public Preview default directory; do not open against existing
-> installed/personal storage. No installation/release is authorized. Ad hoc only,
-> no Developer ID/notarization; downloaded/quarantined approval is unqualified for
-> this artifact. Same-user malicious native processes remain outside the selected
-> file snapshot guarantee. Historical Preview1 instructions below are reference,
-> not this candidate's identity or qualification.
-
 # Build and replace components of the Apple Silicon preview
 
-Public base: `e084c04a2be7b1e5f593b12fc0f232b7d3c2c75b`, on
-`feature/macos-desktop-public-preview`. The application companion is the exact
-reviewed public source snapshot plus Mac changes, without private Git history.
+Public source: `a8cd5182b6870e8bfdc1fca569b2cda9f191a1be`, including the
+restored original round blue icon and accepted workflow/focus repairs. The
+application companion includes the separately recorded public-packaging changes
+and reviewed shared Qt Avery printing correction,
+without private Git history. This package launches `DLMS Desktop.app` directly;
+it does not distribute or require the private test launcher/payload arrangement.
 APPLICATION_SOURCE_MANIFEST.json identifies every exported file. Build provenance
 records the Git base and exact runtime snapshot; a working-tree snapshot is not
 misrepresented as a pristine committed build.
+Both notice indexes derive `application_base` from the verified release HEAD.
+`PACKAGING_SOURCE.json` separately records the applied packaging overlay, whose
+exact `PACKAGING_CHANGES.patch` (including the explicitly listed Qt runtime changes)
+is included in notices and the application-source
+archive as well as supplied separately. Historical acceptance-source identifiers
+are labeled as reused evidence, never as this application's source base.
 
 Use Apple Silicon macOS with Xcode Command Line Tools and Python3.14.7. Recorded
 native qualification is macOS26.6.2 arm64; no universal binary or other macOS-version
