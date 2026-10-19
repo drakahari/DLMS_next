@@ -1,6 +1,6 @@
 # Six-item daily-use repair — source review
 
-Base: `bfdffb720f743e9d720cd07292ec7e1ec325e059`. Branch: `fix/six-item-daily-use-20261019`. Uncommitted source work; no candidate build, installed change, publication, history migration or recovery tool.
+Base: `bfdffb720f743e9d720cd07292ec7e1ec325e059`. Branch: `fix/six-item-daily-use-20261019`. Original review snapshot subsequently committed as `fab0fd868dd70fd78930966f96ccfd8a23786b88` in draft PR #23; no candidate build, installed change, history migration or recovery tool.
 
 ## Disposition
 
@@ -15,7 +15,7 @@ Base: `bfdffb720f743e9d720cd07292ec7e1ec325e059`. Branch: `fix/six-item-daily-us
 
 ## Content/recovery boundaries
 
-Rebuild comparison includes response keys, choice/pair order, source/media metadata and question text, not titles or grading surrogates alone. It never ignores unknown question/choice/pair/source fields: an item with unprovable content is refused with prior files retained. Incomplete canonical answers/pairs, corrupt/non-object/non-JSON metadata, reserved media overrides, absent or invalid required local images and unsafe artifact types are refused before publication. Complete ordinary canonical records can still regenerate absent/broken derived JSON; this does not reconstruct missing hotspot authority or recover damaged historical quizzes. Unknown/unsupported states are kept, not deleted or migrated. Valid real edits deliberately invalidate stale current Resume.
+Rebuild comparison includes response keys, choice/pair order, source/media metadata and question text, not titles or grading surrogates alone. For represented assessment content, it never ignores unknown question/choice/pair/source fields: an item with unprovable content is refused with prior files retained. Incomplete canonical answers/pairs, corrupt/non-object/non-JSON metadata, reserved media overrides, absent or invalid required local images and unsafe artifact types are refused before publication. Complete ordinary canonical records can still regenerate absent/broken derived JSON; this does not reconstruct missing hotspot authority or recover damaged historical quizzes. Unknown/unsupported states are kept, not deleted or migrated. Valid real edits deliberately invalidate stale current Resume.
 
 ## Focused evidence
 
@@ -47,3 +47,16 @@ The last command uses a fresh disposable profile and the existing QtChecks contr
 3. Mac: apply/test only the external wrapper procedure, preserve the accepted payload, and qualify the shared patch on an authorized native candidate. Reuse the accepted Mac Avery result. Overwrite refusal, omitted Rebuild/new Server-save checks, exact clipboard bytes, signing/notarization, upload protection and other native limits remain as recorded in MAC_HANDOFF.md.
 
 These are batched native handoffs, not a request for continuous owner UAT. Historical recovery, physical printing/duplex, full accessibility, external provider submission and distribution qualification remain outside this patch. No replacement candidate is ready to claim all six findings resolved.
+
+## Narrow follow-up: CI-discovered derived stub refusal
+
+Runtime correction: `c1268daaf8a1dab2919b912c117a1ac4f86ea6c6`. Prior push/PR application CI failed the existing `test_rebuild_all_regenerates_choice_matching_and_generated_quiz_pages_only`: its intentionally unusable `[{"stale":true}]` derived file was refused despite complete canonical records. This was an overbroad runtime refusal, not an obsolete assertion; the assertion remains unchanged. Prior failed runs and the original review snapshot are retained.
+
+The correction regenerates only wholly flat marker-only derived arrays with no assessment-bearing keys, after existing canonical readiness, metadata/image and hotspot-authority checks. Mixed represented/stub content and unknown nested content retain conservative refusal. Existing comparison, exact-byte preservation, staged publication/rollback and real-edit stale-Study checks remain in force. No schema, fingerprint or history rewriting.
+
+Focused validation (synthetic source only): the exact failing test passes unchanged; the five affected test files pass **73 tests and 12 subtests**. Boundaries cover choice/matching stub regeneration, missing canonical answers/pairs, unknown/mixed/nested/spatial authority, hotspot marker-only refusal, unchanged bytes/current Resume, genuine edits, partial results and failed publication. The rollback test now asserts the intended publication fault actually occurred. Independent read-only design/final review found no blocker. No new browser/native/package claim or rebuilt candidate; handoff source pins above are updated separately from old artifact identities.
+
+```sh
+python -m pytest -q -p no:cacheprovider tests/test_quiz_mutation_atomicity.py::QuizMutationAtomicityTests::test_rebuild_all_regenerates_choice_matching_and_generated_quiz_pages_only
+python -m pytest -q -p no:cacheprovider tests/test_quiz_mutation_atomicity.py tests/test_rebuild_current_identity.py tests/test_hotspot_preservation.py tests/test_rebuild_safe_diagnostics.py tests/test_study_sessions.py
+```

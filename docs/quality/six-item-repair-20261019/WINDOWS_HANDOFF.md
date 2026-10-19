@@ -1,5 +1,12 @@
 # Windows native continuation — six-item repair
 
+## Current shared continuation pin
+
+Use runtime correction `c1268daaf8a1dab2919b912c117a1ac4f86ea6c6` on PR #23 branch `fix/six-item-daily-use-20261019` (including original shared repair `fab0fd868dd70fd78930966f96ccfd8a23786b88`). Later handoff-only commits do not change these runtime inputs. The original native artifact identities below remain historical evidence; they do **not** contain this patch. No new package was built.
+
+The CI-discovered Rebuild refusal now distinguishes a whole flat marker-only derived stub from represented assessment content. Complete validated canonical ordinary/matching records may regenerate that unusable stub; missing answers/pairs, unknown represented/nested content and missing/inconsistent hotspot authority still refuse without replacement. Valid unchanged quizzes retain their exact bytes; real edits still invalidate stale Study. The original failing assertion passed unchanged; 73 directly affected source tests and 12 subtests passed. Include one marker-only stub regeneration control and incomplete-canonical/hotspot refusal in the already-planned native Rebuild check; no historical recovery or migration.
+
+
 Status: source inspection and supplied-report diagnosis only; no Windows execution or repair in this Fedora task. Base runtime `bfdffb720f743e9d720cd07292ec7e1ec325e059`, accepted build source `4b50e2b3fb39dd478d355bf785b319805579076c`. Retained Windows report: normal EXE SHA-256 `310a2974a054dbad9a78ea7fb0a1218e23d40da85786cc9b1ce5f9a902b1e440`, 6,982-file inventory SHA-256 `2ace498781cdcc8ab5c18d60c04bef128775c9ad1876ab8febcaea3dbe16506b`, Windows 11 build 26200 x64, WebView2 155.0.4283.62. These are reported native identities, not artifacts newly verified here. Another machine's retained paths need not exist locally.
 
 Use only an isolated task candidate/profile, task-created ordinary Documents fixtures and synthetic endpoints. Preserve original artifacts, logs and installed applications/data. Review source before any affected candidate build. No commit, push, install or production connection is authorized by this handoff.

@@ -1,6 +1,6 @@
 {
   "base": "bfdffb720f743e9d720cd07292ec7e1ec325e059",
-  "status": "uncommitted source review; no build/install",
+  "status": "source repair submitted to draft PR23; no build/install",
   "findings": [
     {
       "id": 1,
@@ -24,9 +24,9 @@
       "id": 3,
       "component": "shared Rebuild derived artifacts/current Study identity",
       "scope": "shared source confirmed; Windows normal observation",
-      "status": "source repair and focused contracts/Firefox verified",
+      "status": "source repair plus narrow CI-stub correction and focused regressions verified; native qualification pending",
       "impact": "unchanged current quiz loses Resume eligibility; facts retained",
-      "correction": "preserve full-equivalent current raw bytes; refuse incomplete/unprovable authority; real edits still stale",
+      "correction": "preserve full-equivalent current raw bytes; regenerate marker-only derived stubs only from complete validated canonical records; refuse incomplete/unprovable authority; real edits still stale",
       "remaining": "affected normal candidate/native reopen; no historical recovery"
     },
     {
@@ -63,5 +63,6 @@
     "Mac overwrite refusal unqualified, not failed",
     "Mac Rebuild/new Server-save omitted, not passed",
     "Native printing/accessibility and other platforms not inferred"
-  ]
+  ],
+  "runtime_correction": "c1268daaf8a1dab2919b912c117a1ac4f86ea6c6"
 }

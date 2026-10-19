@@ -1,5 +1,12 @@
 # Mac native continuation — six-item repair
 
+## Current shared continuation pin
+
+Use runtime correction `c1268daaf8a1dab2919b912c117a1ac4f86ea6c6` on PR #23 branch `fix/six-item-daily-use-20261019` (including original shared repair `fab0fd868dd70fd78930966f96ccfd8a23786b88`). Later handoff-only commits do not change these runtime inputs. The original native artifact identities below remain historical evidence; they do **not** contain this patch. No new package was built.
+
+The CI-discovered Rebuild refusal now distinguishes a whole flat marker-only derived stub from represented assessment content. Complete validated canonical ordinary/matching records may regenerate that unusable stub; missing answers/pairs, unknown represented/nested content and missing/inconsistent hotspot authority still refuse without replacement. Valid unchanged quizzes retain their exact bytes; real edits still invalidate stale Study. The original failing assertion passed unchanged; 73 directly affected source tests and 12 subtests passed. Include one marker-only stub regeneration control and incomplete-canonical/hotspot refusal in the already-planned native Rebuild check; no historical recovery or migration.
+
+
 Status: supplied-report diagnosis and tooling handoff only; no native Mac execution, signing, attribute change or launch in this Fedora task. Accepted build source `4b50e2b3fb39dd478d355bf785b319805579076c`, shared runtime `bfdffb720f743e9d720cd07292ec7e1ec325e059`; retained macOS 26.6.2 arm64 DMG SHA-256 `6e3dd5c27af920d9972a2204801d650587bd6a5dbe350d22d04a72da04b97db2`. Retain the separate five-file metadata overlay SHA-256 `a6741cc4084b8fb42ccbe50aba5fbe0fb25ff13b90e793aa58cca1cc08e8b76d`. Another machine's retained paths are references, not assumed available here.
 
 Use the native task's isolated candidate/profile and task-created ordinary Documents fixtures only. Preserve the original wrapper, accepted payload, DMG, metadata overlay and evidence. No installed change, production connection, commit or push. Review source/tooling before any affected candidate build; do not rebuild the accepted payload solely to fix an external test wrapper.
