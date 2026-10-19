@@ -172,9 +172,12 @@ sealed partial class DesktopRenderer : Form {
                 // Revalidate after off-UI work. No await occurs between this
                 // complete per-hop decision and the one continue/fail command.
                 if(closing||disposed||requestPolicyFailed||before!=generation||navigation!=activeNavigation)reason="stale-context";
+                if(averyParent!=null&&(!AveryLeaseCurrent(averyLease)||!root))reason="avery-context";
+                if(averyParent!=null&&reason!=null)AveryState("request-refused-"+reason);
+                if(averyParent!=null&&root&&data.ResourceType=="Document")AveryState("document-fetch-"+(reason??"allowed"));
                 bool added=reason==null&&mode=="local";
                 if(added)headers["X-DLMS-Desktop-Token"]=token;
-                if(added&&root&&data.ResourceType=="Document")TagAIFetch(url,headers);
+                if(added&&root&&data.ResourceType=="Document"&&averyParent==null)TagAIFetch(url,headers);
                 var outgoing=headers.Select(entry=>new{name=entry.Key,value=entry.Value}).ToArray();
                 item.Reason=reason??"allowed";
                 await ResolveRequest(item,reason==null,outgoing);
@@ -257,12 +260,13 @@ sealed partial class DesktopRenderer : Form {
         if(input)Console.SetIn(new StreamReader(new FileStream(new SafeFileHandle(GetStdHandle(-10),false),FileAccess.Read),encoding));
     }
 
-    void Emit(string kind, object value) { lock(outputLock) Console.WriteLine(json.Serialize(new { @event=kind, value=value })); }
-    void Event(string kind, Dictionary<string,object> fields) { fields["event"]=kind; lock(outputLock)Console.WriteLine(json.Serialize(fields)); }
+    void Emit(string kind, object value) { if(averyParent!=null){if(kind=="fatal")AveryFailure("policy-failed");return;} lock(outputLock) Console.WriteLine(json.Serialize(new { @event=kind, value=value })); }
+    void Event(string kind, Dictionary<string,object> fields) { if(averyParent!=null){AveryControllerEvent(kind,fields);return;} fields["event"]=kind; lock(outputLock)Console.WriteLine(json.Serialize(fields)); }
     void Reply(object id, bool ok, object value) { Event("reply",new Dictionary<string,object>{{"id",id},{"ok",ok},{"value",value}}); }
     void NavigationEvent(string kind,Navigation nav,ulong id,Dictionary<string,object> fields) {fields["generation"]=nav.Generation;fields["nav_id"]=id;Event(kind,fields);}
     bool Current(Navigation nav,ulong id) {return !closing&&!disposed&&nav.Generation==generation&&id==activeNavigation;}
     async void ExternalRequest(string target,bool user,bool redirected,string kind,CoreWebView2FrameInfo frame=null) {
+        if(averyParent!=null){AveryStatus("External links are unavailable in this Avery preview.");return;}
         Navigation nav;
         string source=view.CoreWebView2.Source;
         // FrameInfo IDs are not supplied by every supported Runtime. A page
@@ -361,8 +365,235 @@ sealed partial class DesktopRenderer : Form {
             try{ApplyScale(qtScale,userZoom);}catch(Exception ex){Emit("scale-failed",ex.GetType().Name);}
         }
     }
-    public DesktopRenderer(Dictionary<string,object> settings) {
-        config=settings;origin=TextValue(config,"origin").TrimEnd('/');mode=TextValue(config,"mode");token=TextValue(config,"token");
+    // Closed-purpose Avery destination. Each instance retains its own CDP,
+    // request, frame and navigation state; only the root owns environment/pins.
+    readonly DesktopRenderer averyParent;
+    DesktopRenderer averyChild;
+    readonly List<DesktopRenderer> retiredAvery=new List<DesktopRenderer>();
+    AveryOpen averyOpening,averyLease;
+    Task averyCreation,averyClose;
+    readonly TaskCompletionSource<bool> averyPolicyReady=new TaskCompletionSource<bool>();
+    int averyBootstrapRequests;
+    Label averyLabel;
+    bool averyInitialNavigation;
+    int averyRecords;
+    long serverCoverSerial;
+    sealed class AveryOpen {
+        public CoreWebView2NewWindowRequestedEventArgs Args;
+        public CoreWebView2Deferral Deferral;
+        public DesktopRenderer Child;
+        public long Generation;public ulong Navigation;
+        public string Identity,Source,Frame;
+        public bool Cancelled,Completed,WarningShown;
+    }
+    bool AveryUrl(string value,string path) {
+        Uri parsed;
+        return Exact(value)&&Uri.TryCreate(value,UriKind.Absolute,out parsed)&&
+            parsed.AbsolutePath==path&&parsed.Query.Length==0&&parsed.Fragment.Length==0;
+    }
+    internal static bool AveryHeadersAllowed(string mode,string origin,string source,bool hasOrigin,string requestOrigin,bool hasReferer,string referer) {
+        if(mode=="local")return hasOrigin&&hasReferer&&requestOrigin==origin&&referer==source;
+        // A Server's no-referrer response policy legitimately removes Referer
+        // and serializes Origin as null. Headers never establish authority:
+        // the caller still requires the full native one-use opener/frame lease.
+        if(mode!="server")return false;
+        return (!hasOrigin||requestOrigin=="null"||requestOrigin==origin)&&(!hasReferer||referer==source);
+    }
+    bool AveryLeaseCurrent(AveryOpen lease) {
+        var owner=averyParent??this;Navigation nav;
+        return lease!=null&&!lease.Cancelled&&!owner.closing&&!owner.disposed&&
+            !owner.requestPolicyFailed&&owner.browserPolicyReady&&(owner.mode!="local"||owner.localPolicyVerified)&&
+            owner.generation==lease.Generation&&owner.activeNavigation==lease.Navigation&&
+            owner.documentIdentity==lease.Identity&&owner.mainFrame==lease.Frame&&
+            owner.view.CoreWebView2!=null&&owner.view.CoreWebView2.Source==lease.Source&&
+            owner.AveryUrl(lease.Source,"/anki/custom")&& !owner.documentHadChildFrame&&
+            (owner.mode!="server"||(!owner.serverCover.Visible&&owner.view.Visible))&&
+            owner.navigations.TryGetValue(lease.Navigation,out nav)&&owner.Current(nav,lease.Navigation)&&nav.Completed;
+    }
+    void AveryState(string state) {
+        var owner=averyParent??this;
+        if(owner.averyRecords++<96)owner.Event("avery-state",new Dictionary<string,object>{{"state",state},{"mode",mode},{"source_generation",owner.generation},{"utc",DateTime.UtcNow.ToString("o")}});
+    }
+    void AveryStatus(string message) {if(averyLabel!=null&&!averyLabel.IsDisposed)averyLabel.Text=message;}
+    void AveryFailure(string state) {
+        AveryStatus("Avery preview stopped safely. Return to the unchanged custom deck and retry after the page is ready.");
+        AveryState(state);ObserveRequestTask(Shutdown());
+    }
+    void AveryControllerEvent(string kind,Dictionary<string,object> fields) {
+        if(kind=="policy-blocked")AveryState("resource-refused-"+TextValue(fields,"reason"));
+        if(kind=="load-finish") {
+            bool ok=fields.ContainsKey("ok")&&Convert.ToBoolean(fields["ok"]);
+            AveryStatus(ok?"Avery preview. Return closes this view and preserves the source deck. Printing, downloads and file selection are unavailable here.":"Avery preview did not load. Return to the source deck; no selection was changed.");
+            AveryState(ok?"rendered":"load-failed");
+            var detail=new Dictionary<string,object>();
+            foreach(string key in new[]{"error","http_status","identity_error","navigation_success"})if(fields.ContainsKey(key))detail[key]=fields[key];
+            detail["event"]="avery-load-result";averyParent.Event("avery-load-result",detail);
+        }
+        // Never alias child events to the primary Python renderer's identities,
+        // dialogs, downloads, print, ready or retirement command transactions.
+    }
+    void ConfigureAveryWindow() {
+        Text="DLMS Avery preview - "+(mode=="local"?"Local":"Server "+origin);
+        // The production root is embedded in Qt. Runtime155 refuses a
+        // controller under a separate top-level root (0x8007139F). Keep this
+        // Avery-only transient under that exact owned root, without reparenting
+        // a live controller or navigating/hiding the original page.
+        TopLevel=false;FormBorderStyle=FormBorderStyle.None;Dock=DockStyle.Fill;ShowInTaskbar=false;
+        averyParent.Controls.Add(this);
+        var bar=new FlowLayoutPanel{Dock=DockStyle.Top,Height=68,AutoSize=false,WrapContents=false,Padding=new Padding(8)};
+        var back=new Button{Text="Return to custom deck",AutoSize=true,TabStop=true};
+        back.Click+=async(s,e)=>await Shutdown();
+        averyLabel=new Label{Text="Preparing the original Avery request...",AutoSize=false,Width=750,Height=52,UseMnemonic=false};
+        bar.Controls.Add(back);bar.Controls.Add(averyLabel);Controls.Add(bar);bar.SendToBack();
+    }
+    // Presentation only: the caller supplies the existing native ownership lease.
+    // A real cover or invalidated owner retires the preview, never merely buries it.
+    internal static async Task<string> ApplyServerCoverStack(Control browser,Control cover,
+        Control preview,bool shown,bool browserVisible,bool previewCurrent,bool previewShown,Func<Task> retire,Func<bool> current) {
+        if(!current())return "superseded";
+        if(shown||!browserVisible||(preview!=null&&!previewCurrent)) {
+            await retire();preview=null;
+        }
+        // Retirement can yield; a later cover/navigation/close owns presentation.
+        if(!current())return "superseded";
+        browser.Visible=browserVisible;cover.Visible=shown;
+        if(shown){cover.BringToFront();return "cover";}
+        if(preview!=null&&!preview.IsDisposed&&previewCurrent&&previewShown) {
+            preview.BringToFront();return "preview";
+        }
+        browser.BringToFront();return "source";
+    }
+    bool CompleteAvery(AveryOpen lease,bool allow) {
+        if(lease.Completed)return true;lease.Completed=true;
+        try {
+            if(!allow)lease.Cancelled=true;
+            lease.Deferral.Complete();return true;
+        }catch {ObserveRequestTask(FailRequestPolicy("avery-deferral-completion"));return false;}
+    }
+    void BeginAvery(CoreWebView2NewWindowRequestedEventArgs args) {
+        Navigation nav;string source=view.CoreWebView2.Source;
+        if(closing||disposed||averyOpening!=null||averyChild!=null||retiredAvery.Count>=32||
+            !args.IsUserInitiated||!AveryUrl(source,"/anki/custom")||!AveryUrl(args.Uri,"/anki/printable")||
+            documentHadChildFrame||args.OriginalSourceFrameInfo==null||args.OriginalSourceFrameInfo.Source!=source||
+            documentIdentity==null||String.IsNullOrEmpty(mainFrame)||!browserPolicyReady||
+            !navigations.TryGetValue(activeNavigation,out nav)||!Current(nav,activeNavigation)||!nav.Completed) {
+            AveryState("refused");return;
+        }
+        // This immutable host lease is rechecked after every asynchronous phase.
+        // Do not evaluate opener JavaScript while its window request is deferred.
+        var lease=new AveryOpen{Args=args,Deferral=args.GetDeferral(),Generation=generation,
+            Navigation=activeNavigation,Identity=documentIdentity,Source=source,Frame=mainFrame};
+        averyOpening=lease;AveryState("admitted");
+        ObserveRequestTask(OpenAvery(lease));ObserveRequestTask(AveryDeadline(lease));
+    }
+    async Task AveryDeadline(AveryOpen lease) {
+        await Task.Delay(15000);
+        if(averyOpening==lease&&!lease.Completed){bool report=AveryLeaseCurrent(lease);AveryState("initialization-timeout");await RetireAvery();if(report)AveryInitializationWarning(lease);}
+    }
+    void AveryInitializationWarning(AveryOpen lease) {
+        if(lease.WarningShown||closing||disposed||view.CoreWebView2==null||
+            generation!=lease.Generation||activeNavigation!=lease.Navigation||documentIdentity!=lease.Identity)return;
+        lease.WarningShown=true;
+        MessageBox.Show(this,"The Avery preview could not start safely. Your custom deck and selection are unchanged. Retry after the page is ready.",
+            "Avery preview unavailable",MessageBoxButtons.OK,MessageBoxIcon.Warning);
+    }
+    async Task PrepareAveryController(AveryOpen lease) {
+        if(!AveryLeaseCurrent(lease))throw new InvalidOperationException("Stale Avery owner");
+        environment=averyParent.environment;
+        policyDirectory=averyParent.policyDirectory;expectedExtensionId=averyParent.expectedExtensionId;
+        blockedPaths.UnionWith(averyParent.blockedPaths);
+        if(mode=="local")await LocalPreflight();
+        if(!AveryLeaseCurrent(lease))throw new InvalidOperationException("Avery owner changed before controller creation");
+        // No Navigate, Source assignment, Embed, reader or new environment.
+        // Materialize the hidden form's HWND first: otherwise WinForms may
+        // park the view under an unrelated native window despite Controls.Add.
+        var ownedWindow=Handle;if(!IsWindow(ownedWindow))throw new InvalidOperationException("Avery owned window is unavailable");
+        averyCreation=view.EnsureCoreWebView2Async(environment);await averyCreation;
+        if(!AveryLeaseCurrent(lease))throw new InvalidOperationException("Avery owner changed during controller creation");
+        var core=view.CoreWebView2;
+        if(!ReferenceEquals(environment,averyParent.environment)||core.BrowserProcessId!=averyParent.view.CoreWebView2.BrowserProcessId||
+            core.Profile.ProfileName!=averyParent.view.CoreWebView2.Profile.ProfileName||
+            core.Profile.ProfilePath!=averyParent.view.CoreWebView2.Profile.ProfilePath||
+            !(String.IsNullOrEmpty(core.Source)||core.Source=="about:blank"))throw new InvalidOperationException("Avery destination profile or blank state mismatch");
+        ConfigureControllerSettings();
+        await core.AddScriptToExecuteOnDocumentCreatedAsync("Object.defineProperty(window,'print',{value:()=>alert('Printing is unavailable in this Avery preview. Return to the source deck.'),writable:false,configurable:false})");
+        if(!AveryLeaseCurrent(lease))throw new InvalidOperationException("Avery owner changed during settings initialization");
+    }
+    async Task VerifyBorrowedAveryPolicy() {
+#if DLMS_AI_TEST
+        // Reuse the existing source-only lifetime-probe build. Normal payloads
+        // contain no bootstrap delay and cannot enable this retirement fault.
+        await Task.Delay(800);
+#endif
+        if(!AveryLeaseCurrent(averyLease))throw new InvalidOperationException("Avery owner retired");
+        averyParent.CheckStablePolicyDirectory();averyParent.VerifyRuntimeComponents();
+        var installed=await view.CoreWebView2.Profile.GetBrowserExtensionsAsync();
+        if(!AveryLeaseCurrent(averyLease)||installed.Any(item=>!ExpectedExtension(item))||
+            installed.Count(item=>item.Id==expectedExtensionId&&item.Name==PolicyName&&item.IsEnabled)!=1)
+            throw new InvalidOperationException("Avery inherited policy was not exclusively enabled");
+    }
+    async Task OpenAvery(AveryOpen lease) {
+        bool delivered=false,reportFailure=false;
+        try {
+            if(!AveryLeaseCurrent(lease))throw new InvalidOperationException("Stale Avery request");
+            var settings=new Dictionary<string,object>(config);settings["parent_hwnd"]=0;
+            var child=new DesktopRenderer(settings,this);child.averyLease=lease;lease.Child=child;averyChild=child;
+            await child.PrepareAveryController(lease);
+            if(!AveryLeaseCurrent(lease))throw new InvalidOperationException("Avery opener retired");
+            // Microsoft requires handlers tied to replaced web contents AFTER
+            // assignment. Keep this deferral pending through Fetch/WRR policy.
+            lease.Args.NewWindow=child.view.CoreWebView2;
+            await child.AttachControllerPolicy();
+            if(!AveryLeaseCurrent(lease)||child.closing||child.disposed||!child.browserPolicyReady)
+                throw new InvalidOperationException("Avery request changed before handback");
+            child.ApplyScale(qtScale,userZoom);child.Show();child.BringToFront();
+            if(!AveryLeaseCurrent(lease))throw new InvalidOperationException("Avery opener changed before completion");
+            AveryState("policy-ready");delivered=CompleteAvery(lease,true);
+            if(delivered)AveryState("opened");
+        }catch {AveryState("initialization-refused");reportFailure=AveryLeaseCurrent(lease);}
+        // C#5: all async cleanup follows catch, never an async finally block.
+        if(!delivered){CompleteAvery(lease,false);if(lease.Child!=null)await lease.Child.CloseAveryController();}
+        if(averyOpening==lease)averyOpening=null;
+        if(reportFailure)AveryInitializationWarning(lease);
+    }
+    bool AveryNavigation(CoreWebView2NavigationStartingEventArgs args) {
+        if(!AveryLeaseCurrent(averyLease)){args.Cancel=true;ObserveRequestTask(Shutdown());return false;}
+        if(AveryUrl(args.Uri,"/anki/custom")&&args.IsUserInitiated&&!args.IsRedirected) {
+            args.Cancel=true;AveryState("return");ObserveRequestTask(Shutdown());return false;
+        }
+        if(averyInitialNavigation||args.IsRedirected||!AveryUrl(args.Uri,"/anki/printable")) {
+            args.Cancel=true;AveryStatus("This Avery preview cannot navigate elsewhere. Return to the source deck.");return false;
+        }
+        averyInitialNavigation=true;return true;
+    }
+    async Task RetireAvery() {
+        var lease=averyOpening;var child=averyChild??(lease==null?null:lease.Child);
+        if(lease!=null){lease.Cancelled=true;CompleteAvery(lease,false);}
+        if(child!=null){if(child.averyLease!=null)child.averyLease.Cancelled=true;await child.CloseAveryController();}
+        if(averyOpening==lease)averyOpening=null;
+    }
+    Task CloseAveryController() {
+        if(averyClose==null)averyClose=CloseAveryControllerCore();return averyClose;
+    }
+    async Task CloseAveryControllerCore() {
+        closing=true;browserPolicyReady=false;averyPolicyReady.TrySetResult(false);
+        if(averyLease!=null)averyLease.Cancelled=true;
+        // BrowserSurface cancels a late CreateController result on disposal.
+        try{view.Dispose();}catch{AveryState("controller-close-failed");}
+        disposed=true;
+        if(averyCreation!=null){try{await averyCreation;}catch{}}
+        // Keep any outstanding native callback references until ROOT browser
+        // retirement. The admission quota bounds retained closed controllers.
+        if(!averyParent.retiredAvery.Contains(this))averyParent.retiredAvery.Add(this);
+        if(averyParent.averyChild==this)averyParent.averyChild=null;
+        AveryState("closed");Close();
+        if(!averyParent.closing&&!averyParent.disposed)averyParent.view.Focus();
+        // Never wait for shared BrowserProcessExited or release parent pins.
+    }
+
+    public DesktopRenderer(Dictionary<string,object> settings) : this(settings,null) {}
+    DesktopRenderer(Dictionary<string,object> settings,DesktopRenderer owner) {
+        averyParent=owner;config=settings;origin=TextValue(config,"origin").TrimEnd('/');mode=TextValue(config,"mode");token=TextValue(config,"token");
         Uri endpoint;
         if(!Uri.TryCreate(origin+"/",UriKind.Absolute,out endpoint)||!Exact(origin+"/")||endpoint.AbsolutePath!="/"||endpoint.Query.Length!=0||endpoint.Fragment.Length!=0)
             throw new InvalidOperationException("Invalid origin");
@@ -374,6 +605,7 @@ sealed partial class DesktopRenderer : Form {
         Text="DLMS Desktop";AutoScaleMode=AutoScaleMode.None;ClientSize=new Size(1280,816);StartPosition=FormStartPosition.Manual;Location=new Point(40,40);
         view.Dock=DockStyle.Fill;view.AllowExternalDrop=false;Controls.Add(view);
         view.FocusBoundary+=reason=> {
+            if(averyParent!=null){SelectNextControl(view,reason==CoreWebView2MoveFocusReason.Next,true,true,true);return;}
             if(!closing&&!disposed&&view.CoreWebView2!=null&&Exact(view.CoreWebView2.Source))
                 Event("focus-boundary",new Dictionary<string,object>{{"generation",generation},{"nav_id",activeNavigation},{"direction",reason==CoreWebView2MoveFocusReason.Next?"next":"previous"}});
         };
@@ -383,8 +615,9 @@ sealed partial class DesktopRenderer : Form {
             serverStatus.AutoEllipsis=false;serverStatus.AccessibleName="Server connection status";serverStatus.Padding=new Padding(28);
             serverCover.Controls.Add(serverStatus);Controls.Add(serverCover);SetBackground(Color.White);
         }
-        Shown+=async(s,e)=> { bool failed=false;try { Embed();await Initialize();StartReader(); }catch(Exception ex){Environment.ExitCode=1;Emit("fatal",new{type=ex.GetType().Name,message=ex.Message});failed=true;}if(failed)await Shutdown(); };
-        FormClosing+=(s,e)=> { if(!disposed){e.Cancel=true;if(!closing){Event("close-requested",new Dictionary<string,object>());}} };
+        if(averyParent==null)Shown+=async(s,e)=> { bool failed=false;try { Embed();await Initialize();StartReader(); }catch(Exception ex){Environment.ExitCode=1;Emit("fatal",new{type=ex.GetType().Name,message=ex.Message});failed=true;}if(failed)await Shutdown(); };
+        if(averyParent!=null)ConfigureAveryWindow();
+        FormClosing+=(s,e)=> { if(!disposed){e.Cancel=true;if(!closing){if(averyParent!=null)ObserveRequestTask(Shutdown());else Event("close-requested",new Dictionary<string,object>());}} };
     }
     void Embed() {
         if(!config.ContainsKey("parent_hwnd")||Convert.ToInt64(config["parent_hwnd"])==0)return;
@@ -436,15 +669,26 @@ sealed partial class DesktopRenderer : Form {
         environment.BrowserProcessExited+=(s,e)=>{exitedBrowserIds.Add(checked((int)e.BrowserProcessId));Event("browser-exited",new Dictionary<string,object>{{"pid",e.BrowserProcessId},{"kind",e.BrowserProcessExitKind.ToString()}});browserExited.TrySetResult(true);};
         Emit("initialization", "controller");
         await view.EnsureCoreWebView2Async(environment);
-        Emit("initialization", "policy");
-        var core=view.CoreWebView2;browserPid=(int)core.BrowserProcessId;
+        ConfigureControllerSettings();
+        await AttachControllerPolicy();
+        Emit("initialization", "ready");Event("runtime",new Dictionary<string,object>{{"version",environment.BrowserVersionString},{"pid",browserPid},{"storage",environment.UserDataFolder},{"exclusive_storage",true},{"host_objects",false},{"web_messages",false},{"custom_browser_arguments",BrowserArguments},{"sandbox","default"},{"certificate_validation","default-refuse-errors"},{"extensions_enabled",true},{"private_extensions_enabled",true},{"shared_workers","blink-feature-disabled"},{"service_worker_bootstrap","best-effort-native-http-guard"},{"service_workers_cleared",true},{"worker_policy_configured","DNR-append-CSP-worker-src-none"},{"socket_policy_configured","private-static-DNR-v2"},{"socket_policy_id",expectedExtensionId}});
+        Event("ready",new Dictionary<string,object>{{"hwnd",Handle.ToInt64()},{"version",environment.BrowserVersionString}});
+    }
+    void ConfigureControllerSettings() {
+        var core=view.CoreWebView2;
         core.Settings.AreHostObjectsAllowed=false;core.Settings.IsWebMessageEnabled=false;core.Settings.AreDevToolsEnabled=false;
         core.Settings.AreDefaultContextMenusEnabled=false;core.Settings.IsStatusBarEnabled=false;core.Settings.IsPasswordAutosaveEnabled=false;
         core.Settings.IsGeneralAutofillEnabled=false;core.Settings.AreBrowserAcceleratorKeysEnabled=false;
         core.Settings.AreDefaultScriptDialogsEnabled=false;
         core.Profile.AreWebViewScriptApisEnabledForServiceWorkers=false;
+    }
+    async Task AttachControllerPolicy() {
+        Emit("initialization", "policy");
+        var core=view.CoreWebView2;browserPid=(int)core.BrowserProcessId;
         core.NavigationStarting+=(s,e)=> {
+            if(averyParent!=null&&!AveryNavigation(e))return;
             if(!Exact(e.Uri)){e.Cancel=true;ExternalRequest(e.Uri,e.IsUserInitiated,e.IsRedirected,"navigation");return;}
+            if(averyParent==null)ObserveRequestTask(RetireAvery());
             Navigation redirect;
             if(e.IsRedirected&&e.NavigationId==activeNavigation&&navigations.TryGetValue(e.NavigationId,out redirect)&&Current(redirect,e.NavigationId)) {
                 RetireAI();
@@ -467,9 +711,9 @@ sealed partial class DesktopRenderer : Form {
             if(navigations.Count>32)navigations.Remove(navigations.Where(item=>item.Key!=activeNavigation).OrderBy(item=>item.Value.Generation).First().Key);
             NavigationEvent("load-start",next,e.NavigationId,new Dictionary<string,object>{{"url",e.Uri}});
         };
-        core.FrameNavigationStarting+=(s,e)=>{if(mode=="local"||!Exact(e.Uri))e.Cancel=true;};
-        core.FrameCreated+=(s,e)=>{documentHadChildFrame=true;if(mode=="local")LocalViolation("A Local frame context was blocked");};
-        core.DedicatedWorkerCreated+=(s,e)=>{if(mode=="local")LocalViolation("A Local worker context was blocked");};
+        core.FrameNavigationStarting+=(s,e)=>{if(mode=="local"||averyParent!=null||!Exact(e.Uri))e.Cancel=true;};
+        core.FrameCreated+=(s,e)=>{documentHadChildFrame=true;if(averyParent!=null)AveryFailure("frame-refused");else if(mode=="local")LocalViolation("A Local frame context was blocked");};
+        core.DedicatedWorkerCreated+=(s,e)=>{if(averyParent!=null)AveryFailure("worker-refused");else if(mode=="local")LocalViolation("A Local worker context was blocked");};
         core.SourceChanged+=async(s,e)=> {
             Navigation nav;if(!navigations.TryGetValue(activeNavigation,out nav)||!Current(nav,activeNavigation))return;ulong id=activeNavigation;
             NavigationEvent("url",nav,id,new Dictionary<string,object>{{"url",core.Source}});
@@ -478,13 +722,20 @@ sealed partial class DesktopRenderer : Form {
         core.NavigationCompleted+=async(s,e)=>await NavigationFinished(e);
         core.NewWindowRequested+=(s,e)=> {
             e.Handled=true;
-            if(Exact(e.Uri)) {if(mode=="local"&&e.IsUserInitiated&&!documentHadChildFrame)core.Navigate(e.Uri);return;}
+            if(averyParent!=null){AveryStatus("Additional windows are unavailable in this Avery preview.");return;}
+            if(Exact(e.Uri)) {
+                if(new Uri(e.Uri).AbsolutePath=="/anki/printable"){BeginAvery(e);return;}
+                // Preserve the existing unrelated same-origin popup policy.
+                if(mode=="local"&&e.IsUserInitiated&&!documentHadChildFrame)core.Navigate(e.Uri);
+                return;
+            }
             ExternalRequest(e.Uri,e.IsUserInitiated,false,"popup",e.OriginalSourceFrameInfo);
         };
         core.LaunchingExternalUriScheme+=(s,e)=>e.Cancel=true;
         core.BasicAuthenticationRequested+=(s,e)=>e.Cancel=true;
-        core.WindowCloseRequested+=(s,e)=>Event("close-requested",new Dictionary<string,object>());
+        core.WindowCloseRequested+=(s,e)=>{if(averyParent!=null)ObserveRequestTask(Shutdown());else Event("close-requested",new Dictionary<string,object>());};
         core.ScriptDialogOpening+=(s,e)=> {
+            if(averyParent!=null){AveryStatus("Printing and page dialogs are unavailable in this preview. Return to the deck without changing its selection.");return;}
             if(closing||!Exact(e.Uri)||!Exact(core.Source)||dialogs.Count!=0)return; // No Accept means false/cancel.
             string ticket=Guid.NewGuid().ToString("N");
             dialogs[ticket]=new PendingDialog{Args=e,Deferral=e.GetDeferral(),Generation=generation,Source=core.Source};
@@ -496,9 +747,47 @@ sealed partial class DesktopRenderer : Form {
             if(permissionRecords++<64)Event("permission",new Dictionary<string,object>{{"kind",e.PermissionKind.ToString()},{"user",e.IsUserInitiated},{"decision","deny"},{"generation",generation},{"nav_id",activeNavigation}});
         };
         core.ServerCertificateErrorDetected+=(s,e)=>{e.Action=CoreWebView2ServerCertificateErrorAction.Cancel;Event("certificate-refused",new Dictionary<string,object>());};
-        core.ProcessFailed+=(s,e)=>Event("process-failed",new Dictionary<string,object>{{"kind",e.ProcessFailedKind.ToString()},{"reason",e.Reason.ToString()}});
+        core.ProcessFailed+=(s,e)=>{if(averyParent!=null)AveryFailure("renderer-failed");else {ObserveRequestTask(RetireAvery());Event("process-failed",new Dictionary<string,object>{{"kind",e.ProcessFailedKind.ToString()},{"reason",e.Reason.ToString()}});}};
         core.AddWebResourceRequestedFilter("*",CoreWebView2WebResourceContext.All,CoreWebView2WebResourceRequestSourceKinds.All);
-        core.WebResourceRequested+=(s,e)=> {
+        core.WebResourceRequested+=async(s,e)=> {
+            CoreWebView2Deferral bootstrap=null;
+            try {
+            if(averyParent!=null&&!browserPolicyReady) {
+                bootstrap=e.GetDeferral();
+                // Runtime155 begins the engine-owned original request during
+                // NewWindow assignment, before Complete and Fetch.enable.
+                // Admit exactly this once-bound native main-document POST;
+                // every other pre-Fetch request fails closed. Windows omits Sec-Fetch
+                // headers here; native top-level navigation, Document source
+                // and the immutable attributed opener lease bind this request.
+                // Local additionally requires exact Origin/Referer. Server's
+                // no-referrer policy may omit them; foreign headers still fail.
+                // Never inspect, reconstruct or replay the original body.
+                long bootstrapGeneration=generation;ulong bootstrapNavigation=activeNavigation;
+                bool original=++averyBootstrapRequests==1&&AveryLeaseCurrent(averyLease)&&
+                    averyInitialNavigation&&!documentHadChildFrame&&
+                    e.ResourceContext==CoreWebView2WebResourceContext.Document&&
+                    e.RequestedSourceKind==CoreWebView2WebResourceRequestSourceKinds.Document&&
+                    e.Request.Method=="POST"&&AveryUrl(e.Request.Uri,"/anki/printable")&&
+                    AveryHeadersAllowed(mode,origin,averyLease.Source,
+                        e.Request.Headers.Contains("Origin"),e.Request.Headers.Contains("Origin")?e.Request.Headers.GetHeader("Origin"):null,
+                        e.Request.Headers.Contains("Referer"),e.Request.Headers.Contains("Referer")?e.Request.Headers.GetHeader("Referer"):null);
+                if(!original) {
+                    var check=new Dictionary<string,object>{{"ordinal",averyBootstrapRequests},{"lease",AveryLeaseCurrent(averyLease)},
+                        {"initial_navigation",averyInitialNavigation},{"no_child_frame",!documentHadChildFrame},
+                        {"resource_context",e.ResourceContext.ToString()},{"source_kind",e.RequestedSourceKind.ToString()},
+                        {"method",e.Request.Method},{"exact_target",AveryUrl(e.Request.Uri,"/anki/printable")}};
+                    foreach(string header in new[]{"Sec-Fetch-Dest","Sec-Fetch-Mode","Origin","Referer"})check[header+"_present"]=e.Request.Headers.Contains(header);
+                    averyParent.Event("avery-bootstrap-check",check);
+                }
+                AveryState(original?"original-post-held":"bootstrap-request-refused");
+                if(!original||await Task.WhenAny(averyPolicyReady.Task,Task.Delay(5000))!=averyPolicyReady.Task||
+                    !averyPolicyReady.Task.Result||closing||disposed||!AveryLeaseCurrent(averyLease)||documentHadChildFrame||
+                    generation!=bootstrapGeneration||activeNavigation!=bootstrapNavigation) {
+                    e.Response=environment.CreateWebResourceResponse(new MemoryStream(new byte[0]),403,"Blocked","Content-Type: text/plain");return;
+                }
+            }
+            if(averyParent!=null&&!AveryLeaseCurrent(averyLease)){AveryState("resource-refused-owner-context");e.Response=environment.CreateWebResourceResponse(new MemoryStream(new byte[0]),403,"Blocked","Content-Type: text/plain");return;}
             string reason=!Exact(e.Request.Uri)?"target":blockedPaths.Contains(Uri.UnescapeDataString(new Uri(e.Request.Uri).AbsolutePath))?"blocked-path":null;
             // Browser-generated header guard retained as defense in depth.
             // Actual WebView2 tests did not make it sufficient to prevent
@@ -519,9 +808,26 @@ sealed partial class DesktopRenderer : Form {
             }
             else if(mode=="local") {
                 e.Request.Headers.SetHeader("X-DLMS-Desktop-Token",token);
-                TagAIDocument(e.Request,e.ResourceContext==CoreWebView2WebResourceContext.Document);
+                if(averyParent==null)TagAIDocument(e.Request,e.ResourceContext==CoreWebView2WebResourceContext.Document);
             }
             else if(e.Request.Headers.Contains("X-DLMS-Desktop-Token"))e.Request.Headers.RemoveHeader("X-DLMS-Desktop-Token");
+            if(averyParent!=null&&e.Request.Headers.Contains("X-DLMS-AI-Document"))e.Request.Headers.RemoveHeader("X-DLMS-AI-Document");
+            if(bootstrap!=null&&reason==null)AveryState("original-post-allowed");
+            }catch {
+                // A once-held native event may resume after controller disposal.
+                // Never let async-void teardown escape into the primary host.
+                if(averyParent!=null) {
+                    if(!closing&&!disposed) {
+                        try{e.Response=environment.CreateWebResourceResponse(new MemoryStream(new byte[0]),403,"Blocked","Content-Type: text/plain");}catch{}
+                        AveryFailure("resource-policy-failed");
+                    }
+                }else ObserveRequestTask(FailRequestPolicy("resource-policy-failed"));
+            }finally {
+                if(bootstrap!=null) {
+                    try{bootstrap.Complete();}
+                    catch{if(!closing&&!disposed)AveryFailure("resource-deferral-failed");}
+                }
+            }
         };
         core.WebResourceResponseReceived+=(s,e)=> {
             Navigation nav;if(!navigations.TryGetValue(activeNavigation,out nav)||!Current(nav,activeNavigation)||!Exact(e.Request.Uri)||e.Request.Uri!=nav.Url)return;
@@ -532,8 +838,10 @@ sealed partial class DesktopRenderer : Form {
             nav.AttachmentResponse=true;nav.ResponseStatus=e.Response.StatusCode;
             if(attachmentRecords++<64)NavigationEvent("attachment-response",nav,activeNavigation,new Dictionary<string,object>{{"http_status",e.Response.StatusCode},{"disposition","attachment"},{"request_matches_navigation",true}});
         };
-        Emit("initialization","clear-owned-service-workers");await core.Profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.ServiceWorkers);
-        Emit("initialization","socket-policy");await InstallPolicy();
+        if(averyParent==null) {
+            Emit("initialization","clear-owned-service-workers");await core.Profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.ServiceWorkers);
+            Emit("initialization","socket-policy");await InstallPolicy();
+        } else await VerifyBorrowedAveryPolicy();
         core.DownloadStarting+=DownloadStarting;
         // Browser intercepts the real file dialog, including programmatic .click
         // and showPicker. No JS binding or message API is installed in pages.
@@ -558,8 +866,8 @@ sealed partial class DesktopRenderer : Form {
         await Cdp("Log.enable",new{});
         core.GetDevToolsProtocolEventReceiver("Page.fileChooserOpened").DevToolsProtocolEventReceived+=async(s,e)=>await PickerOpened(e.ParameterObjectAsJson);
         Emit("initialization", "file-chooser");await Cdp("Page.setInterceptFileChooserDialog",new{enabled=true});
-        await InstallAIObserver();
-        if(mode=="local") {
+        if(averyParent==null)await InstallAIObserver();
+        if(averyParent==null&&mode=="local") {
             Emit("initialization", "local-print");
             // Closed-purpose PDF request, matching Local window.print semantics.
             // Binding exists only in the private isolated world, never main JS.
@@ -569,13 +877,13 @@ sealed partial class DesktopRenderer : Form {
             await Cdp("Page.addScriptToEvaluateOnNewDocument",new{worldName="DLMSDesktopPrint",source="document.addEventListener('__dlms_pdf_request',()=>{if(self===top)__dlmsPrintRequest('print')},true)"});
             await Cdp("Page.addScriptToEvaluateOnNewDocument",new{source="Object.defineProperty(window,'print',{value:()=>document.dispatchEvent(new Event('__dlms_pdf_request')),writable:false,configurable:false})"});
         }
-        else await core.AddScriptToExecuteOnDocumentCreatedAsync("Object.defineProperty(window,'print',{value:()=>alert('Server PDF printing is unavailable in this candidate; use the Server application in your regular browser to print.'),writable:false,configurable:false})");
+        else if(averyParent==null)await core.AddScriptToExecuteOnDocumentCreatedAsync("Object.defineProperty(window,'print',{value:()=>alert('Server PDF printing is unavailable in this candidate; use the Server application in your regular browser to print.'),writable:false,configurable:false})");
         await InstallRequestPolicy();
         browserPolicyReady=true;
-        Emit("initialization", "ready");Event("runtime",new Dictionary<string,object>{{"version",environment.BrowserVersionString},{"pid",browserPid},{"storage",environment.UserDataFolder},{"exclusive_storage",true},{"host_objects",false},{"web_messages",false},{"custom_browser_arguments",BrowserArguments},{"sandbox","default"},{"certificate_validation","default-refuse-errors"},{"extensions_enabled",true},{"private_extensions_enabled",true},{"shared_workers","blink-feature-disabled"},{"service_worker_bootstrap","best-effort-native-http-guard"},{"service_workers_cleared",true},{"worker_policy_configured","DNR-append-CSP-worker-src-none"},{"socket_policy_configured","private-static-DNR-v2"},{"socket_policy_id",expectedExtensionId}});
-        Event("ready",new Dictionary<string,object>{{"hwnd",Handle.ToInt64()},{"version",environment.BrowserVersionString}});
+        if(averyParent!=null)averyPolicyReady.TrySetResult(true);
     }
     void LocalViolation(string message) {
+        if(averyParent==null)ObserveRequestTask(RetireAvery());
         localPolicyVerified=false;browserPolicyReady=false;
         view.CoreWebView2.Stop();
         Emit("fatal",new{type="LocalPolicyViolation",message=message});
@@ -852,7 +1160,7 @@ sealed partial class DesktopRenderer : Form {
                 string identity=await Identity();if(!Current(nav,e.NavigationId))return;
                 mainFrame=frame;documentIdentity=identity;
                 nav.Completed=true;
-                if(okAIStatus(e.HttpStatusCode))await ConfigureAI(nav,e.NavigationId);
+                if(averyParent==null&&okAIStatus(e.HttpStatusCode))await ConfigureAI(nav,e.NavigationId);
 #if DLMS_AI_TEST
                 // Separate, explicitly marked source-host probe. Normal builds
                 // contain neither this timing fault nor a way to enable it.
@@ -877,7 +1185,7 @@ sealed partial class DesktopRenderer : Form {
             if(attachment){
                 nav.Completed=true;
                 nav.AIActions=nav.PreviousAIActions;
-                await ConfigureAI(nav,e.NavigationId);
+                if(averyParent==null)await ConfigureAI(nav,e.NavigationId);
                 if(!Current(nav,e.NavigationId))return;
             }
             NavigationEvent("load-finish",nav,e.NavigationId,new Dictionary<string,object>{{"url",nav.Url},{"ok",false},{"download",attachment},{"attachment_declined",declined},{"error",e.WebErrorStatus.ToString()},{"http_status",e.HttpStatusCode}});
@@ -887,6 +1195,7 @@ sealed partial class DesktopRenderer : Form {
     }
     async void DownloadStarting(object sender,CoreWebView2DownloadStartingEventArgs e) {
         e.Handled=true;
+        if(averyParent!=null){e.Cancel=true;AveryStatus("Downloads are unavailable in this Avery preview.");return;}
         bool blob=BlobDownloadUri(e.DownloadOperation.Uri,origin);
         if(!Exact(e.DownloadOperation.Uri)&&!blob){
             e.Cancel=true;
@@ -924,6 +1233,7 @@ sealed partial class DesktopRenderer : Form {
     }
     bool PickerCurrent(Picker picker) {return !closing&&!disposed&&picker.Generation==generation&&picker.Navigation==activeNavigation;}
     async Task PickerOpened(string args) {
+        if(averyParent!=null){AveryStatus("File selection is unavailable in this Avery preview.");return;}
         long before=generation;ulong navigation=activeNavigation;
         try {
             if(closing||disposed){PickerRefused("retiring",before,navigation);return;}
@@ -1010,12 +1320,17 @@ sealed partial class DesktopRenderer : Form {
                     if(mode!="server")throw new InvalidOperationException("Native connection cover is Server-only");
                     string message=TextValue(command,"text");if(message.Length>8192)throw new InvalidOperationException("Server status is too long");
                     serverStatus.Text=message;serverStatus.AccessibleDescription=message;
-                    view.Visible=Bool(command,"browser_visible",true);serverCover.Visible=Bool(command,"shown");
-                    if(serverCover.Visible)serverCover.BringToFront();else view.BringToFront();
+                    var preview=averyChild;
+                    long coverSerial=++serverCoverSerial,coverGeneration=generation;
+                    bool previewCurrent=preview!=null&&!preview.closing&&!preview.disposed&&AveryLeaseCurrent(preview.averyLease);
+                    string foreground=await ApplyServerCoverStack(view,serverCover,preview,
+                        Bool(command,"shown"),Bool(command,"browser_visible",true),previewCurrent,preview!=null&&preview.Visible,RetireAvery,
+                        ()=>!closing&&!disposed&&serverCoverSerial==coverSerial&&generation==coverGeneration);
+                    if(preview!=null)AveryState("cover-front-"+foreground);
                     var state=new Dictionary<string,object>{{"hwnd",serverCover.Handle.ToInt64()},{"shown",serverCover.Visible},{"browser_visible",view.Visible}};
                     Event("cover-state",state);value=new{hwnd=serverCover.Handle.ToInt64(),shown=serverCover.Visible,browser_visible=view.Visible};break;
                 }
-                case "policy":blockedPaths.Clear();if(command.ContainsKey("blocked_paths"))foreach(object path in (System.Collections.IEnumerable)command["blocked_paths"])blockedPaths.Add(Convert.ToString(path));break;
+                case "policy":await RetireAvery();blockedPaths.Clear();if(command.ContainsKey("blocked_paths"))foreach(object path in (System.Collections.IEnumerable)command["blocked_paths"])blockedPaths.Add(Convert.ToString(path));break;
                 case "resize": {
                     double scale=command.ContainsKey("scale")?Convert.ToDouble(command["scale"]):qtScale;
                     EffectiveZoom(scale,userZoom); // Validate before changing geometry.
@@ -1115,8 +1430,10 @@ sealed partial class DesktopRenderer : Form {
         }
     }
     async Task Shutdown() {
+        if(averyParent!=null){await CloseAveryController();return;}
         if(closing)return;closing=true;
         browserPolicyReady=false;
+        await RetireAvery();
         // Controller disposal below cancels any unresolved request pauses.
         foreach(var pending in dialogs.Values){try{pending.Deferral.Complete();}catch{}}dialogs.Clear();
         foreach(var pending in downloads.Values){try{CompleteDownload(pending,true);}catch{}}
@@ -1140,6 +1457,8 @@ sealed partial class DesktopRenderer : Form {
         // Retain even timed-out COM callbacks through actual controller/browser
         // retirement; no per-call reference can release ownership prematurely.
         pendingRequests.Clear();
+        foreach(var child in retiredAvery){child.pendingRequests.Clear();child.requestLeases.Clear();}
+        retiredAvery.Clear();
         foreach(var handle in policyHandles.AsEnumerable().Reverse())handle.Dispose();policyHandles.Clear();
         Close();
     }

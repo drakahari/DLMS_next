@@ -532,6 +532,16 @@ class View(QWidget):
         kind = event.get('event')
         if hasattr(self, 'protocol_events'):
             self.protocol_events.append((round(time.monotonic(), 3), str(kind)))
+        if kind == 'avery-state':
+            # Opt-in existing bounded capture; no URLs, content or new page bridge.
+            capture = getattr(self.page().owner, 'window_events', None)
+            state, stamp = event.get('state'), event.get('utc')
+            if (capture is not None and isinstance(state, str) and 0 < len(state) <= 80
+                    and all(c in 'abcdefghijklmnopqrstuvwxyz-' for c in state)
+                    and isinstance(stamp, str) and len(stamp) <= 40
+                    and all(c in '0123456789-T:.Z+' for c in stamp)):
+                capture.emit('avery-native', state=state, host_utc=stamp)
+            return
         if kind in ('attachment-declined', 'file-picker', 'file-picker-failed', 'download-blocked', 'focus-boundary') and 'generation' not in event:
             return
         if kind in ('load-start', 'url', 'load-finish', 'attachment-declined', 'file-picker', 'file-picker-failed', 'download-blocked', 'focus-boundary') and 'generation' in event:

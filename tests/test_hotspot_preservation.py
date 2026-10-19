@@ -162,7 +162,7 @@ class HotspotPreservationTests(unittest.TestCase):
                 self.assertEqual(self.database(), records)
                 path.write_bytes(original)
 
-    def test_missing_image_and_symlink_runtime_are_refused_without_replacement(self):
+    def test_missing_and_invalid_image_are_refused_without_replacement(self):
         entry, path, payload = self.pack_quiz()
         original = path.read_bytes()
         image = Path(dlms._portable_quiz_media_source(payload[0]['image_url']))
@@ -173,10 +173,18 @@ class HotspotPreservationTests(unittest.TestCase):
         image.write_bytes(b'not a raster')
         self.assertEqual(dlms._rebuild_registered_quiz_artifacts()['failed'], [entry['id']])
         self.assertEqual(path.read_bytes(), original)
-        image.write_bytes(old_image)
+
+    def test_symlink_runtime_is_refused_without_replacement(self):
+        entry, path, payload = self.pack_quiz()
+        original = path.read_bytes()
         other = path.with_suffix('.retained')
         path.rename(other)
-        path.symlink_to(other)
+        try:
+            path.symlink_to(other)
+        except OSError as exc:
+            if getattr(exc, 'winerror', None) == 1314:
+                self.skipTest('Windows account lacks symlink privilege; equivalent fixture runs on Linux')
+            raise
         self.assertEqual(dlms._rebuild_registered_quiz_artifacts()['failed'], [entry['id']])
         self.assertTrue(path.is_symlink())
         self.assertEqual(other.read_bytes(), original)
