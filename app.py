@@ -3674,6 +3674,16 @@ def _stage_quiz_mutation_artifacts(conn, quiz_id, quiz_entry, *, preserve_hotspo
             resolve_image=_portable_quiz_media_source,
             validate_image=_decode_raster_image,
         )
+        if raw is None:
+            _quiz_artifact_renderer.validate_rebuild_metadata(conn.cursor(), quiz_id)
+            payload = _quiz_json_payload_from_db(conn.cursor(), quiz_id)
+            _quiz_artifact_renderer.validate_rebuild_images(
+                payload, resolve_image=_portable_quiz_media_source,
+                validate_image=_decode_raster_image,
+            )
+            raw = _quiz_artifact_renderer.equivalent_quiz_json_bytes(
+                os.path.join(DATA_FOLDER, json_name), payload,
+            )
         if raw is not None:
             def rebuild_json(_quiz_id, *, conn, quiz_entry, output_path):
                 write_preserved_hotspot_json(output_path, raw)

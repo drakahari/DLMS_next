@@ -46,7 +46,7 @@ READY_PATH = "/_desktop/ready"
 SETTINGS_NAV_DESTINATIONS = frozenset({
     "/", "/library", "/upload", "/study-packs", "/it", "/law", "/medical",
     "/study-packs?domain_group=other", "/certifications", "/history", "/dashboard",
-    "/learning-intelligence", "/anki", "/settings", "/content-packs",
+    "/learning-intelligence", "/marked-questions", "/anki", "/settings", "/content-packs",
     "/admin/image-editor", "/help", "/settings/backup", "/settings/reset-remove",
     "/settings/appearance", "/settings/layout",
 })

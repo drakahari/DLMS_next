@@ -237,6 +237,16 @@ class NavigationLayoutTests(unittest.TestCase):
         self.assertEqual(len(printable_rules), 1)
         self.assertIn("POST", printable_rules[0].methods)
 
+    def test_marked_questions_link_is_in_both_normalized_navigation_paths(self):
+        source = self._static('nav-normalize.js')
+        self.assertIn("if (key === 'marked') return path === '/marked-questions'", source)
+        self.assertEqual(source.count("item('marked','/marked-questions','star','Marked questions')"), 2)
+        self.assertIn("!canonicalSeed.querySelector('a[href=\"/marked-questions\"]')", source)
+        self.assertIn("item('marked','/marked-questions'", source)
+        page = self.client.get('/marked-questions')
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('Marked questions', page.get_data(as_text=True))
+
     def test_learning_intelligence_expansion_model_keeps_the_current_section_open_without_reloading_its_landing_page(self):
         source = self._static("nav-normalize.js")
 

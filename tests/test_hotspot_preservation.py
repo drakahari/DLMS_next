@@ -145,7 +145,7 @@ class HotspotPreservationTests(unittest.TestCase):
         string_coordinates = copy.deepcopy(payload)
         circle = next(q for q in string_coordinates if q['target']['type']=='circle')
         circle['target']['x'] = str(circle['target']['x'])
-        for data in (None, b'{broken', b'{}', json.dumps(invalid_target).encode(),
+        for data in (None, b'{broken', b'{}', b'[{"stale":true}]', json.dumps(invalid_target).encode(),
                      json.dumps(degraded).encode(), json.dumps(changed_media).encode(),
                      json.dumps(string_coordinates).encode()):
             with self.subTest(data=data):

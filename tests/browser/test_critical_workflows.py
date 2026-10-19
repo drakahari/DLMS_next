@@ -18372,3 +18372,89 @@ def test_bundle_sidebar_narrow_keyboard_and_wide_selection(browser_stack):
     b.set_viewport(1280,850)
     assert b.evaluate("[...document.querySelectorAll('input[name=quiz_ids]:checked')].map(x=>x.value)")==selected
     b.click('#dashboardSidebar a[href="/library"]');b.wait_for("location.pathname==='/library'")
+
+
+@pytest.mark.parametrize('browser_stack', [{'alwaysMatch': {'unhandledPromptBehavior': 'ignore'}}], indirect=True)
+def test_current_study_rebuild_and_marked_sidebar(browser_stack):
+    """Real shared UI: no-op maintenance keeps current byte-bound Resume."""
+    b=browser_stack.browser;base=browser_stack.base_url;root=browser_stack.data_root
+    b.context=b.command('browsingContext.create',{'type':'tab'})['context']
+    qid,html=_new_four_question_study_quiz(browser_stack)
+    b.click('.study-mode-btn');b.wait_for('durableStudySession!==null && reviewMarkContext!==null')
+    b.click('#studyAnkiBtn');b.wait_for('reviewMarkContext.indexes.includes(0) && reviewMarkPending===null')
+    b.click('#choices .choice[data-index="0"]')
+    session=b.evaluate('durableStudySession.id')
+    _wait_for_database_value(root/'results.db',
+        "SELECT COUNT(*) FROM study_responses WHERE kind='response' AND session_id="+repr(session),1)
+    entry=next(e for e in json.loads((root/'config/quizzes.json').read_text()) if e['id']==qid)
+    artifact=root/'data'/entry['html'].replace('.html','.json');raw=artifact.read_bytes()
+    with sqlite3.connect(root/'results.db') as c:
+        saved={t:list(c.execute('SELECT * FROM '+t)) for t in ('study_sessions','study_responses','questions','choices')}
+    for _ in range(2):
+        b.navigate(base+'/admin/maintenance');b.wait_for_page_ready("document.getElementById('rebuildAllBtn')")
+        b.evaluate("window.rebuildReply=null;const original=window.fetch;window.fetch=async(...args)=>{const response=await original(...args);if(String(args[0])==='/admin/rebuild_all_quiz_html')window.rebuildReply=await response.clone().json();return response;};true")
+        assert b.click_with_prompt('#rebuildAllBtn',accept=True)
+        b.wait_for("window.rebuildReply!==null && !document.getElementById('rebuildAllBtn').disabled")
+        assert b.evaluate('rebuildReply.failed')==[]
+        assert b.evaluate("document.getElementById('rebuildStatus').textContent.startsWith('Complete:')")
+        assert artifact.read_bytes()==raw
+    with sqlite3.connect(root/'results.db') as c:
+        assert saved=={t:list(c.execute('SELECT * FROM '+t)) for t in saved}
+    b.navigate(base+'/quizzes/'+html);b.wait_for("document.querySelector('.quiz-recovery-resume')")
+    b.click('.quiz-recovery-resume');b.wait_for('durableStudySession!==null')
+    assert b.evaluate('durableStudySession.id')==session
+    assert b.evaluate('Object.keys(durableStudySession.answers).length')==1
+    # Both pre-seeded and replaced menus expose one link. Enter activates the
+    # normal same-origin destination; no new native command route is involved.
+    for route in ('/learning-intelligence','/library'):
+        b.navigate(base+route);b.wait_for("document.querySelectorAll('#dashboardSidebar a[href=\"/marked-questions\"]').length===1")
+        b.set_viewport(1280,850);b.activate();b.wait_for('document.hasFocus()')
+        b.evaluate("document.querySelector('#dashboardSidebar a[href=\"/marked-questions\"]').focus();true")
+        b.press_key('\ue007');b.wait_for("location.pathname==='/marked-questions'")
+        b.wait_for("document.querySelectorAll('[data-mark-id]').length===1")
+        assert b.evaluate("document.querySelector('#dashboardSidebar a[href=\"/marked-questions\"]').getAttribute('aria-current')")=='page'
+        assert b.evaluate("document.querySelectorAll('#dashboardSidebar a[aria-current=page]').length")==1
+    b.set_viewport(390,850)
+    b.click('#menuButton');b.wait_for("document.getElementById('menuButton').getAttribute('aria-expanded')==='true'")
+    b.press_key('\ue00c')
+    b.wait_for("document.getElementById('menuButton').getAttribute('aria-expanded')==='false'")
+    assert b.evaluate('document.activeElement.id')=='menuButton'
+    b.press_key('\ue007')
+    b.wait_for("document.getElementById('menuButton').getAttribute('aria-expanded')==='true'")
+    b.wait_for("document.activeElement.closest('#dashboardSidebar')!==null")
+    for _ in range(32):
+        if b.evaluate("document.activeElement.getAttribute('href')==='/marked-questions'"):break
+        b.press_key('\ue004')
+    assert b.evaluate("document.activeElement.getAttribute('href')==='/marked-questions'")
+    assert b.evaluate('document.activeElement.matches(":focus-visible")')
+    b.press_key('\ue007');b.wait_for("document.querySelectorAll('[data-mark-id]').length===1")
+    output=os.environ.get('DLMS_SIX_ITEM_CAPTURE_DIR')
+    if output:
+        target=Path(output);target.mkdir(parents=True,exist_ok=True)
+        (target/'shared-rebuild-navigation.json').write_text(json.dumps(dict(quiz_id=qid,session_id=session,
+            identical_raw_bytes=True,unchanged_saved_records=True,marked_sidebar_keyboard=True,
+            evidence='source Firefox GUI; not packaged/native acceptance'),indent=2)+'\n')
+
+
+def test_selected_ai_exact_copy_event_and_denial_feedback(browser_stack):
+    """Shared browser copy path, not Qt native dispatch or provider acceptance."""
+    b=browser_stack.browser;base=browser_stack.base_url
+    b.navigate(base+'/review?attempt=browser-anki-missed-attempt')
+    b.wait_for('missedCache.length===2 && aiConfig!==null')
+    b.evaluate("aiConfig={...aiConfig,ai_helper_enabled:true,ai_auto_copy_prompt:true,ai_provider:'chatgpt',ai_prompt_template:'Synthetic prefix\\r\\n\\r\\n{{questions}}'};window.copiedPayloads=[];window.openedProviders=[];window.open=(...args)=>{openedProviders.push(args);return null};document.addEventListener('copy',e=>copiedPayloads.push({text:e.clipboardData.getData('text/plain'),prevented:e.defaultPrevented}));true")
+    b.click('.ai-select[data-index="0"]');b.click('.ai-select[data-index="1"]')
+    expected=b.evaluate('applyPromptTemplate(buildQuestionBlock(missedCache))')
+    assert '\r\n' in expected
+    b.click('button[onclick="explainSelectedWithAI()"]')
+    assert b.evaluate('copiedPayloads')==[{'text':expected,'prevented':True}]
+    assert b.evaluate('openedProviders')==[['https://chatgpt.com/','_blank','noopener,noreferrer']]
+    assert 'copied' in b.evaluate("document.getElementById('aiCopyStatus').textContent")
+    assert b.evaluate("document.activeElement.getAttribute('onclick')")=='explainSelectedWithAI()'
+    # The helper must not claim success when execCommand returns true without
+    # an actual copy event, or when the browser explicitly refuses the command.
+    for result in ('true','false'):
+        b.evaluate('document.execCommand=()=>'+result+';true')
+        b.click('button[onclick="explainSelectedWithAI()"]')
+        assert b.evaluate('copiedPayloads')==[{'text':expected,'prevented':True}]
+        assert 'Could not copy' in b.evaluate("document.getElementById('aiCopyStatus').textContent")
+        assert b.evaluate('document.querySelectorAll("textarea").length')==0

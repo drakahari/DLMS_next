@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import json
 import os
 import shutil
+from dlms.rendering.quiz_artifacts import UnreconstructibleQuizContent
 import tempfile
 from types import MappingProxyType
 
@@ -462,6 +463,8 @@ def rebuild_registered_quiz_artifacts(
                     message = "The original hotspot content or image is missing or inconsistent. This quiz was not rebuilt; its existing files were kept. Rebuild cannot recover hotspot geometry from saved grading records."
                 elif isinstance(exc, MissingCanonicalQuizQuestions):
                     message = "Saved question records are missing, so DLMS cannot rebuild this quiz. Its previous page files were kept. Restore a known-good backup or re-import the original questions as a new quiz."
+                elif isinstance(exc, UnreconstructibleQuizContent):
+                    message = "Rebuild cannot safely reconstruct this quiz's complete content from saved records. Its existing page files were kept. Use the original playable quiz or a known-good backup; no content was replaced."
                 elif isinstance(exc, PermissionError):
                     message = "DLMS could not write the page files. Check data-folder write permissions and retry."
                 elif isinstance(exc, OSError):

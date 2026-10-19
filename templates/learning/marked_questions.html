@@ -1,6 +1,9 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf-token" content="{{ csrf_token() }}"><title>Marked questions — DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/exam-plans.css"></head>
-<body class="dashboard-home"><main class="dashboard-main exam-plans" id="markedQuestions" data-generation="{{ state.generation }}" data-revision="{{ state.revision }}" data-scope="{{ quiz_id or 'all' }}">
-<header class="dashboard-header"><div><h1>Marked questions</h1><p>Keep questions you want to revisit. A mark does not mean you answered incorrectly.</p></div></header>
+<body class="dashboard-home"><div class="dashboard-shell">
+{% from "shared/_settings-sidebar.html" import settings_shell_sidebar %}
+{{ settings_shell_sidebar("Marked questions") }}
+<main class="dashboard-main exam-plans" id="markedQuestions" data-generation="{{ state.generation }}" data-revision="{{ state.revision }}" data-scope="{{ quiz_id or 'all' }}">
+<header class="dashboard-header"><button type="button" id="menuButton" data-settings-menu class="dashboard-menu-button" aria-label="Toggle navigation" aria-controls="dashboardSidebar" aria-expanded="false">☰</button><div><h1>Marked questions</h1><p>Keep questions you want to revisit. A mark does not mean you answered incorrectly.</p></div></header>
 <nav class="plan-links" aria-label="Marked questions navigation"><a href="/library">Quiz Library</a><a href="/marked-questions">All marked quizzes</a><a href="/help/quizzes#marked-questions">Help</a></nav>
 <section class="dashboard-panel"><h2>{{ 'This quiz' if quiz_id else 'All marked quizzes' }} · {{ total }} {{ 'question' if total == 1 else 'questions' }}</h2>
 <p>Practice and export keep your marks. Only <strong>Unmark</strong> removes saved reminders.</p>
@@ -18,4 +21,4 @@
 {% if mark.anki_reason %}<p>Anki: {{ mark.anki_reason }}</p>{% endif %}
 <div class="plan-links">{% if mark.url %}<a href="{{ mark.url }}">{{ 'Open marked quiz' if mark.origin_only else 'Open current source quiz' }}</a>{% endif %}<button type="button" data-unmark="{{ mark.id }}" aria-label="Unmark question {{ mark.question_number }} from {{ mark.title }}">Unmark</button></div></article>{% else %}<p>No marked questions in this view. In Study Mode, choose Mark for review on a question.</p>{% endfor %}
 <nav class="plan-links" aria-label="Marked question pages">{% if page > 1 %}<a href="?page={{ page-1 }}{% if quiz_id %}&amp;quiz={{ quiz_id }}{% endif %}">Previous page</a>{% endif %}<span>Page {{ page }} of {{ pages }}</span>{% if page < pages %}<a href="?page={{ page+1 }}{% if quiz_id %}&amp;quiz={{ quiz_id }}{% endif %}">Next page</a>{% endif %}</nav><p>Selections stay selected while paging in this tab. Unsupported or changed questions are never silently skipped.</p></section>
-</main><script src="/static/nav-normalize.js"></script><script src="/static/local-time.js"></script><script src="/static/review-marks.js"></script></body></html>
+</main></div><script src="/static/nav-normalize.js"></script><script src="/static/local-time.js"></script><script src="/static/review-marks.js"></script></body></html>

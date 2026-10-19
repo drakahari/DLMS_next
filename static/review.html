@@ -115,6 +115,7 @@
                 <button type="button" onclick="explainSelectedWithAI()"><svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#ai"></use></svg> Explain Selected with AI</button>
             </div>
             <p id="attemptExportStatus" role="status" aria-live="polite"></p>
+            <p id="aiCopyStatus" role="status" aria-live="polite"></p>
             <div id="attemptExportResult"></div>
         </section>
 
@@ -193,21 +194,38 @@ async function copyTextToClipboard(text) {
 }
 
 function copyTextToClipboardSynchronously(text) {
+    const previousFocus = document.activeElement;
     const textarea = document.createElement("textarea");
     textarea.value = text;
     textarea.style.position = "fixed";
     textarea.style.left = "-9999px";
     textarea.style.top = "-9999px";
+    let copied = false;
+    const copyExactText = event => {
+        if (document.activeElement !== textarea || !event.clipboardData) return;
+        // textarea.value normalizes CRLF. Bind the clipboard payload to the
+        // original prompt, not the normalized selection or another selection.
+        event.clipboardData.setData("text/plain", text);
+        event.preventDefault();
+        copied = true;
+    };
     document.body.appendChild(textarea);
-    textarea.focus();
-    textarea.select();
-
-    const ok = document.execCommand("copy");
-    document.body.removeChild(textarea);
-
-    if (!ok) {
-        throw new Error("Fallback clipboard copy failed");
+    document.addEventListener("copy", copyExactText, true);
+    try {
+        textarea.focus({preventScroll: true});
+        textarea.select();
+        if (!document.execCommand("copy") || !copied) {
+            throw new Error("Fallback clipboard copy was not confirmed");
+        }
+    } finally {
+        document.removeEventListener("copy", copyExactText, true);
+        if (textarea.parentNode) textarea.parentNode.removeChild(textarea);
+        if (previousFocus?.isConnected) previousFocus.focus({preventScroll: true});
     }
+}
+
+function aiCopyStatus(message) {
+    document.getElementById("aiCopyStatus").textContent = message;
 }
 
 /* =====================================================
@@ -563,11 +581,13 @@ window.openAIExplain = function(index, btn) {
         if (aiConfig.ai_auto_copy_prompt) {
             try {
                 copyTextToClipboardSynchronously(prompt);
+                aiCopyStatus("AI prompt copied. Paste manually; nothing was submitted.");
                 const oldHTML = btn.innerHTML;
                 btn.innerHTML = '<svg class="dlms-icon dlms-inline-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#check"></use></svg> Prompt Copied';
                 setTimeout(() => btn.innerHTML = oldHTML, 1500);
             } catch (copyErr) {
                 console.warn("[AI Helper] Could not auto-copy prompt:", copyErr);
+                aiCopyStatus("Could not copy the AI prompt. The browser may still open; copy it manually before submitting.");
             }
         }
 
@@ -625,12 +645,15 @@ window.explainSelectedWithAI = function() {
         }
 
         const prompt = applyPromptTemplate(buildQuestionBlock(selectedQuestions));
+        aiCopyStatus("");
 
         if (aiConfig.ai_auto_copy_prompt) {
             try {
                 copyTextToClipboardSynchronously(prompt);
+                aiCopyStatus("Selected question prompt copied. Paste manually; nothing was submitted.");
             } catch (copyErr) {
                 console.warn("[AI Helper] Clipboard copy failed:", copyErr);
+                aiCopyStatus("Could not copy the AI prompt. The browser may still open; copy it manually before submitting.");
             }
         }
 
