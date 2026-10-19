@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "source_base": "a8cd5182b6870e8bfdc1fca569b2cda9f191a1be",
+  "runtime_commit": "968709d0cd15210d35d3561d513bfbf559b088ad",
+  "reviewed_patch_sha256": "01f271cda4f4724d601abc49e37290d654b79695648959cdfe3e34092875f76d",
+  "original_source_snapshot_sha256": "f5e755a33df1222fe49e0f342f9b2b31850b516bd360d507e6a11afc6698d8da",
+  "recorded_build_input_files_verified": 1152,
+  "source_archive_files_verified": 1578,
+  "committed_runtime_and_tests": [
+    "windows_webview2/Host.cs",
+    "tests/webview2/AveryPrintTests.cs",
+    "tests/webview2/test_avery_print.py"
+  ],
+  "release_identity": "windows-330-avery-print-20261019",
+  "executable": {
+    "file": "DLMS-Desktop-WebView2.exe",
+    "sha256": "0226ffbf23dd506b26f02f04af061ba5f191c225a09ea97687e242f884e78275"
+  },
+  "installer": {
+    "file": "DLMS-Desktop-WebView2-Windows-x86_64-windows-330-avery-print-20261019-Setup.exe",
+    "bytes": 256143357,
+    "sha256": "ce0ff7ac924e079833f37258194901ae167ff72d3746b65a320f8db18528c9fe",
+    "signed": false,
+    "executed": false
+  },
+  "payload_inventory_sha256": "ddee717ce83abac14cb933eabd78a9f00b6ba8c39c8def907defa223c9082556",
+  "source_archive": {
+    "file": "DLMS-Desktop-3.3.0-windows-avery-print-20261019-source.zip",
+    "sha256": "d4baf83be83e6a3cc80bba4563a7791fbf83f9d12d823a986087d7ea3fc06ed6"
+  },
+  "notices_archive": {
+    "file": "DLMS-Desktop-3.3.0-windows-avery-print-20261019-notices.zip",
+    "sha256": "542a370f91fbb61e83a90081e9025f1df61f2c1c677a120f4b01ed6d2cb91b0f"
+  },
+  "correspondence": "Every recorded working-tree build input retained its build hash. The runtime commit is a direct child of source_base changing only the three reviewed files; their Git blobs match the verified working files after CRLF normalization. Other source inputs are unchanged from source_base. The documentation-only follow-up is outside the original build/archive.",
+  "embedded_metadata": "Original public base plus pre-commit uncommitted snapshot; preserved without rewriting or rebuilding.",
+  "rebuilt_for_commit": false,
+  "binary_or_private_evidence_committed": false,
+  "publication_held": true
+}
