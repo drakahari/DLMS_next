@@ -1,20 +1,27 @@
 """Installer-only source boundaries; native qualification is a separate driver."""
 from pathlib import Path
-import subprocess
+import hashlib
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / 'package_windows_webview2/installer.iss'
 BASE = '2107e5cffc787705dfbbb495995655ebd504dedd'
+BASE_BLOB = 'a8b85543827e9428b6745d24f712619271f4ff1b'
+BASE_GUARD_FIXTURE_SHA256 = '158b04aa248b2b5860c2eab9b7b60bb2eacaba8c619a4c1cab7dc094fe1ee473'
+BASE_GUARDS = Path(__file__).parent / 'fixtures/installer_guards_2107e5c.iss.txt'
 
 
 def test_security_and_path_guards_unchanged():
     current = SOURCE.read_text()
-    original = subprocess.check_output(
-        ['git', 'show', BASE + ':package_windows_webview2/installer.iss'],
-        cwd=ROOT, text=True)
+    # Exact guard-region and following boundary from BASE/BASE_BLOB. LF text keeps
+    # the comparison exact across Windows checkouts without fetching Git history.
+    original = BASE_GUARDS.read_text(encoding='utf-8')
+    assert hashlib.sha256(original.encode('utf-8')).hexdigest() == BASE_GUARD_FIXTURE_SHA256
     start = 'function NativeAttributes('
     end = 'function MenuProfileParameters('
-    assert current[current.index(start):current.index(end)] == original[original.index(start):original.index(end)]
+    boundary = 'function MenuProfileParameters(Unused: String): String;\n'
+    assert original.startswith(start) and original.count(end) == 1
+    assert original.endswith(boundary)
+    assert current[current.index(start):current.index(end)] == original[:-len(boundary)]
     assert 'S-1-15-3-' not in current  # no capability whitelist
 
 
