@@ -13,6 +13,10 @@ short orientation. The [Markdown manual](../../user-manual/README.md) remains
 the canonical written guide. These videos teach decisions and sequences, not
 every field, file format or implementation detail.
 
+## DLMS Desktop walkthrough
+
+[Watch the DLMS Desktop walkthrough](https://www.youtube.com/watch?v=mPGNbPy56X8) — See DLMS Desktop’s Local and Server modes, demonstrated on Linux.
+
 ## Playlist and manual companions
 
 Each linked `video.json` is the authoritative script and storyboard. Narration
