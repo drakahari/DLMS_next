@@ -68,6 +68,8 @@ class ServerPage(OwnedPage):
         super().javaScriptConsoleMessage(level, message, line_number, source_id)
 
     def acceptNavigationRequest(self, url, nav_type, is_main_frame):  # noqa: N802 - Qt API
+        if getattr(getattr(self, 'avery_print', None), 'native_busy', False):
+            return False  # Keep the consented document while its native operation owns the window.
         if self.owner.view is None:
             return False
         if exact_server_origin(url, self.origin):

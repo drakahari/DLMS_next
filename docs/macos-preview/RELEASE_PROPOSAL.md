@@ -2,8 +2,8 @@
 
 **DLMS Desktop 3.3.0 Preview — Apple Silicon**
 
-Public source: `a8cd5182b6870e8bfdc1fca569b2cda9f191a1be`, plus the separately
-recorded Mac public-packaging changes and shared Qt Avery printing correction
+Public source: `2107e5cffc787705dfbbb495995655ebd504dedd`, plus the separately
+recorded shared Qt standard printing correction and packaging source-pin update
 supplied in the exact source companion. The source record explicitly lists these
 runtime changes; this is not a clean, unmodified build of the base commit.
 
@@ -16,20 +16,23 @@ paste or submission. The original round blue DLMS icon is restored without a
 redesign; its provenance and owner redistribution permission are recorded in
 desktop_assets/ICON_PROVENANCE.md.
 
-In Desktop, Avery **Print Cards** creates a US Letter PDF and offers the native
-Save As chooser. Save it, then use Preview or another PDF viewer’s Print command
-to print at actual size (100%). Desktop offers Save As PDF rather than a direct
-hardware-printer dialog. Cancellation,
-failure and refusal have visible feedback; existing destinations are not replaced.
+In Desktop, Avery **Print Cards** opens the standard system print dialog for
+both physical printers and its native **Save as PDF** option. There is no
+separate PDF action or required save-and-open step. The Mac uses a PDFKit print
+operation over an immutable copy of the selected Avery pages; macOS owns printer
+and PDF settings, destination selection and the normal overwrite confirmation.
+An existing file may be replaced only through that system workflow. This is a
+changed printing contract, not DLMS's custom no-replace export publisher; other
+Anki/backup/export safeguards remain unchanged. Opening the dialog does not
+accept it or automatically submit a job. Completion failure can mean cancel or
+failure; successful completion does not prove physical paper output.
 Selection, deck name and duplex setting survive Return with the updated shared
-Server templates. Older Server templates can still print PDFs, but require the
+Server templates. Older Server templates can still open the native print dialog, but require the
 shared template update to retain a nondefault short-edge setting on Return.
-Physical printer alignment remains unqualified. The original POST-only layout
-route is unchanged. Genuine native Save As/save/cancel acceptance for this package
-remains pending: the bounded native automation could not reach Avery through
-the exposed navigation controls. Source Qt output checks used simulated chooser responses and do not
-resolve that gap. See the post-build COMMIT_ARTIFACT_ACCEPTANCE.md record under
-docs/quality/qt-avery-print-20261019 for exact scope.
+Physical printer output, alignment and duplex remain unqualified until separately
+observed; successful spooling is not physical output acceptance. The original
+POST-only layout route is unchanged. See docs/quality/qt-native-print-20261019
+and the separate candidate acceptance record for exact dialog/PDF evidence.
 
 Open the DMG and copy `DLMS Desktop.app` to a new location that does not overwrite
 an existing app or private Candidate launcher. Double-click that single app.

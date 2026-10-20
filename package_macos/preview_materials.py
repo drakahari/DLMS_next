@@ -15,13 +15,14 @@ import tarfile
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
-BASE='a8cd5182b6870e8bfdc1fca569b2cda9f191a1be'
-SOURCE_STATE='Git HEAD plus reviewed Qt printing and Mac packaging overlay'
-PRINT_PATHS=frozenset({'desktop/qt_printing.py','desktop/shell.py',
+BASE='2107e5cffc787705dfbbb495995655ebd504dedd'
+SOURCE_STATE='Git HEAD plus reviewed shared Qt standard print-dialog overlay'
+PRINT_PATHS=frozenset({'desktop/qt_printing.py','desktop/macos_printing.py','desktop/shell.py','desktop/server_browser.py',
     'templates/anki/printable.html','templates/anki/custom.html',
     'tests/outputs/test_qt_printing.py','tests/outputs/gui_qt_printing.py',
     'docs/quality/qt-avery-print-20261019/HANDOFF.md',
-    'docs/quality/qt-avery-print-20261019/SOURCE_ACCEPTANCE.md'})
+    'docs/quality/qt-avery-print-20261019/SOURCE_ACCEPTANCE.md',
+    'docs/quality/qt-native-print-20261019/HANDOFF.md'})
 SHARED={
  'DLMS-Desktop-3.3.0-preview1-source-python.tar.zst':'40d78ccaad2cb0aadcca96f7f9cfeff06cba11e2de794ec45146954190b141f1',
  'DLMS-Desktop-3.3.0-preview1-source-qt-pyside.tar':'2d5f30392243200188b7df70563ba9d40e9847d695c979f628e38543d9d6ff73',
