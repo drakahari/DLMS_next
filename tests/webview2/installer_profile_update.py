@@ -93,7 +93,7 @@ if ($a.write) {
 
     def setup(exe, name):
         return subprocess.run([str(exe), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART',
-            '/DIR='+str(app), '/TASKS=desktopicon', '/LOG='+str(out/(name+'.log'))], timeout=120).returncode
+            '/DIR='+str(app), '/TASKS=desktopicon', '/DLMSPROFILE=normal01', '/LOG='+str(out/(name+'.log'))], timeout=120).returncode
 
     menu = app/'synthetic-menu/DLMS Desktop.lnk'
     desktop = app/'synthetic-desktop/DLMS Desktop.lnk'
@@ -103,8 +103,8 @@ if ($a.write) {
     assert tree(old) == expected
     initial = link(menu)
     assert initial == {'target':str(old/'DLMS-Desktop-WebView2.exe'),
-        'directory':str(old), 'arguments':''}, initial
-    records = [{'case':'fresh-install-default', 'passed':True}]
+        'directory':str(old), 'arguments':'--profile normal01'}, initial
+    records = [{'case':'fresh-install-explicit-named-profile', 'passed':True}]
     old_exe = old/'DLMS-Desktop-WebView2.exe'
     good = {'target':old_exe, 'directory':old, 'arguments':'--profile normal01'}
     link(menu, **good)
@@ -127,7 +127,7 @@ if ($a.write) {
         assert setup(second, name) != 0, name
         assert menu.read_bytes() == before and desktop.read_bytes() == preserved[1]
         assert tree(old) == expected and not list(new.rglob('*.exe')), name
-        assert 'Existing DLMS launch shortcut could not be safely preserved' in (out/(name+'.log')).read_text(encoding='utf-8-sig')
+        assert 'Existing DLMS Start menu launch shortcut is invalid or unsafe' in (out/(name+'.log')).read_text(encoding='utf-8-sig')
         records.append({'case':name, 'refused':True, 'payload_and_shortcuts_unchanged':True})
     # A missing link underneath a junction must be refused before shortcut
     # creation, even though the actual link pathname does not exist yet.
@@ -181,13 +181,13 @@ if ($a.write) {
     assert not app.exists() and tree(data) == data_before_uninstall
     # Exercise final reviewed setup's no-existing-link path too, independently
     # from the earlier initial fixture installer.
-    assert setup(second, 'final-fresh-default') == 0
-    assert link(menu)['arguments'] == '' and link(desktop)['arguments'] == ''
+    assert setup(second, 'final-fresh-explicit-named-profile') == 0
+    assert link(menu)['arguments'] == '--profile normal01' and link(desktop)['arguments'] == '--profile normal01'
     assert invoke(app/'uninstall/unins000.exe', app, out/'fresh-uninstall.log', uninstall=True) == 0
     deadline = time.monotonic()+20
     while app.exists() and time.monotonic()<deadline:time.sleep(.1)
     assert not app.exists() and tree(data) == data_before_uninstall
-    records.append({'case':'final-reviewed-fresh-install-default', 'passed':True})
+    records.append({'case':'final-reviewed-fresh-install-explicit-named-profile', 'passed':True})
     result = {'passed':True, 'isolated_variant_only':True, 'real_user_integration_tested':False,
         'payload_inventory_sha256':digest(inventory), 'cases':records,
         'synthetic_data_before_reopen_files':len(before_data),
