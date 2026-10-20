@@ -3,8 +3,8 @@
 Base: `2107e5cffc787705dfbbb495995655ebd504dedd`.
 Installer-only correction on `fix/windows-installer-safe-menu-opt-out`;
 application payload, Avery printing, dependencies, runtime and canonical icon
-remain unchanged. No real installation, ACL change or publication is part of
-this correction.
+remain unchanged. The correction itself changed no host installation or ACL.
+Subsequent owner-authorized actual-host acceptance is recorded below.
 
 ## Behavior
 
@@ -81,6 +81,22 @@ reused byte-for-byte because the application payload is unchanged; the revised
 installer source must accompany the new installer. Do not advertise the old
 application source ZIP alone as the complete revised installer source.
 
-No installation or publication is authorized by this record. A later real-user
-installation must explicitly choose the no-menu option and `fresh-20261017`;
-no old shortcut remains from which setup can safely infer that selection.
+This record does not authorize publication or another installation. Reusing an
+existing profile requires explicitly confirming its exact name; setup must not
+infer a profile from an unsafe shortcut. The later owner-authorized installation
+deliberately selected a fresh Local profile instead of reusing `fresh-20261017`.
+
+## Actual-host shipping-installer acceptance
+
+The owner subsequently authorized and completed the actual unsigned Preview 2.1
+installer on Windows 11, choosing **Install without Start menu entries** and
+explicitly confirming the fresh Local profile `local-preview21-01`. The supported
+application-folder launcher opened that same profile before and after a normal
+close/reopen. All 6,987 installed payload files matched; saved directory owners
+and security descriptors were unchanged. No application or installer rebuild was
+needed. This supersedes the earlier shipping-UI environment blocker; it does not
+turn the earlier inert TestScope cases into shipping-installer evidence.
+
+See [actual-host acceptance and exact artifact binding](HOST_ACCEPTANCE.md) for
+results, launch location, evidence boundaries and retained limitations. Publication
+remains paused pending separate authorization.
