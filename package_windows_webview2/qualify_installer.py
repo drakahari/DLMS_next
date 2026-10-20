@@ -56,7 +56,7 @@ def variant(path, release, inventory=None):
 
 def invoke(exe,app,log,*,uninstall=False):
     command=[str(exe),'/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/LOG='+str(log)]
-    if not uninstall:command.append('/DIR='+str(app))
+    if not uninstall:command.extend(['/DIR='+str(app), '/DLMSPROFILE=normal01'])
     return subprocess.run(command,timeout=120).returncode
 
 def junction(path,target):
