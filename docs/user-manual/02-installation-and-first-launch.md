@@ -5,6 +5,13 @@ Choose your edition first: **browser-based DLMS** opens your preferred browser;
 Both can be used locally. See [Choose your DLMS](../choose-your-dlms.md) for
 published downloads, preview limitations and platform-specific instructions.
 
+For Desktop, follow the current [Windows installer](../../README.md#install-and-open-desktop-on-windows),
+[Linux AppImage](../../README.md#open-desktop-on-linux), or
+[Apple Silicon Mac DMG](../../README.md#install-and-open-desktop-on-mac) instructions.
+Use the app's normal first launch; you do not need to create a Local profile by hand.
+Preview numbers differ by platform; the [download table](../../README.md#download-dlms-desktop--previews)
+links directly to each current published package and its release notes.
+
 The installation commands below are for **browser-based DLMS 3.3.0**.
 For ordinary use, install the package built for your operating
 system. The native package contains the local application and its OCR runtime;

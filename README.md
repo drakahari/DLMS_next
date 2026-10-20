@@ -4,12 +4,12 @@
 
 ## Choose your DLMS
 
-**Latest published release: DLMS 3.3.0** — original stable browser-based edition. **[Download stable 3.3.0](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0).**
+**Browser-based edition — Latest published release: DLMS 3.3.0 (stable).** **[Download stable 3.3.0](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0).**
 
 | Choose | What you get |
 | --- | --- |
 | **Original browser-based DLMS — stable 3.3.0** | Runs on your computer and opens in your preferred browser. Choose this for the established stable release. It can also be deliberately configured as a server. |
-| **DLMS Desktop — Preview 1** | Opens in its own application window. **Local mode** runs on your computer; **Server mode** connects to an existing DLMS server you choose. Choose this if you want to try the Desktop preview. |
+| **DLMS Desktop — platform previews** | Opens in its own application window. **Local mode** runs on your computer; **Server mode** connects to an existing DLMS server you choose. Choose this if you want to try the Desktop preview. |
 
 **Both editions can be used locally.** A browser interface does not mean a cloud service. Local use needs neither a hosted DLMS account nor a separate DLMS server. External AI and remote Server connections need network access. The two editions do not automatically share or synchronize data. Keep using the original release if it suits you.
 
@@ -39,31 +39,31 @@ Before upgrading an existing installation, keep a verified backup: [3.3.0 releas
 
 **Ordinary users need only their platform's app download below**, plus any system prerequisites listed under installation. You do not need Python, GitHub's “Source code” archives or the large dependency-source archives to run the packaged app.
 
-| Your system | App download — Preview 1 |
-| --- | --- |
-| Windows 11 x86-64 | [Windows installer (.exe)](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-windows/DLMS-Desktop-3.3.0-preview1-windows11-x86_64-Setup.exe) |
-| Linux x86-64 | [Linux AppImage](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1/DLMS-Desktop-3.3.0-preview1-linux-x86_64.AppImage) |
-| Mac with Apple Silicon (not Intel) | [Mac DMG](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-macos/DLMS-Desktop-3.3.0-macos-arm64-preview1.dmg) |
+| Your system | Current preview | App download | Release notes |
+| --- | --- | --- | --- |
+| Windows 11 x86-64 | **2.2** | [Windows installer (.exe)](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview2.2-windows/DLMS-Desktop-3.3.0-Windows-x86_64-Preview-2.2-Setup.exe) | [Windows Preview 2.2](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview2.2-windows) |
+| Linux x86-64 | **2.1** | [Linux AppImage](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview2.1-linux/DLMS-Desktop-3.3.0-preview2.1-linux-x86_64.AppImage) | [Linux Preview 2.1](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview2.1-linux) |
+| Mac with Apple Silicon (not Intel) | **2.1** | [Mac DMG](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview2.1-macos/DLMS-Desktop-3.3.0-macos-arm64-preview.dmg) | [Mac Preview 2.1](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview2.1-macos) |
 
-These are **previews, not the stable release**. [Windows details](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview1-windows), [Linux details](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview1) and [Mac details](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview1-macos) record their tested systems and limitations. Desktop keeps separate profiles; installing it does not automatically import your browser-based DLMS data.
+These are **previews, not stable DLMS 3.3.0**. Preview numbers differ by platform. The linked release notes record each package's prerequisites, checksums and qualification limits. Local storage is initialized automatically; no manual profile setup is needed. Installing Desktop does not automatically import your browser-based DLMS data.
 
 ### Install and open Desktop on Windows
 
 **Requires Windows 11 x86-64, .NET Framework 4.8 and a protected machine-wide Microsoft WebView2 Evergreen Runtime 155.0.4283.45 or newer.** Setup does not install prerequisites; per-user/AppData-only WebView2 runtimes are unsupported.
 
-1. Download and run `DLMS-Desktop-3.3.0-preview1-windows11-x86_64-Setup.exe`. The per-user installer is **unsigned**, so Windows may warn. Proceed only if you trust the download and Windows permits it; do not disable protections to install it.
-2. Finish setup, then open **DLMS Desktop** from the Start menu. The preview retains the **DLMS Desktop WebView2 Candidate** menu folder for compatibility. Desktop shortcut creation and opening the app at the end of setup are optional and initially unchecked.
+1. Close DLMS if it is open, then download and run `DLMS-Desktop-3.3.0-Windows-x86_64-Preview-2.2-Setup.exe`. The per-user installer is **unsigned**, so Windows may warn. Proceed only if you trust the download and Windows permits it; do not disable protections to install it.
+2. Keep **Create a Start menu shortcut** checked, finish setup, then open **DLMS Desktop** from Windows Start. A desktop shortcut is optional. Setup creates Local data automatically and preserves existing Local data when updating. You do not need to uninstall first or enter a profile name.
 
 ### Open Desktop on Linux
 
 Use the AppImage for a standalone trial. **Normal AppImage mounting requires FUSE.** The exact preview was tested on Fedora 44/COSMIC Wayland; native Ubuntu and Omarchy acceptance remains pending.
 
 1. Save the AppImage in a folder you want to keep. Open a terminal in that folder.
-2. Make it executable and start a named preview profile:
+2. Make it executable and open it:
 
    ```sh
-   chmod u+x DLMS-Desktop-3.3.0-preview1-linux-x86_64.AppImage
-   ./DLMS-Desktop-3.3.0-preview1-linux-x86_64.AppImage --profile preview01
+   chmod u+x DLMS-Desktop-3.3.0-preview2.1-linux-x86_64.AppImage
+   ./DLMS-Desktop-3.3.0-preview2.1-linux-x86_64.AppImage
    ```
 
 It needs no mandatory installation or desktop integration. The AppImage is **unsigned**; keep Chromium sandboxing enabled. See alternatives below if FUSE is unavailable.
@@ -72,16 +72,17 @@ It needs no mandatory installation or desktop integration. The AppImage is **uns
 
 **Apple Silicon only; qualified on macOS 26.6.2.** Intel Macs and other macOS versions are not qualified by this preview. The app is **ad hoc signed, without Developer ID or notarization**.
 
-1. Open the DMG and copy **DLMS Desktop.app** to a location you choose. Use a separate folder if another DLMS app is already there.
+1. Open the DMG and copy **DLMS Desktop.app** to **Applications**.
 2. Double-click the copied app in Finder.
 3. If macOS says it cannot verify the app, choose **Done**, then **System Settings → Privacy & Security → Open Anyway** for this app. Confirm **Open Anyway** (or **Open**) and authenticate personally with your existing password or Touch ID.
 
-That per-app procedure was verified on the quarantined preview. If approval is unavailable or macOS reports malware or damage, stop. Do not disable Gatekeeper or remove quarantine. Managed Macs may prohibit approval.
+Use that per-app approval only when offered for the trusted download. If approval is unavailable or macOS reports malware or damage, stop. Do not disable Gatekeeper or remove quarantine. Managed Macs may prohibit approval.
 
 ### Alternative Linux installation
 
-- **No FUSE:** explicitly extract and run the same AppImage with `APPIMAGE_EXTRACT_AND_RUN=1 ./DLMS-Desktop-3.3.0-preview1-linux-x86_64.AppImage --profile preview01`. Keep Chromium sandboxing enabled.
-- **One-folder bundle:** [download the Linux .tar.zst bundle](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1/DLMS-Desktop-3.3.0-preview1-linux-x86_64.tar.zst) if you want the optional Fedora per-user installation/manual-maintenance manager. Extract into a new folder, keep the full bundle together and follow the [Linux release instructions](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview1). Installation previews its locations and requires confirmation; it is not automatic.
+If FUSE is unavailable, follow the extraction instructions in the [current Linux release notes](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview2.1-linux). Keep Chromium sandboxing enabled; do not run DLMS as root.
+
+**Linux Preview 2.1 ships an AppImage, not a `.tar.zst` application bundle.** Older one-folder bundles remain in the release history; they are not the current Desktop preview.
 
 The original browser-based 3.3.0 release has distribution-specific Linux `.tar.gz` packages, not an AppImage. The older browser-based `DLMS-3.2.2-linux-x86_64.AppImage` remains an older-release option; it is separate from this Desktop preview.
 
@@ -332,9 +333,9 @@ Running a packaged app does **not** require downloading source archives or insta
 | Edition/platform | Checksums and materials | Build/replacement guidance |
 | --- | --- | --- |
 | Original stable 3.3.0 | [SHA256SUMS.txt](https://github.com/drakahari/DLMS_next/releases/download/v3.3.0/SHA256SUMS.txt), [release/source](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0) | [Native release verification](docs/RELEASE_VERIFICATION.md), [OCR packaging](docs/OCR_PACKAGING.md) |
-| Windows Desktop preview | [SHA256SUMS.txt](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-windows/SHA256SUMS.txt), [all sources/notices and final installer supplement](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview1-windows), [redistribution](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-windows/REDISTRIBUTION.md) | [Build and replacement](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-windows/BUILD_AND_REPLACEMENT.md) |
-| Linux Desktop preview | [SHA-256 values and all source/notice companions](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview1) | [Linux build, notices and replacement guide](docs/linux-desktop-preview-build.md) |
-| Mac Desktop preview | [SHA256SUMS](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-macos/SHA256SUMS), [source index](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-macos/SOURCE_INDEX.json), [all sources/notices and provenance](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview1-macos), [redistribution](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-macos/REDISTRIBUTION.md) | [Build and replacement](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview1-macos/BUILD_AND_REPLACEMENT.md) |
+| Windows Desktop Preview 2.2 | [SHA256SUMS.txt](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview2.2-windows/SHA256SUMS.txt), [all sources/notices](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview2.2-windows), [redistribution](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview2.2-windows/REDISTRIBUTION.md) | [Build and replacement](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview2.2-windows/BUILD_AND_REPLACEMENT.md) |
+| Linux Desktop Preview 2.1 | [SHA256SUMS-linux-preview2.1.txt](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview2.1-linux/SHA256SUMS-linux-preview2.1.txt), [all source/notice companions](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview2.1-linux) | Current build/replacement materials are inside the notices archive; [historical Preview 1 build guide](docs/linux-desktop-preview-build.md) |
+| Mac Desktop Preview 2.1 | [SHA256SUMS](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview2.1-macos/SHA256SUMS), [source index](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview2.1-macos/SOURCE_INDEX.json), [all sources/notices and provenance](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview2.1-macos) | Build/replacement and redistribution materials accompany the notices and source archives in that release |
 
 The application code is MIT; dependencies retain their own terms. The canonical round blue icon is owner-identified AI-generated artwork; its provenance and redistribution permission are recorded separately. See [LICENSE](LICENSE), [Desktop source licensing](docs/desktop-license.md) and [artwork provenance](desktop_assets/ICON_PROVENANCE.md). Anyone redistributing a Desktop binary must retain its applicable notices and corresponding-source materials, including the final Windows installer supplement and the platform-specific source mappings. Ordinary users need only their app, not every source companion.
 
@@ -458,4 +459,4 @@ checks do not establish equivalent end-to-end behavior on every other platform.
 The [release evidence](docs/releases/3.3.0-RELEASE-CHECKLIST.md) records the
 limits, and the [Releases page](https://github.com/drakahari/DLMS_next/releases) is authoritative for downloads.
 
-Desktop Preview 1 is separately published for Windows 11 x86-64, Linux x86-64 and Apple Silicon Mac. Its preview status and platform qualification limits are described in the download sections above.
+Desktop previews are separately published: **Windows 2.2**, **Linux 2.1** and **Apple Silicon Mac 2.1**. Their preview status and platform qualification limits are described in the download sections above.
