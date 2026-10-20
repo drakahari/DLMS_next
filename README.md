@@ -47,6 +47,8 @@ Before upgrading an existing installation, keep a verified backup: [3.3.0 releas
 
 These are **previews, not stable DLMS 3.3.0**. Preview numbers differ by platform. The linked release notes record each package's prerequisites, checksums and qualification limits. Local storage is initialized automatically; no manual profile setup is needed. Installing Desktop does not automatically import your browser-based DLMS data.
 
+[Watch the DLMS Desktop walkthrough](https://www.youtube.com/watch?v=mPGNbPy56X8) — See DLMS Desktop’s Local and Server modes, demonstrated on Linux.
+
 ### Install and open Desktop on Windows
 
 **Requires Windows 11 x86-64, .NET Framework 4.8 and a protected machine-wide Microsoft WebView2 Evergreen Runtime 155.0.4283.45 or newer.** Setup does not install prerequisites; per-user/AppData-only WebView2 runtimes are unsupported.
