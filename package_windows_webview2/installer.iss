@@ -8,6 +8,11 @@
 #ifndef OutputRoot
   #error OutputRoot is required
 #endif
+#ifdef TestScope
+  #ifndef TestMenuRoot
+    #define TestMenuRoot "{app}\synthetic-menu"
+  #endif
+#endif
 
 [Setup]
 AppId={{C7FCBD76-02F4-49C4-B187-9A143237A1F9}
@@ -25,6 +30,8 @@ AppVersion=0.1.0
 DefaultDirName={localappdata}\Programs\DLMS Desktop WebView2 Candidate
 DefaultGroupName=DLMS Desktop WebView2 Candidate
 DisableProgramGroupPage=yes
+; Every setup run must make the no-menu choice explicitly, not inherit it.
+UsePreviousTasks=no
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64os
 ArchitecturesInstallIn64BitMode=x64os
@@ -53,16 +60,20 @@ CreateUninstallRegKey=yes
 Source: "{#Payload}\*"; DestDir: "{app}\versions\{#Release}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Tasks]
+Name: "nostartmenu"; Description: "Install without Start menu entries (use the launcher in the installation folder)"; GroupDescription: "Start menu integration:"; Flags: unchecked
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 
 [Icons]
+; This launcher lives under the guarded application root, not the shell tree.
+Name: "{app}\Launch DLMS Desktop"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:MenuProfileParameters}"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"
 #ifdef TestScope
 ; Real shortcut behavior, restricted to the disposable installation tree.
-Name: "{app}\synthetic-menu\DLMS Desktop"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:MenuProfileParameters}"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"
+Name: "{#TestMenuRoot}\DLMS Desktop"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:MenuProfileParameters}"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"; Tasks: not nostartmenu
+Name: "{#TestMenuRoot}\Uninstall DLMS Desktop"; Filename: "{uninstallexe}"; Tasks: not nostartmenu
 Name: "{app}\synthetic-desktop\DLMS Desktop"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:DesktopProfileParameters}"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"; Tasks: desktopicon
 #else
-Name: "{group}\DLMS Desktop"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:MenuProfileParameters}"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"
-Name: "{group}\Uninstall DLMS Desktop"; Filename: "{uninstallexe}"
+Name: "{group}\DLMS Desktop"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:MenuProfileParameters}"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"; Tasks: not nostartmenu
+Name: "{group}\Uninstall DLMS Desktop"; Filename: "{uninstallexe}"; Tasks: not nostartmenu
 Name: "{userdesktop}\DLMS Desktop WebView2 Candidate"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:DesktopProfileParameters}"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"; Tasks: desktopicon
 
 [Run]
@@ -104,6 +115,11 @@ var
   AppDirectories: TStringList;
   CurrentSid: String;
   SavedMenuParameters, SavedDesktopParameters: String;
+  ShortcutProblem: String;
+  ShortcutParentUnsafe: Boolean;
+  ProfilePage: TInputQueryWizardPage;
+  ProfileConfirmation: TNewCheckBox;
+  ProfileSuggested: Boolean;
 
 function NativeAttributes(Name: String): LongWord;
   external 'GetFileAttributesW@kernel32.dll stdcall';
@@ -495,6 +511,8 @@ var Attributes, ErrorCode: LongWord; Handle, TargetHandle: THandle;
     Target, Directory, Versions, Version, Parent: String;
 begin
   Result := False; Parameters := '';
+  ShortcutParentUnsafe := True;
+  ShortcutProblem := 'The shortcut directory is inaccessible, has unsafe ownership/permissions, or contains a reparse point: ' + ExtractFileDir(Path);
   Parent := ExtractFileDir(Path);
   if not SafeDirectoryChain(Parent) then Exit;
   { Even an absent shortcut must not authorize writing through an unsafe parent.
@@ -503,9 +521,12 @@ begin
     if ExtractFileDir(Parent) = Parent then Exit;
     Parent := ExtractFileDir(Parent);
   end;
+  ShortcutProblem := 'The shortcut creation parent has unsafe ownership/permissions or is inaccessible: ' + Parent;
   if not SafeCreationParent(Parent) then Exit;
   if DirExists(ExtractFileDir(Path)) and
      not PinDirectory(ExtractFileDir(Path), True) then Exit;
+  ShortcutParentUnsafe := False;
+  ShortcutProblem := 'The existing shortcut must be a trusted regular file pointing to an existing version in this installation, with a matching working directory and only an optional --profile argument: ' + Path;
   Attributes := NativeAttributes(NativeLocalPath(Path));
   if Attributes = $FFFFFFFF then begin
     ErrorCode := NativeLastError;
@@ -543,24 +564,133 @@ begin
   finally CloseNative(Handle); end;
 end;
 
-function CaptureLaunchProfiles: Boolean;
-var MenuPath, DesktopPath: String;
+function StartMenuLaunchPath: String;
 begin
 #ifdef TestScope
-  MenuPath := ExpandConstant('{app}\synthetic-menu\DLMS Desktop.lnk');
+  Result := ExpandConstant('{#TestMenuRoot}\DLMS Desktop.lnk');
+#else
+  Result := ExpandConstant('{group}\DLMS Desktop.lnk');
+#endif
+end;
+
+function AppLaunchPath: String;
+begin Result := ExpandConstant('{app}\Launch DLMS Desktop.lnk'); end;
+
+function ProfileNameAllowed(Profile: String): Boolean;
+begin Result := (Profile <> '') and ProfileArgumentsAllowed('--profile ' + Profile); end;
+
+procedure InitializeWizard;
+begin
+  ProfilePage := CreateInputQueryPage(wpSelectTasks, 'Choose the DLMS profile',
+    'Preserve or deliberately select the profile this installation will open.',
+    'Enter the exact profile name. Use default only if you intend that profile. Setup does not inspect, migrate or delete profile data.');
+  ProfilePage.Add('Profile name:', False);
+  ProfilePage.Values[0] := ExpandConstant('{param:DLMSPROFILE|}');
+  ProfileConfirmation := TNewCheckBox.Create(ProfilePage);
+  ProfileConfirmation.Parent := ProfilePage.Surface;
+  ProfileConfirmation.Left := 0;
+  ProfileConfirmation.Top := ProfilePage.Edits[0].Top + ProfilePage.Edits[0].Height + ScaleY(16);
+  ProfileConfirmation.Width := ProfilePage.SurfaceWidth;
+  ProfileConfirmation.Height := ScaleY(42);
+  ProfileConfirmation.Caption := 'I confirm the profile above for the installation-folder launcher and Start menu (if selected).';
+  ProfileConfirmation.Checked := False;
+  ProfileSuggested := False;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+var Parameters, Path: String;
+begin
+  if (CurPageID <> ProfilePage.ID) or ProfileSuggested then Exit;
+  ProfileSuggested := True;
+  if ProfilePage.Values[0] <> '' then Exit;
+  { Suggest only a safely captured, existing launcher. An unsafe menu gives no
+    profile authority; the user must enter and confirm an intended profile. }
+  if not InitializeGuard then Exit;
+  try
+    Path := AppLaunchPath;
+    if not (FileExists(Path) and CaptureShortcutProfile(Path, Parameters)) then begin
+      if WizardIsTaskSelected('nostartmenu') then Exit;
+      Path := StartMenuLaunchPath;
+      if not (FileExists(Path) and CaptureShortcutProfile(Path, Parameters)) then Exit;
+    end;
+    if Parameters = '' then ProfilePage.Values[0] := 'default'
+    else ProfilePage.Values[0] := Copy(Parameters, 11, Length(Parameters));
+  finally ReleasePins; end;
+end;
+
+function ProfileSelectionError: String;
+var Profile: String;
+begin
+  Result := '';
+  if WizardSilent then Profile := ExpandConstant('{param:DLMSPROFILE|}')
+  else Profile := ProfilePage.Values[0];
+  if not ProfileNameAllowed(Profile) then begin
+    Result := 'Explicit profile selection is required: enter a lowercase profile name (1-32 letters, digits, _ or -, starting with a letter). Silent setup requires /DLMSPROFILE=the-name. No default profile will be selected automatically.';
+    Exit;
+  end;
+  if not WizardSilent and not ProfileConfirmation.Checked then begin
+    Result := 'Confirm the intended profile before continuing. No default profile will be selected automatically.';
+    Exit;
+  end;
+  SavedMenuParameters := '--profile ' + Profile;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+var Problem: String;
+begin
+  Result := True;
+  { Silent setup reports invalid/missing explicit selection from PrepareToInstall;
+    never open a wizard-validation message box that can block unattended setup. }
+  if WizardSilent then Exit;
+  if CurPageID <> ProfilePage.ID then Exit;
+  Problem := ProfileSelectionError;
+  Result := Problem = '';
+  if not Result then MsgBox(Problem, mbError, MB_OK);
+end;
+
+function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo,
+  MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
+begin
+  Result := MemoDirInfo + NewLine + NewLine + MemoTasksInfo + NewLine + NewLine +
+    'Profile: ' + ProfilePage.Values[0] + NewLine +
+    'Launch without Start menu: ' + AppLaunchPath + NewLine +
+    'Open this shortcut from File Explorer. Uninstall remains available in Windows Installed apps.';
+  if WizardIsTaskSelected('nostartmenu') then Result := Result + NewLine +
+    'Start menu integration is omitted. Existing menu entries, if any, are left unchanged and may still launch an earlier version.';
+end;
+
+function CaptureLaunchProfiles: Boolean;
+var MenuPath, DesktopPath, PreviousParameters: String;
+begin
+  Result := False;
+  if not CaptureShortcutProfile(AppLaunchPath, PreviousParameters) then Exit;
+  MenuPath := StartMenuLaunchPath;
+#ifdef TestScope
   DesktopPath := ExpandConstant('{app}\synthetic-desktop\DLMS Desktop.lnk');
 #else
-  MenuPath := ExpandConstant('{group}\DLMS Desktop.lnk');
   DesktopPath := ExpandConstant('{userdesktop}\DLMS Desktop WebView2 Candidate.lnk');
 #endif
-  Result := CaptureShortcutProfile(MenuPath, SavedMenuParameters);
-  if Result and WizardIsTaskSelected('desktopicon') then
-    Result := CaptureShortcutProfile(DesktopPath, SavedDesktopParameters);
+  if not WizardIsTaskSelected('nostartmenu') and
+     not CaptureShortcutProfile(MenuPath, PreviousParameters) then begin
+    if ShortcutParentUnsafe then
+      ShortcutProblem := 'Start menu integration cannot safely use this destination. ' + ShortcutProblem +
+        ' Go Back to Additional Tasks and explicitly select "Install without Start menu entries", then confirm the intended profile. Setup will not change permissions or trust an unknown account.'
+    else ShortcutProblem := 'Existing DLMS Start menu launch shortcut is invalid or unsafe. ' + ShortcutProblem;
+    Exit;
+  end;
+  SavedDesktopParameters := SavedMenuParameters;
+  if WizardIsTaskSelected('desktopicon') then begin
+    if not CaptureShortcutProfile(DesktopPath, PreviousParameters) then Exit;
+    if FileExists(DesktopPath) then SavedDesktopParameters := PreviousParameters;
+  end;
+  Result := True;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
+  Result := ProfileSelectionError;
+  if Result <> '' then Exit;
   if not HasWebView2Runtime then begin
     Result := 'Protected machine-wide Microsoft Edge WebView2 Evergreen Runtime 155.0.4283.45 or newer is required under Program Files (x86). Per-user/AppData Runtime installations are unsupported by this candidate. Ask the owner before installing or updating prerequisites. This installer does not download or install them.';
     Exit;
@@ -572,7 +702,7 @@ begin
   end;
   if not CaptureLaunchProfiles then begin
     ReleasePins;
-    Result := 'Existing DLMS launch shortcut could not be safely preserved. Its target and working folder must identify an existing version in this installation, and its only supported argument is --profile followed by a lowercase profile name. Inspect the shortcut before updating; no profile was changed.';
+    Result := ShortcutProblem + ' No profile data was changed.';
   end;
 end;
 

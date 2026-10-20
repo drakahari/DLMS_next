@@ -1,0 +1,350 @@
+function NativeAttributes(Name: String): LongWord;
+  external 'GetFileAttributesW@kernel32.dll stdcall';
+function NativeLastError: LongWord;
+  external 'GetLastError@kernel32.dll stdcall';
+function OpenDirectory(Name: String; Access, Sharing: LongWord; Security: NativeUInt;
+  Creation, Flags: LongWord; Template: THandle): THandle;
+  external 'CreateFileW@kernel32.dll stdcall';
+function FileInformation(Handle: THandle; var Info: TNativeFileInfo): Boolean;
+  external 'GetFileInformationByHandle@kernel32.dll stdcall';
+function CloseNative(Handle: THandle): Boolean;
+  external 'CloseHandle@kernel32.dll stdcall';
+function CurrentProcess: THandle;
+  external 'GetCurrentProcess@kernel32.dll stdcall';
+function OpenToken(Process: THandle; Access: LongWord; var Token: THandle): Boolean;
+  external 'OpenProcessToken@advapi32.dll stdcall';
+function TokenInformation(Token: THandle; Kind: Integer; var Info: TTokenUserBuffer;
+  Size: LongWord; var Needed: LongWord): Boolean;
+  external 'GetTokenInformation@advapi32.dll stdcall';
+function SidToText(Sid: NativeUInt; var Text: NativeUInt): Boolean;
+  external 'ConvertSidToStringSidW@advapi32.dll stdcall';
+function NativeStringLength(Text: NativeUInt): Integer;
+  external 'lstrlenW@kernel32.dll stdcall';
+function CopyNativeString(Dest: String; Source: NativeUInt; Count: Integer): NativeUInt;
+  external 'lstrcpynW@kernel32.dll stdcall';
+function FreeNative(Value: NativeUInt): NativeUInt;
+  external 'LocalFree@kernel32.dll stdcall';
+function SecurityInformation(Handle: THandle; Kind, Requested: LongWord;
+  var Owner, Group, Dacl, Sacl, Descriptor: NativeUInt): LongWord;
+  external 'GetSecurityInfo@advapi32.dll stdcall';
+function AclInformation(Acl: NativeUInt; var Info: TAclSizeInfo; Size, Kind: LongWord): Boolean;
+  external 'GetAclInformation@advapi32.dll stdcall';
+function AceInformation(Acl: NativeUInt; Index: LongWord; var Ace: NativeUInt): Boolean;
+  external 'GetAce@advapi32.dll stdcall';
+procedure CopyAce(var Dest: TAcePrefix; Source: NativeUInt; Size: NativeUInt);
+  external 'RtlMoveMemory@kernel32.dll stdcall';
+function DuplicateAccessToken(Token: THandle; Level: Integer; var Duplicate: THandle): Boolean;
+  external 'DuplicateToken@advapi32.dll stdcall';
+function NativeAccessCheck(Descriptor: NativeUInt; Token: THandle; Desired: LongWord;
+  var Mapping: TDirectoryMapping; var Privileges: TPrivilegeBuffer;
+  var PrivilegeSize, Granted, AccessStatus: LongWord): Boolean;
+  external 'AccessCheck@advapi32.dll stdcall';
+function CreatePrivateDirectory(Name: String; Security: NativeUInt): Boolean;
+  external 'CreateDirectoryW@kernel32.dll stdcall';
+
+function SidString(Sid: NativeUInt): String;
+var Text: NativeUInt;
+begin
+  Result := '';
+  if not SidToText(Sid, Text) then Exit;
+  try
+    SetLength(Result, NativeStringLength(Text) + 1);
+    CopyNativeString(Result, Text, Length(Result));
+    SetLength(Result, Length(Result) - 1);
+  finally
+    FreeNative(Text);
+  end;
+end;
+
+function InitializeGuard: Boolean;
+var Token: THandle; User: TTokenUserBuffer; Needed: LongWord;
+begin
+  Result := False;
+  if PinnedPaths = nil then begin
+    PinnedPaths := TStringList.Create;
+    AppDirectories := TStringList.Create;
+  end;
+  if CurrentSid <> '' then begin Result := True; Exit; end;
+  if not OpenToken(CurrentProcess, 8, Token) then Exit;
+  try
+    if not TokenInformation(Token, 1, User, SizeOf(User), Needed) then Exit;
+    CurrentSid := SidString(User.Sid);
+    Result := CurrentSid <> '';
+  finally CloseNative(Token); end;
+end;
+
+function EffectiveCreateAccess(Descriptor: NativeUInt): Boolean;
+var Token, Duplicate: THandle; Mapping: TDirectoryMapping;
+    Privileges: TPrivilegeBuffer; Size, Granted, AccessStatus: LongWord;
+begin
+  Result := False;
+  { Duplicate for AccessCheck only; never impersonate or elevate this process. }
+  if not OpenToken(CurrentProcess, 10, Token) then Exit;
+  try
+    if not DuplicateAccessToken(Token, 2, Duplicate) then Exit;
+    try
+      Mapping.ReadAccess := $120089; Mapping.WriteAccess := $120116;
+      Mapping.ExecuteAccess := $1200A0; Mapping.AllAccess := $1F01FF;
+      Size := SizeOf(Privileges); Granted := 0; AccessStatus := 0;
+      { FILE_ADD_SUBDIRECTORY must actually be granted to the current token. }
+      if not NativeAccessCheck(Descriptor, Duplicate, 4, Mapping, Privileges,
+          Size, Granted, AccessStatus) then Exit;
+      Result := (AccessStatus <> 0) and ((Granted and 4) = 4);
+    finally CloseNative(Duplicate); end;
+  finally CloseNative(Token); end;
+end;
+
+function DirectorySecurityAllowed(Owner, Dacl, Descriptor: NativeUInt;
+  CreationParent: Boolean): Boolean;
+var Ace: NativeUInt; Info: TAclSizeInfo; Prefix: TAcePrefix;
+    I: Integer; Sid, OwnerSid: String;
+begin
+    Result := False;
+    OwnerSid := SidString(Owner);
+    if OwnerSid <> CurrentSid then begin
+      if not CreationParent or (OwnerSid <> 'S-1-5-32-544') then Exit;
+    end;
+    if Dacl = 0 then Exit;
+    if not AclInformation(Dacl, Info, SizeOf(Info), 2) then Exit;
+    for I := 0 to Integer(Info.Count) - 1 do begin
+      if not AceInformation(Dacl, I, Ace) then Exit;
+      CopyAce(Prefix, Ace, SizeOf(Prefix));
+      { Inherit-only grants also matter to a creation parent: they can grant
+        untrusted writers access to the new child or its eventual files. }
+      if (CreationParent or ((Prefix.Flags and 8) = 0)) and (Prefix.Kind <> 1) then begin
+        if Prefix.Kind <> 0 then Exit;
+        Sid := SidString(Ace + 8);
+        if Sid = '' then Exit;
+        if (Sid <> CurrentSid) and (Sid <> 'S-1-5-18') and
+           (Sid <> 'S-1-5-32-544') and (Sid <> 'S-1-3-4') and
+           ((Prefix.Mask and $500D0156) <> 0) then Exit;
+      end;
+    end;
+    Result := (not CreationParent) or EffectiveCreateAccess(Descriptor);
+end;
+
+function DirectorySecurity(Handle: THandle; CreationParent: Boolean): Boolean;
+var Owner, Group, Dacl, Sacl, Descriptor: NativeUInt;
+begin
+  Result := False;
+  { AccessCheck requires both owner and group in the returned descriptor. }
+  if SecurityInformation(Handle, 1, 7, Owner, Group, Dacl, Sacl, Descriptor) <> 0 then Exit;
+  try
+    Result := DirectorySecurityAllowed(Owner, Dacl, Descriptor, CreationParent);
+  finally FreeNative(Descriptor); end;
+end;
+
+function OwnedDirectory(Handle: THandle): Boolean;
+begin Result := DirectorySecurity(Handle, False); end;
+
+function ReservedDosStem(Component: String): Boolean;
+var Stem: String; Dot: Integer;
+begin
+  Dot := Pos('.', Component);
+  if Dot = 0 then Stem := Component else Stem := Copy(Component, 1, Dot - 1);
+  Stem := Uppercase(Trim(Stem));
+  Result := (Stem = 'CON') or (Stem = 'PRN') or (Stem = 'AUX') or (Stem = 'NUL');
+  if Result then Exit;
+  if (Length(Stem) = 4) and ((Copy(Stem, 1, 3) = 'COM') or (Copy(Stem, 1, 3) = 'LPT')) then
+    Result := ((Stem[4] >= '1') and (Stem[4] <= '9')) or
+              (Stem[4] = #185) or (Stem[4] = #178) or (Stem[4] = #179);
+end;
+
+function NativeLocalPath(Path: String): String;
+var Remaining, Part: String; Separator: Integer;
+begin
+  Result := '';
+  { Keep display/bookkeeping paths canonical and local. Extended syntax must
+    never turn UNC, devices, ADS, traversal or trailing-dot/space aliases into
+    accepted paths. Only the checked absolute drive path reaches native APIs. }
+  if (Length(Path) < 3) or (Copy(Path, 2, 2) <> ':\') or
+     not (((Path[1] >= 'A') and (Path[1] <= 'Z')) or ((Path[1] >= 'a') and (Path[1] <= 'z'))) or
+     (Pos(':', Copy(Path, 3, Length(Path))) <> 0) or (Pos('/', Path) <> 0) or
+     (Pos(#0, Path) <> 0) or (CompareText(Path, ExpandFileName(Path)) <> 0) then Exit;
+  Remaining := Copy(Path, 4, Length(Path));
+  while Remaining <> '' do begin
+    Separator := Pos('\', Remaining);
+    if Separator = 0 then begin Part := Remaining; Remaining := ''; end
+    else begin Part := Copy(Remaining, 1, Separator - 1); Delete(Remaining, 1, Separator); end;
+    if (Part = '') or (Part = '.') or (Part = '..') then Exit;
+    if (Part[Length(Part)] = '.') or (Part[Length(Part)] = ' ') then Exit;
+    if ReservedDosStem(Part) then Exit;
+  end;
+  Result := '\\?\' + Path;
+end;
+
+function PinDirectory(Path: String; RequireOwner: Boolean): Boolean;
+var Handle: THandle; Info: TNativeFileInfo; N: Integer; NativePath: String;
+begin
+  Result := False;
+  Path := RemoveBackslashUnlessRoot(Path);
+  NativePath := NativeLocalPath(Path);
+  if NativePath = '' then Exit;
+  N := PinnedPaths.IndexOf(Lowercase(Path));
+  if N >= 0 then begin
+    Result := (not RequireOwner) or OwnedDirectory(Pins[N]); Exit;
+  end;
+  { READ_CONTROL | FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY; no DELETE sharing. }
+  Handle := OpenDirectory(NativePath, $20081, 3, 0, 3, $2200000, 0);
+  if Handle = THandle(-1) then Exit;
+  if not FileInformation(Handle, Info) or ((Info.Attributes and $400) <> 0) or
+     ((Info.Attributes and $10) = 0) or (RequireOwner and not OwnedDirectory(Handle)) then begin
+    CloseNative(Handle); Exit;
+  end;
+  N := GetArrayLength(Pins); SetArrayLength(Pins, N + 1); Pins[N] := Handle;
+  PinnedPaths.Add(Lowercase(Path));
+  Result := True;
+end;
+
+procedure ReleasePins;
+var I: Integer;
+begin
+  for I := GetArrayLength(Pins) - 1 downto 0 do CloseNative(Pins[I]);
+  SetArrayLength(Pins, 0);
+  if PinnedPaths <> nil then PinnedPaths.Clear;
+end;
+
+function SafeDirectoryChain(Path: String): Boolean;
+var
+  Attributes, ErrorCode: LongWord;
+  Parent, NativePath: String;
+begin
+  Result := False;
+  Path := RemoveBackslashUnlessRoot(ExpandFileName(Path));
+  NativePath := NativeLocalPath(Path);
+  if NativePath = '' then Exit;
+  Parent := RemoveBackslashUnlessRoot(ExtractFileDir(Path));
+  { Pin root-to-leaf: never open a descendant through an unpinned ancestor. }
+  if (Parent <> Path) and not SafeDirectoryChain(Parent) then Exit;
+  Attributes := NativeAttributes(NativePath);
+  if Attributes = $FFFFFFFF then begin
+    ErrorCode := NativeLastError;
+    if (ErrorCode <> 2) and (ErrorCode <> 3) then Exit;
+  end else begin
+    if not PinDirectory(Path, False) then Exit;
+  end;
+  Result := True;
+end;
+
+function SafeTree(Path: String): Boolean;
+var Found: TFindRec; Child: String;
+begin
+  Result := False;
+  if not PinDirectory(Path, True) then Exit;
+  AppDirectories.Add(Path);
+  if FindFirst(AddBackslash(NativeLocalPath(Path)) + '*', Found) then begin
+    try
+      repeat
+        if (Found.Name <> '.') and (Found.Name <> '..') then begin
+          Child := AddBackslash(Path) + Found.Name;
+          if (Found.Attributes and $400) <> 0 then Exit;
+          if ((Found.Attributes and $10) <> 0) and not SafeTree(Child) then Exit;
+        end;
+      until not FindNext(Found);
+      { A partial enumeration must never qualify a tree as safe. }
+      if NativeLastError <> 18 then Exit;
+    finally FindClose(Found); end;
+  end else if (NativeLastError <> 2) and (NativeLastError <> 18) then Exit;
+  Result := True;
+end;
+
+function SafeCreationParent(Path: String): Boolean;
+var N: Integer;
+begin
+  Result := False;
+  if not SafeDirectoryChain(Path) or not PinDirectory(Path, False) then Exit;
+  Path := RemoveBackslashUnlessRoot(ExpandFileName(Path));
+  N := PinnedPaths.IndexOf(Lowercase(Path));
+  if N < 0 then Exit;
+  Result := DirectorySecurity(Pins[N], True);
+end;
+
+function EnsurePrivateDirectory(Path: String): Boolean;
+var Parent, NativePath: String;
+begin
+  Result := False;
+  Path := RemoveBackslashUnlessRoot(ExpandFileName(Path));
+  NativePath := NativeLocalPath(Path);
+  if NativePath = '' then Exit;
+  if not SafeDirectoryChain(Path) then Exit;
+  { Existing application components remain strictly current-user-owned. }
+  if DirExists(Path) then begin Result := PinDirectory(Path, True); Exit; end;
+  Parent := RemoveBackslashUnlessRoot(ExtractFileDir(Path));
+  if Parent = Path then Exit;
+  if not DirExists(Parent) and not EnsurePrivateDirectory(Parent) then Exit;
+  if not SafeCreationParent(Parent) then Exit;
+  { Do not adopt a directory planted between the absence check and creation.
+    Pin and verify this child before creating any descendant or payload file.
+    The parent is pinned and has no untrusted mutating/inheritable grants. }
+  if not CreatePrivateDirectory(NativePath, 0) then Exit;
+  Result := PinDirectory(Path, True);
+end;
+
+function GuardApplication(CreatePaths: Boolean): Boolean;
+var Path: String;
+begin
+  Result := False;
+  ReleasePins;
+  if not InitializeGuard then Exit;
+  AppDirectories.Clear;
+  Path := ExpandConstant('{app}');
+  if not SafeDirectoryChain(Path) then Exit;
+  if DirExists(Path) and not SafeTree(Path) then Exit;
+  if CreatePaths then begin
+    if not EnsurePrivateDirectory(Path) or
+       not EnsurePrivateDirectory(ExpandConstant('{app}\versions\{#Release}')) or
+       not EnsurePrivateDirectory(ExpandConstant('{app}\uninstall')) then Exit;
+  end;
+  Result := SafeTree(Path);
+end;
+
+function SupportedWebView2Version(Version: String): Boolean;
+var I, J, Dot, Value, Minimum, Compared: Integer;
+    Part: String;
+begin
+  Result := False;
+  Compared := 0;
+  for I := 0 to 3 do begin
+    Dot := Pos('.', Version);
+    if I < 3 then begin
+      if Dot = 0 then Exit;
+      Part := Copy(Version, 1, Dot - 1);
+      Delete(Version, 1, Dot);
+    end else begin
+      if Dot <> 0 then Exit;
+      Part := Version;
+    end;
+    if (Part = '') or (Length(Part) > 5) then Exit;
+    for J := 1 to Length(Part) do
+      if (Part[J] < '0') or (Part[J] > '9') then Exit;
+    Value := StrToIntDef(Part, -1);
+    if (Value < 0) or (Value > 65535) then Exit;
+    case I of
+      0: Minimum := 155;
+      1: Minimum := 0;
+      2: Minimum := 4283;
+      3: Minimum := 45;
+    end;
+    if Compared = 0 then begin
+      if Value < Minimum then Compared := -1;
+      if Value > Minimum then Compared := 1;
+    end;
+  end;
+  Result := Compared >= 0;
+end;
+
+function HasWebView2Runtime: Boolean;
+var Version, FileVersion, Key, Image: String;
+begin
+  Result := False;
+  Key := 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
+  { This candidate trusts only the protected machine Runtime. The host performs
+    the authoritative path, ownership, ACL and Microsoft signature validation
+    of the actual selected browser process; registration alone is insufficient. }
+  if not RegQueryStringValue(HKLM32, Key, 'pv', Version) or
+     not SupportedWebView2Version(Version) then Exit;
+  Image := ExpandConstant('{pf32}') + '\Microsoft\EdgeWebView\Application\' + Version + '\msedgewebview2.exe';
+  Result := FileExists(Image) and GetVersionNumbersString(Image, FileVersion) and (FileVersion = Version);
+end;
+
+function MenuProfileParameters(Unused: String): String;

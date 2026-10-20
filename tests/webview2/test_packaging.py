@@ -170,7 +170,8 @@ def test_installer_has_distinct_identity_and_no_prerequisite_install_or_data_del
     assert "FileExists(Image) and GetVersionNumbersString(Image, FileVersion) and (FileVersion = Version)" in script
     assert "SupportedWebView2Version(Version)" in script
     assert "[UninstallDelete]" not in script and "[InstallDelete]" not in script
-    assert "CreateUninstallRegKey=no" in script and "#ifndef TestScope" in script
+    assert '#ifdef TestScope\n; Compile-time isolated qualification variant.' in script
+    assert 'CreateUninstallRegKey=no\n#else\nCreateUninstallRegKey=yes\n#endif' in script
     assert "SafeDirectoryChain" in script and "GuardApplication(False)" in script
     assert "NativeLocalPath" in script and "OpenDirectory(NativePath," in script
     assert "FindFirst(AddBackslash(NativeLocalPath(Path)) + '*', Found)" in script

@@ -27,12 +27,20 @@ def test_ambiguous_or_nonliteral_backend_identity_refused(tmp_path, body):
 def installer_integration(script, test_scope):
     """Select only the real Inno integration branch; refuse unknown guards."""
     section = '[Tasks]' + script.split('[Tasks]', 1)[1].split('[Code]', 1)[0]
+    return select_installer_guards(section, test_scope)
+
+
+def select_installer_guards(section, test_scope):
+    """Select named, reviewed build guards; unknown guards need review."""
     active = [True]
     selected = []
+    values = {'TestScope': test_scope, 'PublicPreview': True}
     for line in section.splitlines():
         directive = line.strip()
-        if directive == '#ifdef TestScope':
-            active.append(active[-1] and test_scope)
+        if directive.startswith('#ifdef '):
+            name = directive.split()[1]
+            assert name in values, 'Review new installer integration guard'
+            active.append(active[-1] and values[name])
         elif directive == '#else':
             assert len(active) > 1
             active[-1] = active[-2] and not active[-1]
@@ -47,6 +55,28 @@ def installer_integration(script, test_scope):
     return '\n'.join(selected)
 
 
+def icon_entries(section):
+    """Read the concrete Name/Filename/Parameters/Tasks of each icon entry."""
+    icons = section.split('[Icons]', 1)[1].split('[Run]', 1)[0]
+    entries = {}
+    for line in icons.splitlines():
+        if not line.startswith('Name:'):
+            continue
+        fields = {}
+        for item in line.split(';'):
+            key, value = item.strip().split(':', 1)
+            value = value.strip()
+            if value.startswith('"'):
+                assert value.endswith('"')
+                value = value[1:-1]
+            assert key not in fields
+            fields[key] = value
+        name = fields.pop('Name')
+        assert name not in entries
+        entries[name] = fields
+    return entries
+
+
 def test_shortcut_is_optional_unchecked_and_test_scope_is_app_private():
     script = (ROOT / 'package_windows_webview2/installer.iss').read_text()
     ordinary = installer_integration(script, False)
@@ -59,21 +89,49 @@ def test_shortcut_is_optional_unchecked_and_test_scope_is_app_private():
     assert 'Parameters: "{code:MenuProfileParameters}"' in ordinary
     assert 'Parameters: "{code:DesktopProfileParameters}"' in ordinary
 
-    # Real .lnk coverage is now intentional, strictly below the isolated app.
-    # TestScope must still never create user menu/desktop/registry integration.
+    # Four intended purposes, not just an entry count: always-available guarded
+    # app launcher, optional menu launcher/uninstaller, and optional desktop.
+    # Assert exact targets/profile callbacks and task ownership for both builds.
+    application = {
+        'Filename': '{app}\\versions\\{#Release}\\DLMS-Desktop-WebView2.exe',
+        'Parameters': '{code:MenuProfileParameters}',
+        'WorkingDir': '{app}\\versions\\{#Release}',
+        'AppUserModelID': 'io.github.drakahari.DLMSDesktop.WebView2Candidate',
+    }
+    assert icon_entries(ordinary) == {
+        '{app}\\Launch DLMS Desktop': application,
+        '{group}\\DLMS Desktop': application | {'Tasks': 'not nostartmenu'},
+        '{group}\\Uninstall DLMS Desktop': {
+            'Filename': '{uninstallexe}', 'Tasks': 'not nostartmenu'},
+        '{userdesktop}\\DLMS Desktop WebView2 Candidate': application | {
+            'Parameters': '{code:DesktopProfileParameters}', 'Tasks': 'desktopicon'},
+    }
+
+    # TestScope must never create real user menu/desktop/registry integration.
+    # Its menu macro defaults inside {app}; its explicit override is confined to
+    # a TestScope build for the separately accepted unsafe-parent fixture.
     isolated = installer_integration(script, True)
     assert '{group}' not in isolated and '{userdesktop}' not in isolated
     assert '[Run]' not in isolated
-    icons = isolated.split('[Icons]', 1)[1]
-    entries = [line for line in icons.splitlines() if line.startswith('Name:')]
-    assert len(entries) == 2
-    assert entries[0].startswith('Name: "{app}\\synthetic-menu\\')
-    assert entries[1].startswith('Name: "{app}\\synthetic-desktop\\')
-    assert 'Tasks: desktopicon' in entries[1]
-    assert 'Parameters: "{code:MenuProfileParameters}"' in entries[0]
-    assert 'Parameters: "{code:DesktopProfileParameters}"' in entries[1]
-    registry = script.split('#ifdef TestScope', 1)[1].split('#endif', 1)[0]
-    isolated_registry, ordinary_registry = registry.split('#else', 1)
-    assert 'CreateUninstallRegKey=no' in isolated_registry
-    assert 'CreateUninstallRegKey=yes' not in isolated_registry
-    assert 'CreateUninstallRegKey=yes' in ordinary_registry
+    assert icon_entries(isolated) == {
+        '{app}\\Launch DLMS Desktop': application,
+        '{#TestMenuRoot}\\DLMS Desktop': application | {'Tasks': 'not nostartmenu'},
+        '{#TestMenuRoot}\\Uninstall DLMS Desktop': {
+            'Filename': '{uninstallexe}', 'Tasks': 'not nostartmenu'},
+        '{app}\\synthetic-desktop\\DLMS Desktop': application | {
+            'Parameters': '{code:DesktopProfileParameters}', 'Tasks': 'desktopicon'},
+    }
+    assert '#ifdef TestScope\n  #ifndef TestMenuRoot\n    #define TestMenuRoot "{app}\\synthetic-menu"\n  #endif\n#endif' in script
+    setup = script.split('[Setup]', 1)[1].split('[Files]', 1)[0]
+    for scope, expected in ((True, 'no'), (False, 'yes')):
+        selected = select_installer_guards(setup, scope)
+        assert [line for line in selected.splitlines() if line.startswith('CreateUninstallRegKey=')] == [
+            'CreateUninstallRegKey=' + expected]
+    # The exact profile is selected/validated once, then shared by app and menu
+    # launchers; an existing optional desktop can preserve its own valid profile.
+    assert 'begin Result := SavedMenuParameters; end;' in script
+    assert 'begin Result := SavedDesktopParameters; end;' in script
+    assert "SavedMenuParameters := '--profile ' + Profile;" in script
+    assert 'if not CaptureShortcutProfile(AppLaunchPath, PreviousParameters) then Exit;' in script
+    assert "not CaptureShortcutProfile(MenuPath, PreviousParameters) then begin" in script
+    assert 'if FileExists(DesktopPath) then SavedDesktopParameters := PreviousParameters;' in script
