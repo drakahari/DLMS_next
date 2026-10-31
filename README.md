@@ -2,6 +2,14 @@
 
 **A private, local-first workspace for building, studying, and improving your own learning material.**
 
+## Maintenance candidate — unpublished
+
+The source development target is **DLMS 3.3.1**, shared by the original and Desktop
+editions. No 3.3.1 download is published or approved for installation yet.
+[Candidate notes, compatibility and native handoffs](docs/releases/3.3.1-candidate.md)
+separate source readiness from accepted platform packages. The downloads below
+remain the current published 3.3.0 releases and Desktop previews.
+
 ## Choose your DLMS
 
 **Browser-based edition — Latest published release: DLMS 3.3.0 (stable).** **[Download stable 3.3.0](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0).**
@@ -46,6 +54,8 @@ Before upgrading an existing installation, keep a verified backup: [3.3.0 releas
 | Mac with Apple Silicon (not Intel) | **2.1** | [Mac DMG](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview2.1-macos/DLMS-Desktop-3.3.0-macos-arm64-preview.dmg) | [Mac Preview 2.1](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview2.1-macos) |
 
 These are **previews, not stable DLMS 3.3.0**. Preview numbers differ by platform. The linked release notes record each package's prerequisites, checksums and qualification limits. Local storage is initialized automatically; no manual profile setup is needed. Installing Desktop does not automatically import your browser-based DLMS data.
+
+[Watch the DLMS Desktop walkthrough](https://www.youtube.com/watch?v=mPGNbPy56X8) — See DLMS Desktop’s Local and Server modes, demonstrated on Linux.
 
 ### Install and open Desktop on Windows
 
@@ -410,10 +420,10 @@ For the original browser-based Mac package, the bundled guide describes
 Open Anyway**. Removing quarantine is not part of the normal installation. Stop
 if the normal approval flow is unavailable or macOS reports malware or damage.
 
-**Historical troubleshooting reference, not a setup instruction:** the original
-browser-based help mentions `xattr -dr com.apple.quarantine /Applications/DLMS.app`.
-That removes quarantine. Do not use it as a Desktop installation workaround; use
-the normal per-app approval flow above and stop if approval is unavailable.
+Use only macOS's supported per-app approval: attempt to open the verified app,
+then **Privacy & Security → Open Anyway → Open** if macOS offers that option.
+Stop if approval is unavailable or macOS reports malware/damage. Do not remove
+quarantine or disable Gatekeeper. Historical release evidence is retained separately.
 
 The macOS ZIP exposes all three directly at
 its archive root: `DLMS.app`, `README.txt`, and `sample_quiz.txt`, with no wrapper

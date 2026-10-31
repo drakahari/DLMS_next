@@ -19,6 +19,12 @@ the official certificate. **View certificate** opens only current-period officia
 evidence; without it, use **Add certificate**. Ambiguous older attachment roles are
 preserved for an explicit user choice rather than silently reclassified.
 
+In the unpublished 3.3.1 candidate, **View certificate** displays the supported
+image or one safely rasterized PDF page at a time. Use Previous/Next for pages,
+and **Download certificate** to save the original. Download uses browser download
+handling or Desktop Save As; it does not promise to open an OS-associated viewer.
+A missing/unsupported document shows an error without deleting its record.
+
 Earned achievements remain in the trophy case when expired or superseded, with
 honest status labels. Non-expiring credentials are supported. The list can sort
 by name, earned date or expiration; **Save order** persists the chosen order.

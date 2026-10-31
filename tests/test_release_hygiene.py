@@ -18,8 +18,10 @@ class ReleaseDocumentationTests(unittest.TestCase):
 
         version = re.search(r'^APP_VERSION = "([^"]+)"$', app_source, re.MULTILINE)
         self.assertIsNotNone(version)
-        self.assertEqual(version.group(1), "3.3.0")
-        self.assertIn(f"Latest published release: DLMS {version.group(1)}", readme)
+        self.assertEqual(version.group(1), "3.3.1")
+        self.assertIn("Latest published release: DLMS 3.3.0", readme)
+        self.assertIn("DLMS 3.3.1", readme)
+        self.assertIn("unpublished", readme.lower())
         self.assertIn("https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0", readme)
         self.assertNotIn("Development target: DLMS 3.3.0 (unreleased)", readme)
         self.assertNotIn("Latest published release: DLMS 3.2.2", readme)
@@ -111,14 +113,14 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertTrue((ROOT / "docs/releases/3.2.2.md").is_file())
 
     def test_release_metadata_and_help_use_the_final_display_version(self):
-        version = "3.3.0"
-        self.assertIn(f"Reproducible DLMS {version} runtime environment.", (ROOT / "requirements-lock.txt").read_text(encoding="utf-8"))
-        self.assertIn(f"Canonical DLMS {version} build tools.", (ROOT / "requirements-build.txt").read_text(encoding="utf-8"))
+        version = "3.3.1"
+        self.assertIn("Reproducible DLMS 3.3.0 runtime environment.", (ROOT / "requirements-lock.txt").read_text(encoding="utf-8"))
+        self.assertIn(f"Canonical DLMS {version} maintenance build tools.", (ROOT / "requirements-build.txt").read_text(encoding="utf-8"))
         for path in (ROOT / "static").glob("*.html"):
             contents = path.read_text(encoding="utf-8")
             if "Documentation for DLMS" in contents:
                 with self.subTest(page=path.name):
-                    self.assertIn(f"Documentation for DLMS {version}.", contents)
+                    self.assertIn(f"Documentation for DLMS {version}. Unpublished maintenance candidate.", contents)
 
     def test_active_version_text_has_no_obsolete_candidate_label(self):
         prerelease = re.compile(r"(?i)(?:\brc[._ -]?4\b|\bfc4\b)")
@@ -246,7 +248,9 @@ class ReleaseDocumentationTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIn(name, readme)
                 self.assertIn(name, procedure)
-                self.assertIn(name, package_readme)
+                if "omarchy" not in name:
+                    self.assertIn(name.replace("3.3.0", "3.3.1"), package_readme)
+        self.assertNotIn("DLMS-3.3.1-omarchy", package_readme)
         self.assertIn("README.txt", procedure)
         self.assertIn("sample_quiz.txt", procedure)
         self.assertIn("--complete-set", procedure)
@@ -350,12 +354,9 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertIn("Contents/MacOS/DLMS", readme)
         self.assertNotIn("* macOS: `DLMS-3.3.0-macos-arm64`", readme)
         self.assertIn("not part of the normal installation", readme)
-        self.assertGreater(
-            readme.index("xattr -dr com.apple.quarantine /Applications/DLMS.app"),
-            readme.index("Open Anyway"),
-        )
-        self.assertIn("xattr -dr com.apple.quarantine /Applications/DLMS.app", troubleshooting)
-        self.assertIn("fallback troubleshooting rather than routine installation guidance", troubleshooting)
+        for document in (readme, troubleshooting):
+            self.assertNotIn("xattr -dr com.apple.quarantine", document)
+            self.assertIn("do not remove quarantine", " ".join(document.lower().split()))
 
     def test_macos_bundle_version_fields_follow_current_release_metadata(self):
         spec = (ROOT / "DLMS.spec").read_text(encoding="utf-8")
@@ -363,9 +364,9 @@ class ReleaseDocumentationTests(unittest.TestCase):
         metadata = {"SPEC": str(ROOT / "DLMS.spec")}
         exec(compile(metadata_source, "DLMS.spec metadata", "exec"), metadata)
 
-        self.assertEqual(metadata["app_release_version"], "3.3.0")
-        self.assertEqual(metadata["app_bundle_version"], "3.3.0")
-        self.assertEqual(metadata["app_bundle_build_version"], "3.3.0")
+        self.assertEqual(metadata["app_release_version"], "3.3.1")
+        self.assertEqual(metadata["app_bundle_version"], "3.3.1")
+        self.assertEqual(metadata["app_bundle_build_version"], "3.3.1")
         self.assertIn("version=app_bundle_version", spec)
         self.assertIn('"CFBundleVersion": app_bundle_build_version', spec)
         self.assertIn('bundle_identifier="io.github.drakahari.DLMS"', spec)

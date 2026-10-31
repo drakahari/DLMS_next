@@ -1,3 +1,7 @@
+> Historical host decisions below describe earlier candidates. For the unpublished
+> 3.3.1 coordinated baseline, see [candidate notes](releases/3.3.1-candidate.md).
+> Current public previews remain listed in [Choose your DLMS](choose-your-dlms.md).
+
 # Desktop hosts and the shared application
 
 One root application (`app.py`, `dlms/`, `templates/`, `static/`, `init.sql`)

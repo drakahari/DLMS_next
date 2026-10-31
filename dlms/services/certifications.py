@@ -152,7 +152,7 @@ def validate_attachment(content, *, badge=False):
             reader=PdfReader(BytesIO(content),strict=True)
             if reader.is_encrypted: raise ValueError('Encrypted PDFs are unsupported; upload an unencrypted copy.')
             if not 1<=len(reader.pages)<=1000: raise ValueError('PDFs must contain 1–1,000 pages.')
-            # Never render PDFs inline. Reject executable or embedded-file features.
+            # Never embed raw PDFs. Reject executable or embedded-file features.
             seen=set(); nodes=[reader.trailer]; count=0
             while nodes:
                 node=nodes.pop()

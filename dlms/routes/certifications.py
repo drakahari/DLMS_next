@@ -6,7 +6,7 @@ import json
 import sqlite3
 import uuid
 from typing import Callable
-from flask import Blueprint, abort, redirect, render_template, request, send_file
+from flask import Blueprint, abort, make_response, redirect, render_template, request, send_file
 from dlms.services import certifications as service
 from dlms.services import certification_time as duration, certification_display
 from decimal import Decimal
@@ -20,6 +20,7 @@ class CertificationDependencies:
     load_config: Callable
     save_config: Callable
     lock: object
+    render_lock: object
 
 
 def create_certification_blueprint(deps):
@@ -262,6 +263,40 @@ def create_certification_blueprint(deps):
             except (ValueError,sqlite3.Error) as exc:
                 return page(conn,'error',error=str(exc) if isinstance(exc,ValueError) else 'Removal failed. Records were preserved.'),409
         return redirect('/certifications',code=303)
+
+    @bp.get('/certifications/attachments/<attachment_id>/view')
+    def view_attachment(attachment_id):
+        from dlms.services.certificate_preview import IMAGE_TYPES, preview
+        values = dict(attachment_id=attachment_id, downloadable=False)
+        status = 200
+        try:
+            service.identifier(attachment_id)
+            with database() as conn:
+                row = conn.execute('SELECT * FROM certification_attachments WHERE id=?', (attachment_id,)).fetchone()
+            if row is None:
+                values['error'] = 'This certificate is missing. Reattach a verified copy through its edit form.'
+                status = 404
+            else:
+                values['downloadable'] = row['mime'] in IMAGE_TYPES | {'application/pdf'}
+                if not values['downloadable']:
+                    values['error'] = 'This certificate type is unsupported. Use a PDF, PNG, JPEG or WebP document.'
+                    status = 415
+                else:
+                    selected = request.args.get('page', '1')
+                    if not selected.isascii() or not selected.isdecimal() or len(selected) > 4:
+                        raise IndexError('Choose a valid certificate page number.')
+                    values.update(preview(row['content'], row['mime'], row['sha256'], int(selected),
+                                          render_lock=deps.render_lock))
+        except IndexError as exc:
+            values['error'], status = str(exc), 400
+        except ValueError as exc:
+            values['error'], status = str(exc), 400
+        except Exception:
+            # Never disclose native paths/parser diagnostics or claim a viewer opened.
+            values['error'], status = 'The certificate preview could not be displayed. Download the original or reattach a verified copy.', 503
+        response = make_response(render_template('certifications/view.html', **values), status)
+        response.headers['Cache-Control'] = 'no-store'
+        return response
 
     @bp.get('/certifications/attachments/<attachment_id>')
     def attachment(attachment_id):

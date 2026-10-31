@@ -16156,6 +16156,12 @@ def test_certification_custom_portfolio_journey(browser_stack, theme):
     certificate=b.evaluate("Array.from(document.querySelectorAll('.cert-hero a')).find(a=>a.textContent==='View certificate').getAttribute('href')")
     logo=b.evaluate("document.querySelector('.cert-hero img').getAttribute('src')")
     assert certificate!=logo
+    assert certificate.endswith('/view')
+    b.navigate(base+certificate)
+    b.wait_for("document.querySelector('.certificate-preview')?.complete && document.querySelector('.certificate-preview').naturalWidth > 0")
+    assert b.evaluate("document.body.innerText.includes('Page 1 of 1')")
+    assert b.evaluate("!!document.querySelector('a[download]') && !document.querySelector('iframe,object,embed')")
+    b.navigate(base+path)
     b.navigate(base+path+'/edit');b.wait_for("document.querySelector('[name=field_expiration]')")
     fill(dict(field_expiration='2028-06-30'));save()
     b.click('a[href$="/requirements"]');b.wait_for("document.querySelector('[name=track_annual_kind]')")

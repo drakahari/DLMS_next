@@ -79,6 +79,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--app-only', action='store_true', help='defer DMG creation to normal Terminal if device access is blocked')
     parser.add_argument('--inputs', type=Path, help='verified wheelhouse/interpreter inputs; defaults to the task preview cache')
+    parser.add_argument('--expected-commit', required=True, help='Exact clean candidate source; never a moving branch')
+    parser.add_argument('--release', default='macos-331-preview1-candidate', help='Unpublished Desktop host revision')
     args = parser.parse_args()
     if sys.platform != 'darwin' or platform.machine() != 'arm64' or sys.version_info[:3] != (3, 14, 7):
         raise SystemExit('Requires native arm64 macOS with the pinned Python 3.14.7 environment')
@@ -96,20 +98,27 @@ def main():
     if Path(sys.executable).absolute() != Path(inputs['interpreter']).absolute():
         raise ValueError('Use the pinned read-only build interpreter')
     from package_macos.preview_materials import verified_source
-    source, patch = verified_source()
+    source, patch = verified_source(expected_head=args.expected_commit)
     commit = source['application_base']
     stage = Path(tempfile.mkdtemp(prefix='build-', dir=work))
     inventory = runtime_inventory()
     snapshot = hashlib.sha256(json.dumps(inventory, sort_keys=True).encode()).hexdigest()
     ocr, notices, native = prepare_materials(stage, inputs, work, source, patch)
-    identity = {'application_version': '3.3.0', 'release': 'macos-arm64-public-preview',
+    from desktop.build_info import application_version
+    from desktop.install_manifest import release_id
+    release_id(args.release)
+    identity = {'application_version': application_version(), 'release': args.release,
                 'source_commit': commit + '+snapshot:' + snapshot,
                 'application_base': commit, 'source_state': source['source_state'],
                 'packaging_patch_sha256': source['packaging_patch']['sha256'],
                 'target': 'Apple Silicon macOS 26.6.2 (current host only)',
-                'support': 'Apple Silicon public preview; ad hoc only, not notarized; malicious same-user native processes outside selected-file guarantee'}
+                'support': 'Unpublished Apple Silicon preview candidate; ad hoc only, not notarized; malicious same-user native processes outside selected-file guarantee'}
     info = stage / 'build-info.json'
-    info.write_text(json.dumps(identity, indent=2) + '\n')
+    # The Qt About reader has a strict five-field public metadata contract.
+    # Expanded source/overlay details remain in PROVENANCE.json below.
+    public_identity = {key: identity[key] for key in
+                       ('application_version', 'release', 'source_commit', 'target', 'support')}
+    info.write_text(json.dumps(public_identity, indent=2) + '\n')
     environment = os.environ.copy()
     environment.update(DLMS_TESSERACT_BUNDLE_ROOT=str(ocr), DLMS_MACOS_BUILD_INFO=str(info),
                        DLMS_MACOS_NOTICES=str(notices), DLMS_MACOS_EXCLUSIONS=str(stage / 'EXCLUSIONS.json'), PYINSTALLER_CONFIG_DIR=str(stage / 'pyinstaller-cache'))
@@ -146,7 +155,7 @@ def main():
         macho[str(path.relative_to(app))] = {'sha256': digest(path), 'architecture': architectures}
     from package_macos.preview_bundle import verify_payload
     verify_payload(app)
-    if verified_source() != (source, patch) or runtime_inventory() != inventory:
+    if verified_source(expected_head=args.expected_commit) != (source, patch) or runtime_inventory() != inventory:
         raise ValueError('Source changed during build; do not create a DMG')
     manifest = app_inventory(app)
     manifest_hash = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
@@ -179,7 +188,8 @@ def create_dmg(stage, app):
             path.name for path in app.parent.iterdir() if not path.name.startswith('.')
     } != {'DLMS Desktop.app'}:
         raise ValueError('Public DMG must contain only the direct DLMS Desktop.app entry')
-    image = stage / 'DLMS-Desktop-3.3.0-macos-arm64-preview.dmg'
+    from desktop.build_info import application_version
+    image = stage / f'DLMS-Desktop-{application_version()}-macos-arm64-preview1-candidate.dmg'
     if image.exists():
         raise FileExistsError('Preserve existing DMG evidence')
     run(['/usr/bin/hdiutil', 'create', '-format', 'UDZO', '-volname', 'DLMS Desktop',

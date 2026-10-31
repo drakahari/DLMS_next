@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>View certificate · DLMS</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/certifications.css"></head>
+<body><main class="certificate-viewer">
+<h1>View certificate</h1>
+<nav aria-label="Certificate actions"><a href="/certifications">My Certifications</a>{% if downloadable %} · <a href="/certifications/attachments/{{ attachment_id }}" download>Download certificate</a>{% endif %}</nav>
+{% if error %}<p role="alert">{{ error }}</p><p>Your certification and training records have not been changed.</p>
+{% else %}
+<p>Page {{ page_number }} of {{ pages }}. This is a document preview; download the original for its full resolution and selectable text.</p>
+{% if pages > 1 %}<nav aria-label="Certificate pages">{% if page_number > 1 %}<a href="?page={{ page_number - 1 }}">Previous page</a>{% endif %}{% if page_number < pages %} <a href="?page={{ page_number + 1 }}">Next page</a>{% endif %}</nav>{% endif %}
+<img class="certificate-preview" src="data:image/png;base64,{{ image }}" alt="Certificate document, page {{ page_number }} of {{ pages }}">
+{% endif %}
+</main></body></html>
