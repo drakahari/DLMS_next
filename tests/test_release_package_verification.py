@@ -23,7 +23,7 @@ import verify_release_package as PACKAGE_VERIFIER
 SCRIPT = ROOT / "tools" / "verify_release_package.py"
 PACKAGER = ROOT / "tools" / "package_release.py"
 CHECKSUMMER = ROOT / "tools" / "generate_sha256sums.py"
-VERSION = "3.3.0"
+VERSION = "3.3.1"
 
 
 def elf_x86_64() -> bytes:

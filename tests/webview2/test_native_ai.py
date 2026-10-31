@@ -1,5 +1,6 @@
 """App-local native menu input tests; never launch a real browser."""
 from types import SimpleNamespace
+import os
 
 import pytest
 from PySide6.QtCore import QPoint, Qt, QEvent
@@ -158,6 +159,7 @@ def test_queued_native_handoff_refuses_new_modal_cover_or_replaced_ticket(monkey
         assert owner._native_ai_pending_ticket is None and not owner._external_handoff_pending
 
 
+@pytest.mark.skipif(os.name != 'nt', reason='Uses the native Windows file-selection owner fixture')
 @pytest.mark.parametrize('change', ['url', 'origin', 'navigation', 'mode', 'profile', 'epoch'])
 def test_real_selection_context_retires_native_menu_lease(tmp_path, monkeypatch, change):
     from tests.webview2.test_file_selection_adapter import owner

@@ -10,4 +10,4 @@
 {% if pages > 1 %}<nav aria-label="Certificate pages">{% if page_number > 1 %}<a href="?page={{ page_number - 1 }}">Previous page</a>{% endif %}{% if page_number < pages %} <a href="?page={{ page_number + 1 }}">Next page</a>{% endif %}</nav>{% endif %}
 <img class="certificate-preview" src="data:image/png;base64,{{ image }}" alt="Certificate document, page {{ page_number }} of {{ pages }}">
 {% endif %}
-</main></body></html>
+</main><script src="/static/nav-normalize.js"></script></body></html>

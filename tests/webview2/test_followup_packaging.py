@@ -7,7 +7,7 @@ from package_windows_webview2.build import ROOT, source_backend_version
 
 
 def test_captured_backend_identity_is_literal_without_import():
-    assert source_backend_version() == '3.3.0'
+    assert source_backend_version() == '3.3.1'
 
 
 @pytest.mark.parametrize('body', [
@@ -85,7 +85,9 @@ def test_shortcut_is_optional_unchecked_and_test_scope_is_app_private():
     assert '{userdesktop}\\DLMS Desktop WebView2 Candidate' in ordinary
     assert 'Tasks: desktopicon' in ordinary
     assert '{group}\\DLMS Desktop' in ordinary
-    assert '[Run]' in ordinary and 'postinstall skipifsilent unchecked' in ordinary
+    assert '[Run]' in ordinary and 'Flags: nowait postinstall skipifsilent; Check: LaunchConfigurationReady' in ordinary
+    startmenu = next(line for line in ordinary.splitlines() if line.startswith('Name: "startmenu"'))
+    assert 'unchecked' not in startmenu
     assert 'Parameters: "{code:MenuProfileParameters}"' in ordinary
     assert 'Parameters: "{code:DesktopProfileParameters}"' in ordinary
 
@@ -100,9 +102,9 @@ def test_shortcut_is_optional_unchecked_and_test_scope_is_app_private():
     }
     assert icon_entries(ordinary) == {
         '{app}\\Launch DLMS Desktop': application,
-        '{group}\\DLMS Desktop': application | {'Tasks': 'not nostartmenu'},
+        '{group}\\DLMS Desktop': application | {'Tasks': 'startmenu'},
         '{group}\\Uninstall DLMS Desktop': {
-            'Filename': '{uninstallexe}', 'Tasks': 'not nostartmenu'},
+            'Filename': '{uninstallexe}', 'Tasks': 'startmenu'},
         '{userdesktop}\\DLMS Desktop WebView2 Candidate': application | {
             'Parameters': '{code:DesktopProfileParameters}', 'Tasks': 'desktopicon'},
     }
@@ -115,13 +117,13 @@ def test_shortcut_is_optional_unchecked_and_test_scope_is_app_private():
     assert '[Run]' not in isolated
     assert icon_entries(isolated) == {
         '{app}\\Launch DLMS Desktop': application,
-        '{#TestMenuRoot}\\DLMS Desktop': application | {'Tasks': 'not nostartmenu'},
+        '{#TestMenuRoot}\\DLMS Desktop': application | {'Tasks': 'startmenu'},
         '{#TestMenuRoot}\\Uninstall DLMS Desktop': {
-            'Filename': '{uninstallexe}', 'Tasks': 'not nostartmenu'},
+            'Filename': '{uninstallexe}', 'Tasks': 'startmenu'},
         '{app}\\synthetic-desktop\\DLMS Desktop': application | {
             'Parameters': '{code:DesktopProfileParameters}', 'Tasks': 'desktopicon'},
     }
-    assert '#ifdef TestScope\n  #ifndef TestMenuRoot\n    #define TestMenuRoot "{app}\\synthetic-menu"\n  #endif\n#endif' in script
+    assert '#ifdef TestScope\n  #ifndef TestMenuRoot\n    #define TestMenuRoot "{app}\\synthetic-menu"\n  #endif\n  #ifndef TestDataRoot\n    #define TestDataRoot "{app}\\synthetic-data"\n  #endif\n#endif' in script
     setup = script.split('[Setup]', 1)[1].split('[Files]', 1)[0]
     for scope, expected in ((True, 'no'), (False, 'yes')):
         selected = select_installer_guards(setup, scope)
@@ -131,7 +133,7 @@ def test_shortcut_is_optional_unchecked_and_test_scope_is_app_private():
     # launchers; an existing optional desktop can preserve its own valid profile.
     assert 'begin Result := SavedMenuParameters; end;' in script
     assert 'begin Result := SavedDesktopParameters; end;' in script
-    assert "SavedMenuParameters := '--profile ' + Profile;" in script
-    assert 'if not CaptureShortcutProfile(AppLaunchPath, PreviousParameters) then Exit;' in script
-    assert "not CaptureShortcutProfile(MenuPath, PreviousParameters) then begin" in script
+    assert "SavedMenuParameters := '--profile ' + SelectedProfile;" in script
+    assert 'if not CaptureShortcutProfile(AppLaunchPath, PreviousParameters, False) then Exit;' in script
+    assert "not CaptureShortcutProfile(MenuPath, PreviousParameters, True) then begin" in script
     assert 'if FileExists(DesktopPath) then SavedDesktopParameters := PreviousParameters;' in script
