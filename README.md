@@ -2,15 +2,24 @@
 
 **A private, local-first workspace for building, studying, and improving your own learning material.**
 
-## Maintenance candidate — unpublished
+## DLMS 3.3.1 release preparation — unpublished
 
-The source development target is **DLMS 3.3.1**, shared by the original and Desktop
-editions. No 3.3.1 download is published or approved for installation yet.
-[Candidate notes, compatibility and native handoffs](docs/releases/3.3.1-candidate.md)
-separate source readiness from accepted platform packages. The downloads below
-remain the current published 3.3.0 releases and Desktop previews.
+Original **DLMS 3.3.1** is prepared for a stable maintenance release; **DLMS Desktop
+3.3.1 Preview 1** remains a preview. No 3.3.1 download is published or approved for
+installation yet. The [3.3.1 platform/source/download guide](docs/releases/3.3.1.md)
+identifies the planned packages, source identities and qualification limits.
+Original rebuilds add the approved Help/README corrections and omit an unnecessary
+Windows OS UCRT copy; shared application behavior remains at `f507b64e`. Desktop
+artifacts and their exact F source/supplements are retained unchanged. The original
+source pin is recorded by each new package's acceptance/source manifest.
 
-## Choose your DLMS
+The download and installation sections immediately below describe the **previously
+published 3.3.0 and Desktop 2.x downloads**, which remain available. They are not the
+prepared 3.3.1 packages. Before publication, use the 3.3.1 guide for current preparation
+status; do not treat a proposed asset link as an already available download.
+Historical candidate/acceptance records are preserved separately.
+
+## Choose your DLMS — previously published downloads
 
 **Browser-based edition — Latest published release: DLMS 3.3.0 (stable).** **[Download stable 3.3.0](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0).**
 

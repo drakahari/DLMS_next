@@ -5,13 +5,15 @@ DLMS is a local-first learning, quiz, study, analytics, and content-import
 application. It runs on your computer and opens its interface in your web
 browser.
 
-RELEASE REVIEW STATUS
+RELEASE STATUS
 
-This is an UNPUBLISHED DLMS 3.3.1 maintenance candidate, not an approved
-stable download. The latest published original release remains 3.3.0.
-Only packages with their own matching-platform acceptance record are qualified.
-Desktop 3.3.1 Preview 1 candidates use a separate application window and profiles.
-See docs/releases/3.3.1-candidate.md in the matching source for readiness limits.
+Original DLMS 3.3.1 is the stable browser edition. DLMS Desktop 3.3.1 Preview 1
+remains a separate preview with its own application window and profiles.
+Use the matching official release guide, SHA256SUMS and source/notices companions.
+Platform qualification is limited to the checks disclosed for each package;
+"stable" does not mean every manual workflow was tested on every platform.
+The original stable source is a documentation-only successor of f507b64e.
+Desktop Preview 1 retains its recorded f507b64e source and platform supplements.
 
 CHOOSE THE PACKAGE FOR YOUR SYSTEM
 
@@ -26,7 +28,7 @@ system. Do not assume that one Linux build is universal across distributions.
 
 PACKAGE CONTENTS
 
-The five planned original packages contain the DLMS application for their named platform, this
+The five original packages contain the DLMS application for their named platform, this
 README.txt, and sample_quiz.txt. In the macOS ZIP, DLMS.app, README.txt, and
 sample_quiz.txt are all directly at the archive root, with no wrapper folder.
 
@@ -60,11 +62,13 @@ macOS Apple Silicon
 1. Extract the ZIP package.
 2. Confirm DLMS.app appears directly in the extraction location, then drag it
    to Applications.
-3. Control-click DLMS.app, choose Open, and then choose Open again.
+3. Open DLMS.app from Finder or Applications.
 
 DLMS 3.3.1 is not notarized, so macOS may require approval in System Settings >
-Privacy & Security. Use Open Anyway only after verifying the published SHA-256
-checksum and the download source.
+Privacy & Security. Use Open Anyway only when macOS offers it for this app,
+after verifying the published SHA-256 checksum and the official download source.
+Follow the displayed confirmation. Stop for malware, damage, unavailable approval,
+or managed-policy blocks. Do not remove quarantine or disable Gatekeeper.
 
 USING DLMS
 
