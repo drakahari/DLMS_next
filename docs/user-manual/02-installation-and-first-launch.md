@@ -9,23 +9,23 @@ For Desktop, follow the current [Windows installer](../../README.md#install-and-
 [Linux AppImage](../../README.md#open-desktop-on-linux), or
 [Apple Silicon Mac DMG](../../README.md#install-and-open-desktop-on-mac) instructions.
 Use the app's normal first launch; you do not need to create a Local profile by hand.
-Preview numbers differ by platform; the [download table](../../README.md#download-dlms-desktop--previews)
+The current Desktop releases share Preview 1; the [download table](../../README.md#download-dlms-desktop--previews)
 links directly to each current published package and its release notes.
 
-The installation commands below are for **browser-based DLMS 3.3.0**.
+The installation commands below are for **browser-based DLMS 3.3.1**.
 For ordinary use, install the package built for your operating
 system. The native package contains the local application and its OCR runtime;
 you do not need Python, a separate database server, or a system Tesseract
 installation.
 
-The stable browser edition is DLMS 3.3.0. Desktop downloads are separately
+The stable browser edition is DLMS 3.3.1. Desktop downloads are separately
 versioned previews; do not substitute a browser-edition executable in a Desktop
 launcher. For source development or evaluation, see
 [Running from source](#running-from-source).
 
-The coordinated **3.3.1 source is an unpublished maintenance candidate**.
-[Candidate readiness and compatibility](../releases/3.3.1-candidate.md) does not
-authorize replacing any installed application or production server.
+Original **3.3.1 is published stable**; Desktop **3.3.1 Preview 1 remains a prerelease**.
+Read [current changes, compatibility and qualification limits](../releases/3.3.1.md)
+before planning an existing installation or server update.
 
 ## Choose the correct package
 
@@ -34,11 +34,11 @@ matches your system from the project's Releases page.
 
 | Platform | Package |
 | --- | --- |
-| Fedora 44, x86-64 | `DLMS-3.3.0-fedora44-x86_64.tar.gz` |
-| Ubuntu 24.04, x86-64 | `DLMS-3.3.0-ubuntu24.04-x86_64.tar.gz` |
-| Ubuntu 26.04, x86-64 | `DLMS-3.3.0-ubuntu26.04-x86_64.tar.gz` |
-| Windows 11, x86-64 | `DLMS-3.3.0-windows11-x86_64.zip` |
-| macOS Apple Silicon, arm64 | `DLMS-3.3.0-macos-arm64.zip` |
+| Fedora 44, x86-64 | `DLMS-3.3.1-fedora44-x86_64.tar.gz` |
+| Ubuntu 24.04, x86-64 | `DLMS-3.3.1-ubuntu24.04-x86_64.tar.gz` |
+| Ubuntu 26.04, x86-64 | `DLMS-3.3.1-ubuntu26.04-x86_64.tar.gz` |
+| Windows 11, x86-64 | `DLMS-3.3.1-windows11-x86_64.zip` |
+| macOS Apple Silicon, arm64 | `DLMS-3.3.1-macos-arm64.zip` |
 
 The Linux packages are built and tested separately for their named
 distributions; one Linux archive is not a universal build. The documented
@@ -46,8 +46,8 @@ macOS package is for Apple Silicon, not Intel.
 
 Each final package includes the native application, `README.txt`, and
 `sample_quiz.txt`. Verify the downloaded archive against the published
-`SHA256SUMS.txt` before bypassing an operating-system warning or transferring
-the package between computers.
+`SHA256SUMS.txt` before deciding whether to approve an operating-system prompt
+or transferring the package between computers.
 
 ## Install on Linux
 
@@ -56,7 +56,7 @@ the package between computers.
 3. Run the executable for that package. For example:
 
    ```text
-   ./DLMS-3.3.0-fedora44-x86_64
+   ./DLMS-3.3.1-fedora44-x86_64
    ```
 
 The archive preserves the executable permission. If another transfer method
@@ -67,7 +67,7 @@ try again. Do not substitute a package built for a different Linux target.
 
 1. Extract the ZIP archive; do not run the application from inside the ZIP.
 2. Open the extracted, versioned package folder.
-3. Double-click `DLMS-3.3.0-windows11-x86_64.exe`.
+3. Double-click `DLMS-3.3.1-windows11-x86_64.exe`.
 
 The current Windows package is unsigned. Microsoft Defender SmartScreen may
 therefore warn on first launch. First confirm that the archive came from the
@@ -79,13 +79,12 @@ use **More info** and **Run anyway** if Windows offers those choices.
 The macOS ZIP contains `DLMS.app`, `README.txt`, and `sample_quiz.txt` directly
 at the archive root. There is no extra versioned wrapper around the app.
 
-1. Extract `DLMS-3.3.0-macos-arm64.zip`.
+1. Extract `DLMS-3.3.1-macos-arm64.zip`.
 2. Drag `DLMS.app` into `/Applications`.
-3. In Finder or Applications, Control-click `DLMS.app`, choose **Open**, and
-   confirm the first launch.
+3. Open `DLMS.app` in Finder or Applications.
 
-The current app is not Developer ID-signed or notarized. If macOS blocks it and
-the Control-click choice is unavailable, try opening it once and then use
+The current app is not Developer ID-signed or notarized. If macOS blocks it,
+use only the offered per-app
 **System Settings → Privacy & Security → Open Anyway**. Only use that approval
 after checking the download source and published SHA-256.
 
@@ -229,8 +228,14 @@ that started it.
 Before a significant upgrade, create a DLMS backup and copy it outside the live
 data directory. Then stop the existing DLMS process, download and verify the
 correct new package, and install or extract it using the platform steps above.
-The new application continues to use the platform's normal DLMS data directory;
+For an existing original installation, the new application uses the platform's
+normal DLMS data directory;
 do not move the old data into the downloaded package directory.
+
+From 3.3.0 to 3.3.1 there is no new schema or portable-format migration. Keep the
+old payload and a verified backup; replacing an executable cannot undo an older
+data migration. Desktop profiles remain separate; preserve managed launchers and
+never point editions at the same live directory.
 
 You normally do not need to run **Rebuild All Quiz Pages** after an update. It
 is an occasional maintenance and recovery tool for refreshing derived quiz
@@ -245,7 +250,7 @@ dependencies. Source mode uses the same local browser interface and default
 data location, but OCR-dependent workflows require a complete local Tesseract 5
 installation with English language data and the TSV configuration.
 
-Follow the [repository README](../../README.md) for the current source setup.
+Follow [Development and packaging](../development-and-packaging.md) for source setup.
 Do not follow the maintainer-only frozen OCR bundle, native probe, or release
 packaging procedures merely to use DLMS from source.
 

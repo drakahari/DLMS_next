@@ -19,9 +19,11 @@ the official certificate. **View certificate** opens only current-period officia
 evidence; without it, use **Add certificate**. Ambiguous older attachment roles are
 preserved for an explicit user choice rather than silently reclassified.
 
-In the unpublished 3.3.1 candidate, **View certificate** displays the supported
+In 3.3.1, **View certificate** displays the supported
 image or one safely rasterized PDF page at a time. Use Previous/Next for pages,
-and **Download certificate** to save the original. Download uses browser download
+and **Download certificate** to save the document. PDFs retain their original
+uploaded bytes; supported raster images retain DLMS's sanitized PNG behavior.
+Download uses browser download
 handling or Desktop Save As; it does not promise to open an OS-associated viewer.
 A missing/unsupported document shows an error without deleting its record.
 

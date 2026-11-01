@@ -8,8 +8,9 @@ card exports and image authoring. See [Phase 2](PHASE2.md) for the required-topi
 assessment and [editorial status](editorial-status.json) for the approval boundary.
 No tutorial is automatically published by this tooling.
 
-The [published overview](https://www.youtube.com/watch?v=nrUz3umt8vk) remains the
-short orientation. The [Markdown manual](../../user-manual/README.md) remains
+The established [overview](https://www.youtube.com/watch?v=nrUz3umt8vk) is currently
+private on YouTube and requires owner-granted access. The Desktop walkthrough
+below is the available public tour. The [Markdown manual](../../user-manual/README.md) remains
 the canonical written guide. These videos teach decisions and sequences, not
 every field, file format or implementation detail.
 
