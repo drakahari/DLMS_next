@@ -19,11 +19,10 @@ all release assets and metadata unchanged. Do not apply drafts automatically.
 
 The immutable source/qualification companions attached to each release remain
 engineering records, with their existing hashes. Description presentation does not
-rewrite those assets or extend their acceptance scope. The established overview and
-Desktop walkthrough URLs are reused; individual feature tutorials have no public
-viewing URLs in the retained repository records and are not presented as published.
+rewrite those assets or extend their acceptance scope.
 
-The established overview URL currently reports **Private video** to visitors without
-access. Drafts keep it visibly marked; public overview promotion needs the owner
-to restore access or supply an established replacement URL. No video privacy settings
-are changed by this PR.
+The drafts use the verified public DLMS 3.3 overview, the Desktop walkthrough
+linked by PR #34, and relevant public feature videos. The overview/feature IDs were checked
+against that walkthrough publisher's official channel and anonymous playback.
+The old 3.2 overview is not a current viewing link; historical production/release
+records remain unchanged. No video settings need changing.

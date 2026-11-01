@@ -54,15 +54,30 @@ credit is not automatic issuer acceptance.*
 
 ## 🎬 See DLMS in action
 
-[![DLMS 3.2 overview thumbnail — video currently private](docs/demo-video/images/dlms-3.2-youtube-thumbnail.jpg)](https://www.youtube.com/watch?v=nrUz3umt8vk)
+[![Watch the current DLMS 3.3 overview](https://i.ytimg.com/vi/axmym1glqD8/maxresdefault.jpg)](https://www.youtube.com/watch?v=axmym1glqD8)
 
-- **[DLMS overview — 7:45, currently private](https://www.youtube.com/watch?v=nrUz3umt8vk):** the established 3.2 tour covers importing, practice, timed assessment and learning-guided review. YouTube currently requires owner-granted access; use the Desktop walkthrough or manual while public access is unavailable.
-- **[DLMS Desktop walkthrough](https://www.youtube.com/watch?v=mPGNbPy56X8):** see Local and Server modes demonstrated on Linux. It is not Windows/Mac installation or acceptance evidence.
+- **[DLMS 3.3 overview](https://www.youtube.com/watch?v=axmym1glqD8):** tour Study, practice, Exam Plans and certification tracking in the current 3.3 learning workspace.
+- **[DLMS Desktop walkthrough](https://www.youtube.com/watch?v=mPGNbPy56X8):** see Local and Server modes demonstrated on Linux. Use the platform-specific installation notes for Windows or Mac.
 
-For focused import, daily-review, Study Pack, backup and flashcard topics, the
-[feature-video companion index](docs/demo-video/series/README.md) links each topic
-to its written guide. Public viewing URLs for those individual tutorials are not
-yet recorded there; they are not presented here as published videos.
+### Learn a workflow
+
+| Topic | Watch | What it covers |
+| --- | --- | --- |
+| Import and repair | [Importing study material (3.2)](https://www.youtube.com/watch?v=NYHebz8zMII) | PDF/screenshot import and checking uncertain questions. |
+| Study sessions | [Save, resume and review](https://www.youtube.com/watch?v=S_Ww32o9pjQ) | Save work, resume an eligible session and review its history. |
+| Practice mistakes | [Turn mistakes into practice](https://www.youtube.com/watch?v=aBpnGRC7Ak8) | Build focused practice from saved Study mistakes. |
+| Exam preparation | [Create an Exam Plan](https://www.youtube.com/watch?v=HD414oJfELQ) | Create and use an optional Exam Plan. |
+| Certifications | [Certifications, badges and PDFs](https://www.youtube.com/watch?v=qkLXsUSmVno) | Record credentials, badge artwork and certificate evidence. |
+| Training and renewal | [Training and renewal progress](https://www.youtube.com/watch?v=boQPakaQlSk) | Log learning time and track recorded renewal progress. |
+| Selected questions | [Mark questions for practice and Anki](https://www.youtube.com/watch?v=hya5DsFD3Sc) | Mark questions for further practice and Anki. |
+| Flashcards | [Anki and printable cards (3.2)](https://www.youtube.com/watch?v=dG4OA2FV0fI) | Export Anki cards and prepare printable layouts. |
+| Protect your data | [Backup, restore and rollback](https://www.youtube.com/watch?v=eNSfwEzA1Bc) | Back up, review a restore and understand rollback limits. |
+
+The public import and printable-card tutorials were recorded for **3.2**; their
+retained workflows remain useful, while current written guidance covers later
+wording and maintenance fixes. Videos demonstrate features rather than platform
+acceptance. [Video titles and manual companions](docs/demo-video/series/README.md#public-walkthroughs)
+help you go further. These capabilities predate the 3.3.1 maintenance fixes below.
 
 <a id="choose-your-dlms"></a>
 

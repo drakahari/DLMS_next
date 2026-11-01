@@ -4,10 +4,10 @@ The canonical user guide for **DLMS 3.3.1** covers installation, importing your
 material, studying, timed assessments, learning-guided review, and keeping your
 data portable. Start with [Introduction](01-introduction.md), then
 [Installation and First Launch](02-installation-and-first-launch.md), or choose
-a workflow below. The established [DLMS 3.2 overview](https://www.youtube.com/watch?v=nrUz3umt8vk)
-is currently private on YouTube. For an accessible tour, use the
-[Desktop Local/Server walkthrough](https://www.youtube.com/watch?v=mPGNbPy56X8),
-demonstrated on Linux.
+a workflow below. Start with the [DLMS 3.3 overview](https://www.youtube.com/watch?v=axmym1glqD8)
+or the [Desktop Local/Server walkthrough](https://www.youtube.com/watch?v=mPGNbPy56X8), demonstrated on Linux.
+[Public feature videos](../demo-video/series/README.md#public-walkthroughs) cover
+importing, Study recovery, Exam Plans, certifications, flashcards and backups.
 
 New 3.3.0 workflow images use disposable sample data. Retained **UM-xx** images
 are dated 3.2.0 captures of materially unchanged workflows; follow the current

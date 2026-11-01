@@ -1,22 +1,43 @@
-# DLMS focused documentation videos
+# DLMS videos and tutorial companions
 
-DLMS-138 extends the existing overview workflow into an ordered instructional
-series. **The six phase-one delivery videos are approved by the repository
-owner.** DLMS-139 adds seven **candidates pending listening and editorial
-review**, covering specialized studies, resets, external AI, pack creation,
-card exports and image authoring. See [Phase 2](PHASE2.md) for the required-topic
-assessment and [editorial status](editorial-status.json) for the approval boundary.
-No tutorial is automatically published by this tooling.
+Start with the [DLMS 3.3 overview](https://www.youtube.com/watch?v=axmym1glqD8) for the learning workspace,
+or the Desktop walkthrough below for Local and Server modes. The
+[Markdown manual](../../user-manual/README.md) remains the task-by-task written guide.
 
-The established [overview](https://www.youtube.com/watch?v=nrUz3umt8vk) is currently
-private on YouTube and requires owner-granted access. The Desktop walkthrough
-below is the available public tour. The [Markdown manual](../../user-manual/README.md) remains
-the canonical written guide. These videos teach decisions and sequences, not
-every field, file format or implementation detail.
+## Public walkthroughs
+
+Watch the 3.3 overview and focused feature recordings below. The import and
+printable-card tutorials were recorded for 3.2 and remain publicly playable;
+use the current manual for later UI wording and 3.3.1 maintenance fixes.
+Production definitions below retain their original recording/version context.
+
+| Public video | What you will learn | Manual companion |
+| --- | --- | --- |
+| [DLMS 3.3 Overview: Study, Practice, Plan & Track Certifications](https://www.youtube.com/watch?v=axmym1glqD8) | Study, practice, plans and certification tracking. | [Start here](../../user-manual/README.md) |
+| [DLMS 3.2 — Importing Study Material & Review and Repair](https://www.youtube.com/watch?v=NYHebz8zMII) | PDF/screenshot import and checking uncertain questions. | [Written guide](../../user-manual/10-pdf-smart-pdf-and-ocr.md) |
+| [DLMS 3.3: Save, Resume & Review Your Study Sessions](https://www.youtube.com/watch?v=S_Ww32o9pjQ) | Save work, resume an eligible session and review its history. | [Written guide](../../user-manual/06-taking-quizzes.md) |
+| [DLMS 3.3: Turn Your Study Mistakes into Practice Quizzes](https://www.youtube.com/watch?v=aBpnGRC7Ak8) | Build focused practice from saved Study mistakes. | [Written guide](../../user-manual/05-quiz-library-and-organization.md#make-a-mix-from-study-mistakes) |
+| [DLMS 3.3: Create & Use an Exam Plan](https://www.youtube.com/watch?v=HD414oJfELQ) | Create and use an optional Exam Plan. | [Written guide](../../user-manual/exam-plans.md) |
+| [DLMS 3.3: Add Certifications, Badges & Certificate PDFs](https://www.youtube.com/watch?v=qkLXsUSmVno) | Record credentials, badge artwork and certificate evidence. | [Written guide](../../user-manual/certifications-and-training.md) |
+| [DLMS 3.3: Log Training & Track Renewal Progress](https://www.youtube.com/watch?v=boQPakaQlSk) | Log learning time and track recorded renewal progress. | [Written guide](../../user-manual/certifications-and-training.md) |
+| [DLMS 3.3: Mark Questions for Practice & Anki](https://www.youtube.com/watch?v=hya5DsFD3Sc) | Mark questions for further practice and Anki. | [Written guide](../../user-manual/14-anki-decks-and-printable-cards.md) |
+| [DLMS 3.2 — Anki & Printable Flash Cards](https://www.youtube.com/watch?v=dG4OA2FV0fI) | Export Anki cards and prepare printable layouts. | [Written guide](../../user-manual/14-anki-decks-and-printable-cards.md) |
+| [DLMS 3.3: Back Up, Restore & Understand Rollback](https://www.youtube.com/watch?v=eNSfwEzA1Bc) | Back up, review a restore and understand rollback limits. | [Written guide](../../user-manual/17-maintenance-backup-and-data-management.md) |
 
 ## DLMS Desktop walkthrough
 
 [Watch the DLMS Desktop walkthrough](https://www.youtube.com/watch?v=mPGNbPy56X8) — See DLMS Desktop’s Local and Server modes, demonstrated on Linux.
+
+## Production records
+
+DLMS-138 extends the original overview workflow into an ordered instructional
+series. **The six phase-one delivery videos are approved by the repository
+owner.** DLMS-139 adds seven **candidates pending listening and editorial
+review**, covering specialized studies, resets, external AI, pack creation,
+card exports and image authoring. See [Phase 2](PHASE2.md) and
+[editorial status](editorial-status.json) for those production records and their
+original approval boundary. No tutorial is automatically published by this tooling.
+The public viewing links above have their own recordings and version context.
 
 ## Playlist and manual companions
 

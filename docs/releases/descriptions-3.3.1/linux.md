@@ -51,8 +51,11 @@ server account login or TLS; do not expose its port directly to the public Inter
 
 - [User manual](https://github.com/drakahari/DLMS_next/blob/main/docs/user-manual/README.md) — installation, learning workflows and backups.
 - [DLMS front page](https://github.com/drakahari/DLMS_next#readme) — features, edition comparison and quick start.
-- [Overview video — currently private](https://www.youtube.com/watch?v=nrUz3umt8vk) — the established 3.2 tour currently requires owner-granted YouTube access; use the manual or public Desktop walkthrough meanwhile.
+- [DLMS 3.3 overview](https://www.youtube.com/watch?v=axmym1glqD8) — Study, practice, Exam Plans and certification tracking.
 - [Desktop walkthrough](https://www.youtube.com/watch?v=mPGNbPy56X8) — Local and Server modes demonstrated on Linux, not Windows/Mac acceptance evidence.
+- [Mark questions for practice and Anki](https://www.youtube.com/watch?v=hya5DsFD3Sc) — reuse selected questions outside the original quiz.
+- [Back up, restore and understand rollback](https://www.youtube.com/watch?v=eNSfwEzA1Bc) — protect existing data before an update.
+- [More public feature walkthroughs](https://github.com/drakahari/DLMS_next/blob/main/docs/demo-video/series/README.md#public-walkthroughs) — import, Study recovery, Exam Plans, certifications and printable cards.
 
 [SHA-256 checksums](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.1-preview1-linux/SHA256SUMS.txt) · [detailed qualification](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.1-preview1-linux/QUALIFICATION.md) · [release/source guide](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.1-preview1-linux/RELEASE_GUIDE.md)
 
