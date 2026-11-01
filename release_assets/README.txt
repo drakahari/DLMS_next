@@ -12,7 +12,8 @@ remains a separate preview with its own application window and profiles.
 Use the matching official release guide, SHA256SUMS and source/notices companions.
 Platform qualification is limited to the checks disclosed for each package;
 "stable" does not mean every manual workflow was tested on every platform.
-The original stable source is a documentation-only successor of f507b64e.
+The original stable source adds documentation corrections and a Windows-only
+packaging correction to f507b64e. Shared application/server behavior is unchanged.
 Desktop Preview 1 retains its recorded f507b64e source and platform supplements.
 
 CHOOSE THE PACKAGE FOR YOUR SYSTEM
