@@ -19,53 +19,37 @@ class ReleaseDocumentationTests(unittest.TestCase):
         version = re.search(r'^APP_VERSION = "([^"]+)"$', app_source, re.MULTILINE)
         self.assertIsNotNone(version)
         self.assertEqual(version.group(1), "3.3.1")
-        self.assertIn("Latest published release: DLMS 3.3.0", readme)
-        self.assertIn("DLMS 3.3.1", readme)
         self.assertIn("Original DLMS 3.3.1", readme)
         self.assertIn("DLMS Desktop 3.3.1 Preview 1", readme)
         self.assertIn("releases/tag/v3.3.1", readme)
         self.assertIn("79e42531d37b78fc806628e0ba989da13d9ed5ea", readme)
         self.assertIn("f507b64e9366cfd36a536d1112a5279ff28cb27d", readme)
+        self.assertIn("docs/user-manual/README.md", readme)
+        self.assertIn("docs/development-and-packaging.md", readme)
         self.assertIn("https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0", readme)
-        self.assertNotIn("Development target: DLMS 3.3.0 (unreleased)", readme)
+        self.assertNotIn("Latest published release: DLMS 3.3.0", readme)
         self.assertNotIn("Latest published release: DLMS 3.2.2", readme)
-        normalized_readme = " ".join(readme.split())
-        self.assertIn(
-            "The five native packages were built from commit "
-            "`af6766a8c59da513870014141c60aaa1edd1d232`.",
-            normalized_readme,
-        )
-        self.assertIn(
-            "All five native builders passed; broader packaged OCR, persistence "
-            "and restore checks ran on Fedora.",
-            normalized_readme,
-        )
-        self.assertIn(
-            "The additional Ubuntu 24.04 harness was canceled, so those "
-            "broader checks are not claimed for every platform.",
-            normalized_readme,
-        )
-        self.assertNotIn("3.3.0 packages have not been built or accepted", readme)
         self.assertNotIn("DLMS v2.1.0 is now available", readme)
+
+        # Process/build detail belongs in the linked technical guide, rather
+        # than forcing historical engineering paragraphs into the front page.
+        technical = (ROOT / "docs/development-and-packaging.md").read_text(encoding="utf-8")
         for setting in ("--browser", "--no-browser", "DLMS_NO_BROWSER"):
-            self.assertIn(setting, readme)
-        self.assertIn("interactive desktop session", readme)
-        self.assertIn("optional\nbrowser-presence shutdown feature", readme)
-        self.assertIn("loopback-only desktop session", readme)
-        self.assertIn("feature is disabled or DLMS is running in LAN/server mode", readme)
-        self.assertRegex(readme, r"instead of starting another\s+server copy")
-        self.assertRegex(
-            readme,
-            r"use \*\*Shutdown DLMS\*\*.*for an immediate,\s+explicit stop",
-        )
-        self.assertIn("requirements-lock.txt", readme)
-        self.assertIn("GitHub's automatic source archives", readme)
+            self.assertIn(setting, technical)
+        self.assertIn("interactive desktop session", technical)
+        self.assertIn("optional\nbrowser-presence shutdown feature", technical)
+        self.assertIn("loopback-only desktop session", technical)
+        self.assertIn("feature is disabled or DLMS is running in LAN/server mode", technical)
+        self.assertRegex(technical, r"instead of starting another\s+server copy")
+        self.assertRegex(technical, r"use \*\*Shutdown DLMS\*\*.*for an immediate,\s+explicit stop")
+        self.assertIn("requirements-lock.txt", technical)
+        self.assertIn("GitHub's automatic source archives", technical)
 
     def test_omarchy_companion_is_documented_as_optional_and_separate(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("https://github.com/drakahari/omarchy-dlms", readme)
         self.assertIn("DLMS runs without the plugin", readme)
-        self.assertIn("generic AppImage remains distro-neutral", readme)
+        self.assertIn("separate browser-workflow integration", readme)
         for path in ("DLMS.spec", "requirements.txt", "requirements-lock.txt", "requirements-build.txt"):
             with self.subTest(path=path):
                 self.assertNotIn("omarchy-dlms", (ROOT / path).read_text(encoding="utf-8"))
@@ -213,14 +197,11 @@ class ReleaseDocumentationTests(unittest.TestCase):
             "DLMS-3.3.0-omarchy-quattro-x86_64",
         ):
             with self.subTest(artifact_name=artifact_name):
-                self.assertIn(artifact_name, readme)
                 self.assertIn(artifact_name, procedure)
-        appimage_name = "DLMS-3.2.2-linux-x86_64.AppImage"
+        appimage_name = "DLMS-Desktop-3.3.1-preview1-candidate-linux-x86_64.AppImage"
         self.assertIn(appimage_name, readme)
-        self.assertEqual(
-            set(re.findall(r"DLMS-3\.2\.2-linux-x86_64[\w.-]*", readme + procedure)),
-            {appimage_name},
-        )
+        self.assertNotIn("DLMS-3.2.2-linux-x86_64.AppImage", readme)
+        self.assertNotIn("DLMS-3.3.1-linux-x86_64.AppImage", readme)
         self.assertNotIn("DLMS-3.3.0-windows-x86_64.exe", readme + procedure)
         self.assertIn("verify_release_package.py --complete-set", procedure)
         self.assertIn('--checksums "$PACKAGE_DIR/SHA256SUMS.txt"', procedure)
@@ -251,7 +232,8 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertTrue(packager.is_file())
         for name in final_packages:
             with self.subTest(name=name):
-                self.assertIn(name, readme)
+                if "omarchy" not in name:
+                    self.assertIn(name.replace("3.3.0", "3.3.1"), readme)
                 self.assertIn(name, procedure)
                 if "omarchy" not in name:
                     self.assertIn(name.replace("3.3.0", "3.3.1"), package_readme)
@@ -271,8 +253,8 @@ class ReleaseDocumentationTests(unittest.TestCase):
             procedure,
         )
         self.assertIn(
-            "The macOS ZIP exposes all three directly at\nits archive root",
-            readme,
+            "The Mac ZIP has `DLMS.app`, `README.txt` and `sample_quiz.txt` directly at its root",
+            " ".join(readme.split()),
         )
         self.assertIn(
             "In the macOS ZIP, DLMS.app, README.txt, and\nsample_quiz.txt are all directly at the archive root",
@@ -345,7 +327,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertIn("console=False", spec)
         self.assertIn('codesign_identity=None', spec)
 
-        self.assertIn("DLMS-3.3.0-macos-arm64.zip", readme)
+        self.assertIn("DLMS-3.3.1-macos-arm64.zip", readme)
         self.assertIn("DLMS-3.3.1-macos-arm64.zip", getting_started)
         self.assertNotIn("DLMS-3.2.2-macos-arm64.zip", getting_started)
         for document in (readme, getting_started):
@@ -356,10 +338,11 @@ class ReleaseDocumentationTests(unittest.TestCase):
 
         self.assertIn("Privacy & Security", readme)
         self.assertIn("Privacy &amp; Security", getting_started)
-        self.assertIn("ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app", readme)
-        self.assertIn("Contents/MacOS/DLMS", readme)
+        technical = (ROOT / "docs/development-and-packaging.md").read_text(encoding="utf-8")
+        self.assertIn("ditto -c -k --sequesterRsrc --keepParent dist/DLMS.app", technical)
+        self.assertIn("Contents/MacOS/DLMS", technical)
         self.assertNotIn("* macOS: `DLMS-3.3.0-macos-arm64`", readme)
-        self.assertIn("not part of the normal installation", readme)
+        self.assertIn("not part of the normal installation", technical)
         for document in (readme, troubleshooting):
             self.assertNotIn("xattr -dr com.apple.quarantine", document)
             self.assertIn("do not remove quarantine", " ".join(document.lower().split()))

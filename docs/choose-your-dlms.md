@@ -2,8 +2,8 @@
 
 DLMS has two supported interface choices. Browser-based DLMS is **not
 server-only**. Desktop is **not a replacement requirement** for existing users.
-Both editions can run locally. The original browser-based 3.3.0 release is stable;
-Desktop is available as separately published platform previews.
+Both editions can run locally. Original DLMS **3.3.1 is stable**; Desktop **3.3.1 Preview 1** is available as
+separate Linux, Windows and Apple Silicon Mac prereleases.
 
 ## Start with your use case
 
@@ -21,23 +21,78 @@ A browser interface does not itself imply a cloud service or Internet dependency
 
 ## Downloads: stable original and Desktop previews
 
-The [original browser-based DLMS 3.3.0 release](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0) remains the stable option. It runs locally in your browser and can also be intentionally hosted as a server. Desktop is an optional preview, not a required replacement.
+Use the [current README download tables](../README.md#downloads) to choose one app
+for your platform. Original **3.3.1** has native Fedora 44, Ubuntu 24.04/26.04 and
+Windows 11 x86_64 packages, plus an Apple Silicon Mac ZIP. Desktop **3.3.1 Preview 1**
+has a Linux x86_64 AppImage, Windows 11 x86_64 installer and Apple Silicon Mac DMG.
+These are separate editions; Desktop is optional, not a required replacement.
 
-For ordinary use, download only your platform's app. Sources and notices remain available for licensing, redistribution and rebuilding; they are not extra runtime downloads. See the [README download and opening steps](../README.md#download-dlms-desktop--previews).
+| Edition | Current release, checksums and companions |
+| --- | --- |
+| Original 3.3.1 stable | [Five native app packages](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.1) |
+| Desktop 3.3.1 Preview 1 — Linux | [AppImage and managed payload](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.1-preview1-linux) |
+| Desktop 3.3.1 Preview 1 — Windows | [Setup.exe](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.1-preview1-windows) |
+| Desktop 3.3.1 Preview 1 — Mac | [DMG](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.1-preview1-macos) |
 
-| Edition | OS/architecture | Published download and qualification |
-| --- | --- | --- |
-| Browser-based DLMS 3.3.0 — stable | Fedora 44 x86_64 | [Original release](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0), `.tar.gz`; native builder and broader Fedora workflow evidence recorded. |
-| Browser-based DLMS 3.3.0 — stable | Ubuntu 24.04 / 26.04 x86_64 | [Original release](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0), `.tar.gz`; native builders passed. Broader Ubuntu 24.04 packaged harness was canceled, not passed. |
-| Browser-based DLMS 3.3.0 — stable | Windows 11 x86_64 | [Original release](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0), `.zip`; native builder evidence does not imply every workflow was qualified. |
-| Browser-based DLMS 3.3.0 — stable | macOS Apple Silicon (not Intel) | [Original release](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0), `.zip` containing `DLMS.app`; no signing/notarization claim. |
-| DLMS Desktop — Preview 2.1 | Linux x86_64 | [AppImage](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview2.1-linux/DLMS-Desktop-3.3.0-preview2.1-linux-x86_64.AppImage) · [release notes](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview2.1-linux). Ubuntu-24.04-compatible build; exact normal AppImage qualified on Fedora 44/COSMIC Wayland. Native Ubuntu/Omarchy on this file remains unqualified. Unsigned. No current `.tar.zst` application bundle. |
-| DLMS Desktop — Preview 2.2 | Windows 11 x86_64 | [Installer](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview2.2-windows/DLMS-Desktop-3.3.0-Windows-x86_64-Preview-2.2-Setup.exe) · [release notes](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview2.2-windows). .NET Framework 4.8 and protected machine-wide WebView2 Evergreen 155.0.4283.45+ required; Setup installs neither. Unsigned. |
-| DLMS Desktop — Preview 2.1 | macOS 26.6.2 Apple Silicon | [DMG](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.0-preview2.1-macos/DLMS-Desktop-3.3.0-macos-arm64-preview.dmg) · [release notes](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.0-preview2.1-macos). Qualified native baseline, not Intel or other macOS versions. Ad hoc signed, without Developer ID or notarization; use individual macOS approval only when offered for the trusted app. |
+Ordinary users need their app download, not Python, build tools or all source archives.
+Retain the matching notices/source/replacement materials when redistributing.
+Desktop retains candidate filenames and bundled prepublication wording; the release
+pages establish its current Preview 1 status. Historical releases remain available.
 
-Preview numbers differ by platform. Follow the [simple opening instructions](../README.md#download-dlms-desktop--previews); Local storage is created automatically, with no manual profile setup. The linked release notes contain checksums and the exact qualification limits, including physical printing and downloaded/quarantined Mac opening. Mac selected-file consent/origin/path/descriptor/hash checks remain enabled, but a malicious native process already running as the same user is outside the preview guarantee; immutable snapshots are not Linux-equivalent sealing. Ordinary non-file-upload Server workflows are distinct from that boundary.
+### Open Desktop on Linux
 
-The original stable downloads and release history remain available. Installing Desktop does not migrate another edition's data or qualify another OS/architecture. For the original edition's checksums, upgrade and rollback limits, read the [3.3.0 release notes](releases/3.3.0.md).
+Normal AppImage mounting requires FUSE. Save the AppImage somewhere you will keep it,
+then make it executable and open it:
+
+```sh
+chmod u+x DLMS-Desktop-3.3.1-preview1-candidate-linux-x86_64.AppImage
+./DLMS-Desktop-3.3.1-preview1-candidate-linux-x86_64.AppImage
+```
+
+If FUSE is unavailable, use the supported extracted launcher instead:
+
+```sh
+./DLMS-Desktop-3.3.1-preview1-candidate-linux-x86_64.AppImage --appimage-extract
+./squashfs-root/AppRun
+```
+
+Extract into a fresh directory. Keep Chromium sandboxing enabled and do not run as
+root. Fedora normal AppImage/extraction evidence is retained; owner Omarchy evidence
+covers extracted AppRun **Server** PDF/image viewing and exact PDF Download, not all
+Local workflows or all Linux distributions. Cancel remains unverified.
+
+The separate managed `.tar.zst` payload uses a different launcher/profile contract.
+It is not a drop-in replacement for an AppImage, or permission to overwrite an
+existing managed installation. Preserve its data root and launcher when planning an update.
+
+### Install and open Desktop on Windows
+
+Requires Windows 11 x86_64, .NET Framework 4.8 and a **protected machine-wide WebView2
+Evergreen Runtime 155.0.4283.45 or newer**. Setup installs neither prerequisite;
+per-user/AppData-only WebView2 runtimes are unsupported.
+
+Download the current release's Setup.exe, check its SHA-256, close any existing
+Desktop session, and use the per-user installer. Its Start menu shortcut is the
+normal launcher; no manual Local profile creation is needed. Keep OS protections
+enabled and stop if policy blocks the unsigned installer. The current installer
+was **compiled and automatically checked, not executed** in its qualification;
+these opening steps are instructions, not a claim of installation acceptance.
+
+### Install and open Desktop on Mac
+
+Apple Silicon only. Open the DMG, copy **DLMS Desktop.app** to Applications, and
+open the copied app in Finder. Automated evidence is from macOS **26.6.2**;
+Intel Macs and other macOS versions are not newly qualified. Manual Mac acceptance
+is untested; the provenance record retains `qualified=false`.
+
+The app is ad hoc signed, without Developer ID or notarization. Use only the
+individual-app **System Settings → Privacy & Security → Open Anyway** approval
+when offered for a trusted, checksum-verified download. Stop if approval is
+unavailable or macOS reports malware, damage or a policy block. Do not remove
+quarantine or disable Gatekeeper. Managed Macs may prohibit approval.
+
+Original Mac installation uses a ZIP containing **DLMS.app**, not the Desktop DMG.
+See [original installation steps](user-manual/02-installation-and-first-launch.md).
 
 ## Local, Server and data ownership
 
@@ -102,9 +157,16 @@ requires remapping. Check the importer summary instead of assuming a byte-for-by
 clone. Before upgrading a schema or format, retain a verified compatible backup;
 a previous executable alone does not guarantee rollback.
 
-## Unpublished 3.3.1 maintenance candidates
+## 3.3.1 server compatibility and upgrade boundary
 
-New original and Desktop candidates share application version **3.3.1**; Desktop
-remains **Preview 1 candidate**, with separate Linux/Windows/Mac host revision and
-exact source identity. No existing binary is relabeled. See the
-[candidate notes and server compatibility](releases/3.3.1-candidate.md).
+For complete corrected Server behavior use an original **3.3.1** server, or shared
+source `f507b64e9366cfd36a536d1112a5279ff28cb27d`. Original binaries use
+`79e42531d37b78fc806628e0ba989da13d9ed5ea`, with the same shared application behavior.
+Desktop Local updates do not update a remote server. Older 3.3.0 deployments differ
+by source; the later 5e5fa245 build still lacks the complete certificate/Avery
+baseline. Older-client/new-server combinations are not newly qualified.
+
+Schema 12, backup 1, portable quiz 2 (legacy 1 imports) and pack 1 remain unchanged;
+no new migration is introduced from 3.3.0. Preserve a verified backup and old payload
+before updating. Read the [current release guidance](releases/3.3.1.md) for the
+precise qualification limits; unperformed checks are not passes or established defects.
