@@ -369,7 +369,7 @@ class HelpDocumentationTests(unittest.TestCase):
 
         downloads = section("help-getting-started.html", "downloads")
         for wording in (
-            "Browser-based DLMS 3.3.0 is the stable release",
+            "Browser-based DLMS 3.3.1 is the stable release",
             "separate Linux, Windows and Apple Silicon Mac previews",
             "https://github.com/drakahari/DLMS_next/releases",
             "current files, checksums and platform limitations",

@@ -21,7 +21,11 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertEqual(version.group(1), "3.3.1")
         self.assertIn("Latest published release: DLMS 3.3.0", readme)
         self.assertIn("DLMS 3.3.1", readme)
-        self.assertIn("unpublished", readme.lower())
+        self.assertIn("Original DLMS 3.3.1", readme)
+        self.assertIn("DLMS Desktop 3.3.1 Preview 1", readme)
+        self.assertIn("releases/tag/v3.3.1", readme)
+        self.assertIn("79e42531d37b78fc806628e0ba989da13d9ed5ea", readme)
+        self.assertIn("f507b64e9366cfd36a536d1112a5279ff28cb27d", readme)
         self.assertIn("https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0", readme)
         self.assertNotIn("Development target: DLMS 3.3.0 (unreleased)", readme)
         self.assertNotIn("Latest published release: DLMS 3.2.2", readme)
@@ -120,7 +124,8 @@ class ReleaseDocumentationTests(unittest.TestCase):
             contents = path.read_text(encoding="utf-8")
             if "Documentation for DLMS" in contents:
                 with self.subTest(page=path.name):
-                    self.assertIn(f"Documentation for DLMS {version}. Unpublished maintenance candidate.", contents)
+                    self.assertIn(f"Documentation for DLMS {version}.</div>", contents)
+                    self.assertNotIn("Unpublished maintenance candidate", contents)
 
     def test_active_version_text_has_no_obsolete_candidate_label(self):
         prerelease = re.compile(r"(?i)(?:\brc[._ -]?4\b|\bfc4\b)")
@@ -341,12 +346,13 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertIn('codesign_identity=None', spec)
 
         self.assertIn("DLMS-3.3.0-macos-arm64.zip", readme)
-        self.assertIn("DLMS-3.3.0-macos-arm64.zip", getting_started)
+        self.assertIn("DLMS-3.3.1-macos-arm64.zip", getting_started)
         self.assertNotIn("DLMS-3.2.2-macos-arm64.zip", getting_started)
         for document in (readme, getting_started):
             self.assertIn("DLMS.app", document)
-            self.assertIn("Control-click", document)
             self.assertIn("Open Anyway", document)
+        self.assertIn("Stop if approval is unavailable", getting_started)
+        self.assertIn("do not remove quarantine or disable Gatekeeper", getting_started)
 
         self.assertIn("Privacy & Security", readme)
         self.assertIn("Privacy &amp; Security", getting_started)
