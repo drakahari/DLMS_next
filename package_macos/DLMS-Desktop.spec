@@ -28,6 +28,7 @@ analysis.datas = [row for row in analysis.datas if not row[0].endswith('.a')]
 analysis.binaries = [row for row in analysis.binaries if not row[0].endswith('.a')]
 analysis.binaries, analysis.datas, exclusions = prune(analysis.binaries, analysis.datas)
 import json
+build_info = json.loads(Path(os.environ['DLMS_MACOS_BUILD_INFO']).read_text())
 Path(os.environ['DLMS_MACOS_EXCLUSIONS']).write_text(json.dumps(exclusions, indent=2) + '\n')
 archive = PYZ(analysis.pure)
 executable = EXE(archive, analysis.scripts, [], exclude_binaries=True,
@@ -37,9 +38,9 @@ executable = EXE(archive, analysis.scripts, [], exclude_binaries=True,
 bundle = BUNDLE(executable, analysis.binaries, analysis.datas,
     name='DLMS Desktop.app',
     icon=str(root / 'desktop_assets/icons/macos/DLMSDesktop.icns'),
-    bundle_identifier='io.github.drakahari.DLMSDesktop.MacPreview', version='3.3.0',
+    bundle_identifier='io.github.drakahari.DLMSDesktop.MacPreview', version=build_info['application_version'],
     info_plist={'CFBundleDisplayName': 'DLMS Desktop',
-                'CFBundleShortVersionString': '3.3.0', 'CFBundleVersion': '20261019',
+                'CFBundleShortVersionString': build_info['application_version'], 'CFBundleVersion': build_info['application_version'],
                 'LSMinimumSystemVersion': '26.6.2', 'NSHighResolutionCapable': True,
                 'NSDocumentsFolderUsageDescription': 'Choose quiz inputs and save exports and backups.',
                 'NSDownloadsFolderUsageDescription': 'Choose quiz inputs and save exports and backups.',

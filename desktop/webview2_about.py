@@ -12,12 +12,14 @@ def information():
     root = Path(sys._MEIPASS) if getattr(sys, 'frozen', False) else Path(__file__).resolve().parents[1]
     path = root / 'desktop_assets/build-info.json'
     if not getattr(sys, 'frozen', False) and not path.exists():
-        return {'application_version': '0.1.0-dev', 'release': 'source-tree',
+        from .build_info import application_version
+        version = application_version(root)
+        return {'application_version': version, 'release': 'source-tree candidate (unpublished)',
                 'source_commit': 'unpackaged development',
                 'target': 'Windows x86-64 WebView2 development',
                 'support': 'Private development build; not an installed release.',
                 'browser_runtime': 'Installed Microsoft WebView2 Evergreen',
-                'backend_version': 'not recorded in this source build'}
+                'backend_version': version}
     if path.is_symlink() or path.stat().st_size > 32768:
         raise ValueError('Build information is unavailable')
     value = json.loads(path.read_text(encoding='utf-8'))

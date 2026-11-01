@@ -4,6 +4,93 @@
 
 ## Choose your DLMS
 
+**Original DLMS 3.3.1** is the stable browser edition. **DLMS Desktop 3.3.1 Preview 1**
+opens its own application window and remains a preview. Both can run locally;
+Desktop Server mode connects to a server you choose. Editions do not automatically
+share or synchronize live data. No hosted account is required for local use.
+
+## Download original DLMS 3.3.1 — stable
+
+Choose one native package for your system from the [original 3.3.1 release](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.1).
+
+| System | Download |
+| --- | --- |
+| Fedora 44 x86_64 | [DLMS-3.3.1-fedora44-x86_64.tar.gz](https://github.com/drakahari/DLMS_next/releases/download/v3.3.1/DLMS-3.3.1-fedora44-x86_64.tar.gz) |
+| Ubuntu 24.04 x86_64 | [DLMS-3.3.1-ubuntu24.04-x86_64.tar.gz](https://github.com/drakahari/DLMS_next/releases/download/v3.3.1/DLMS-3.3.1-ubuntu24.04-x86_64.tar.gz) |
+| Ubuntu 26.04 x86_64 | [DLMS-3.3.1-ubuntu26.04-x86_64.tar.gz](https://github.com/drakahari/DLMS_next/releases/download/v3.3.1/DLMS-3.3.1-ubuntu26.04-x86_64.tar.gz) |
+| Windows 11 x86_64 | [DLMS-3.3.1-windows11-x86_64.zip](https://github.com/drakahari/DLMS_next/releases/download/v3.3.1/DLMS-3.3.1-windows11-x86_64.zip) |
+| Apple Silicon Mac arm64 | [DLMS-3.3.1-macos-arm64.zip](https://github.com/drakahari/DLMS_next/releases/download/v3.3.1/DLMS-3.3.1-macos-arm64.zip) |
+
+Extract the archive and run its DLMS executable. On Mac the ZIP has `DLMS.app`,
+`README.txt` and `sample_quiz.txt` at its root; open the app in Finder. DLMS normally
+opens its local browser interface at http://127.0.0.1:9001/. Follow the bundled
+README and [3.3.1 release/install guidance](docs/releases/3.3.1.md). The original
+Windows package uses Windows 11's serviced OS UCRT instead of bundling a System32 copy.
+
+The release includes SHA256SUMS, exact application source and platform source/notices
+companions. Ordinary users need their app package; retain the matching licence/source
+companions when redistributing it. Native builder checks passed for all five packages;
+that does not imply every manual workflow was tested on every operating system.
+
+## Download DLMS Desktop 3.3.1 Preview 1 — prereleases
+
+| System | App download | Release notes |
+| --- | --- | --- |
+| Linux x86_64 | [AppImage](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.1-preview1-linux/DLMS-Desktop-3.3.1-preview1-candidate-linux-x86_64.AppImage) | [Linux Preview 1](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.1-preview1-linux) |
+| Windows 11 x86_64 | [Setup.exe](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.1-preview1-windows/DLMS-Desktop-WebView2-Windows-x86_64-windows-331-preview1-candidate-Setup.exe) | [Windows Preview 1](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.1-preview1-windows) |
+| Apple Silicon Mac arm64 | [DMG](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.1-preview1-macos/DLMS-Desktop-3.3.1-macos-arm64-preview1-candidate.dmg) | [Mac Preview 1](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.1-preview1-macos) |
+
+These retain their tested candidate filenames and bundled prepublication wording.
+Use the current release notes and checksum manifests for their published status.
+Windows Setup was compiled and automatically checked, not executed in this candidate
+qualification. Mac manual acceptance remains untested; bundles are ad hoc signed,
+without Developer ID/notarization. Linux normal AppImage mounting requires FUSE;
+the Linux release also supplies the matching managed payload for its separate
+launcher/profile contract. Do not replace an existing managed installation with an
+AppImage default namespace or point editions at one live data root.
+
+Windows Desktop requires Windows 11 x86_64, .NET Framework 4.8 and protected machine-wide
+WebView2 Evergreen 155.0.4283.45 or newer. Setup does not install prerequisites.
+Per-user/AppData-only runtimes are unsupported. Apple Silicon Mac automated evidence
+is from macOS 26.6.2; other Mac architectures/OS versions are not newly qualified.
+On Mac use only offered individual-app approval under System Settings → Privacy & Security.
+Stop on malware/damage/policy blocks; never remove quarantine or disable Gatekeeper.
+Keep Windows protections and Chromium sandboxing enabled.
+
+[Watch the DLMS Desktop walkthrough](https://www.youtube.com/watch?v=mPGNbPy56X8) — Local and Server modes demonstrated on Linux.
+
+## Source, server compatibility and qualification
+
+All apps report shared version **3.3.1**. Original binaries are built from
+`79e42531d37b78fc806628e0ba989da13d9ed5ea`; DesktopPreview 1 binaries retain
+`f507b64e9366cfd36a536d1112a5279ff28cb27d`, including their recorded platform supplements.
+The original changes add stable Help/README wording and the Windows-only UCRT
+omission; shared application behavior remains at F. Documentation publication commits
+are separate from these binary pins. No old binary was relabeled 3.3.1.
+
+For complete corrected Server-mode behavior use a server at F or this original S.
+Updating Desktop Local does not update an older remote server. Published 3.3.0 servers
+lack later fixes; source 5e5fa245 contains some shared fixes but not the complete
+certificate/Avery maintenance baseline. Older-client/new-server combinations are
+not newly qualified. Exact origins, explicit private-HTTP consent, separate Local/
+Server storage and no silent Local fallback remain unchanged.
+
+Database 12, backup 1, quiz 2 (legacy 1 imports supported) and pack 1 are unchanged; no new
+migration is introduced. Publication does not update any installed app or production
+server. Keep verified backups and the old payload before a separately planned update.
+See [complete qualification and source guidance](docs/releases/3.3.1.md).
+
+## Historical downloads
+
+All historical tags/releases/downloads remain available. The following preserves
+the previous published 3.3.0 and Desktop 2.x instructions; use the 3.3.1 downloads above
+for the current coordinated release.
+
+<details>
+<summary>Previously published 3.3.0 and Desktop 2.x download/install guidance</summary>
+
+## Choose your DLMS — previously published downloads
+
 **Browser-based edition — Latest published release: DLMS 3.3.0 (stable).** **[Download stable 3.3.0](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0).**
 
 | Choose | What you get |
@@ -47,6 +134,8 @@ Before upgrading an existing installation, keep a verified backup: [3.3.0 releas
 
 These are **previews, not stable DLMS 3.3.0**. Preview numbers differ by platform. The linked release notes record each package's prerequisites, checksums and qualification limits. Local storage is initialized automatically; no manual profile setup is needed. Installing Desktop does not automatically import your browser-based DLMS data.
 
+
+
 ### Install and open Desktop on Windows
 
 **Requires Windows 11 x86-64, .NET Framework 4.8 and a protected machine-wide Microsoft WebView2 Evergreen Runtime 155.0.4283.45 or newer.** Setup does not install prerequisites; per-user/AppData-only WebView2 runtimes are unsupported.
@@ -85,6 +174,9 @@ If FUSE is unavailable, follow the extraction instructions in the [current Linux
 **Linux Preview 2.1 ships an AppImage, not a `.tar.zst` application bundle.** Older one-folder bundles remain in the release history; they are not the current Desktop preview.
 
 The original browser-based 3.3.0 release has distribution-specific Linux `.tar.gz` packages, not an AppImage. The older browser-based `DLMS-3.2.2-linux-x86_64.AppImage` remains an older-release option; it is separate from this Desktop preview.
+
+
+</details>
 
 ### Getting started
 
@@ -410,10 +502,10 @@ For the original browser-based Mac package, the bundled guide describes
 Open Anyway**. Removing quarantine is not part of the normal installation. Stop
 if the normal approval flow is unavailable or macOS reports malware or damage.
 
-**Historical troubleshooting reference, not a setup instruction:** the original
-browser-based help mentions `xattr -dr com.apple.quarantine /Applications/DLMS.app`.
-That removes quarantine. Do not use it as a Desktop installation workaround; use
-the normal per-app approval flow above and stop if approval is unavailable.
+Use only macOS's supported per-app approval: attempt to open the verified app,
+then **Privacy & Security → Open Anyway → Open** if macOS offers that option.
+Stop if approval is unavailable or macOS reports malware/damage. Do not remove
+quarantine or disable Gatekeeper. Historical release evidence is retained separately.
 
 The macOS ZIP exposes all three directly at
 its archive root: `DLMS.app`, `README.txt`, and `sample_quiz.txt`, with no wrapper

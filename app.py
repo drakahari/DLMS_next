@@ -282,7 +282,7 @@ def get_app_data_dir(app_name: str = "DLMS") -> str:
     return path
 
 APP_NAME = "DLMS"
-APP_VERSION = "3.3.0"
+APP_VERSION = "3.3.1"
 APP_DATA_DIR = get_app_data_dir(APP_NAME)
 # Before secret/config/bootstrap/recovery writes; released once startup settles.
 _startup_snapshot_access = _profile_snapshot.access(APP_DATA_DIR, exclusive=True)
@@ -6457,7 +6457,7 @@ def _exam_plan_options(cur):
 from dlms.routes.certifications import CertificationDependencies, create_certification_blueprint
 app.register_blueprint(create_certification_blueprint(CertificationDependencies(
     get_db=lambda: get_db(), load_config=lambda: load_portal_config(),
-    save_config=lambda cfg: _write_settings_portal_config(cfg), lock=registry_lock,
+    save_config=lambda cfg: _write_settings_portal_config(cfg), lock=registry_lock, render_lock=PDF_OCR_RENDER_LOCK,
 )))
 
 from dlms.routes.review_marks import ReviewMarkDependencies, create_review_mark_blueprint

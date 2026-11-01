@@ -101,3 +101,10 @@ root. A successful import may create new identities where the portable format
 requires remapping. Check the importer summary instead of assuming a byte-for-byte
 clone. Before upgrading a schema or format, retain a verified compatible backup;
 a previous executable alone does not guarantee rollback.
+
+## Unpublished 3.3.1 maintenance candidates
+
+New original and Desktop candidates share application version **3.3.1**; Desktop
+remains **Preview 1 candidate**, with separate Linux/Windows/Mac host revision and
+exact source identity. No existing binary is relabeled. See the
+[candidate notes and server compatibility](releases/3.3.1-candidate.md).

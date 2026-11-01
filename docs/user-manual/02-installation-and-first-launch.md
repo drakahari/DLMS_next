@@ -23,6 +23,10 @@ versioned previews; do not substitute a browser-edition executable in a Desktop
 launcher. For source development or evaluation, see
 [Running from source](#running-from-source).
 
+The coordinated **3.3.1 source is an unpublished maintenance candidate**.
+[Candidate readiness and compatibility](../releases/3.3.1-candidate.md) does not
+authorize replacing any installed application or production server.
+
 ## Choose the correct package
 
 DLMS native packages are target-specific. Download the package whose name
@@ -85,15 +89,8 @@ the Control-click choice is unavailable, try opening it once and then use
 **System Settings → Privacy & Security → Open Anyway**. Only use that approval
 after checking the download source and published SHA-256.
 
-Removing quarantine is a fallback, not a normal installation step. If the
-standard choices remain unavailable after verification, the current release
-guidance permits this targeted command:
-
-```text
-xattr -dr com.apple.quarantine /Applications/DLMS.app
-```
-
-It applies to that copied application bundle only.
+If macOS does not offer normal approval, or reports malware or damage, stop.
+Do not remove quarantine or disable Gatekeeper. Managed systems may disallow approval.
 
 ## What happens on first launch
 

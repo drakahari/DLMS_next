@@ -1,6 +1,6 @@
 {% from 'shared/_settings-sidebar.html' import settings_shell_sidebar %}
 {% from 'certifications/_cards.html' import cards %}
-{% macro link(href,label,icon='forward') %}<a class="dlms-action-control{{ ' dlms-action-destructive' if icon=='trash' else '' }}" data-action-icon="{{ icon }}" href="{{ href }}">{{ label }}</a>{% endmacro %}
+{% macro link(href,label,icon='forward') %}<a class="dlms-action-control{{ ' dlms-action-destructive' if icon=='trash' else '' }}" data-action-icon="{{ icon }}" href="{{ href }}{{ '/view' if href.startswith('/certifications/attachments/') else '' }}">{{ label }}</a>{% endmacro %}
 {% macro controls() %}<input type="hidden" name="request_id" value="{{ request_id }}"><input type="hidden" name="generation" value="{{ retained_state.generation if retained_state else state.generation }}"><input type="hidden" name="revision" value="{{ retained_state.revision if retained_state else state.revision }}">{% endmacro %}
 {% macro field(name,label,type='text',required=false,value=none) %}<label>{{ label }}<input name="field_{{ name }}" type="{{ type }}" value="{{ value if value is not none else fields.get(name,'') }}" {% if required %}required{% endif %}{% if type == 'number' %} min="0" max="100000" step="0.01"{% endif %}{% if type == 'text' %} maxlength="{{ 2000 if name == 'policy' else 200 }}"{% endif %}></label>{% endmacro %}
 {% macro notes(name,label) %}<label>{{ label }}<textarea name="field_{{ name }}" maxlength="5000" rows="4">{{ fields.get(name,'') }}</textarea></label>{% endmacro %}

@@ -364,7 +364,7 @@ finally:c.close()
             conn=dlms.get_db();opened.append(conn);return conn
         app=Flask(__name__)
         app.register_blueprint(routes.create_certification_blueprint(routes.CertificationDependencies(
-            get_db=connect,load_config=dlms.load_portal_config,save_config=dlms._write_settings_portal_config,lock=RestoreLock())))
+            get_db=connect,load_config=dlms.load_portal_config,save_config=dlms._write_settings_portal_config,lock=RestoreLock(),render_lock=dlms.PDF_OCR_RENDER_LOCK)))
         payload=self.request('certification',dict(name='Waiting save',issuer='I',earned='2025-01-01'))
         form=dict(kind='certification',request_id=payload['request_id'],generation=payload['generation'],revision=payload['revision'],
                   **{'field_'+k:v for k,v in payload['data'].items()})

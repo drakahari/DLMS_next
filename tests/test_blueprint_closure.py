@@ -36,7 +36,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "anki": 12,
         "content_packs": 8,
         "core": 9,
-        "certifications": 22,
+        "certifications": 23,
         "exam_plans": 7,
         "review_marks": 6,
         "external_ai": 6,
@@ -83,7 +83,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.content_packs.ContentPackRouteDependencies": 20,
         "dlms.routes.core.CoreRouteDependencies": 17,
         "dlms.routes.exam_plans.ExamPlanDependencies": 4,
-        "dlms.routes.certifications.CertificationDependencies": 4,
+        "dlms.routes.certifications.CertificationDependencies": 5,
         "dlms.routes.review_marks.ReviewMarkDependencies": 6,
         "dlms.routes.external_ai.ExternalAIRouteDependencies": 8,
         "dlms.routes.history.HistoryRouteDependencies": 10,
@@ -102,7 +102,7 @@ class BlueprintClosureTests(unittest.TestCase):
         "dlms.routes.study.StudyRouteDependencies": 4,
     }
     EXPECTED_ROUTE_SIGNATURE_SHA256 = (
-        "bcba5275a6ffd412075b11e33312e469d8189efd8b4391fa4b8da0ac49b3c2a1"
+        "fce9343fa56c078dead01fdb5cdf5796bf0ba77c1fe559240f5405648fda5186"
     )
     EXPECTED_CANONICAL_ALIASES = {
         "certifications.certification_form": ("/certifications/new", {}),
@@ -161,11 +161,11 @@ class BlueprintClosureTests(unittest.TestCase):
 
     def test_entire_explicit_url_map_matches_the_247_rule_closure_signature(self):
         rules = self._explicit_rules()
-        self.assertEqual(272, len(rules))
+        self.assertEqual(273, len(rules))
 
         blueprint_rules = [rule for rule in rules if "." in rule.endpoint]
         app_rules = [rule for rule in rules if "." not in rule.endpoint]
-        self.assertEqual(271, len(blueprint_rules))
+        self.assertEqual(272, len(blueprint_rules))
         self.assertEqual([("/api/shutdown", "shutdown_app")], [
             (rule.rule, rule.endpoint) for rule in app_rules
         ])

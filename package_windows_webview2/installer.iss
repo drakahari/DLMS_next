@@ -12,6 +12,9 @@
   #ifndef TestMenuRoot
     #define TestMenuRoot "{app}\synthetic-menu"
   #endif
+  #ifndef TestDataRoot
+    #define TestDataRoot "{app}\synthetic-data"
+  #endif
 #endif
 
 [Setup]
@@ -30,7 +33,7 @@ AppVersion=0.1.0
 DefaultDirName={localappdata}\Programs\DLMS Desktop WebView2 Candidate
 DefaultGroupName=DLMS Desktop WebView2 Candidate
 DisableProgramGroupPage=yes
-; Every setup run must make the no-menu choice explicitly, not inherit it.
+; Show the ordinary checked Start menu choice on every setup run.
 UsePreviousTasks=no
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64os
@@ -60,7 +63,7 @@ CreateUninstallRegKey=yes
 Source: "{#Payload}\*"; DestDir: "{app}\versions\{#Release}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Tasks]
-Name: "nostartmenu"; Description: "Install without Start menu entries (use the launcher in the installation folder)"; GroupDescription: "Start menu integration:"; Flags: unchecked
+Name: "startmenu"; Description: "Create a Start menu shortcut"; GroupDescription: "Shortcuts:"
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 
 [Icons]
@@ -68,16 +71,16 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Name: "{app}\Launch DLMS Desktop"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:MenuProfileParameters}"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"
 #ifdef TestScope
 ; Real shortcut behavior, restricted to the disposable installation tree.
-Name: "{#TestMenuRoot}\DLMS Desktop"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:MenuProfileParameters}"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"; Tasks: not nostartmenu
-Name: "{#TestMenuRoot}\Uninstall DLMS Desktop"; Filename: "{uninstallexe}"; Tasks: not nostartmenu
+Name: "{#TestMenuRoot}\DLMS Desktop"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:MenuProfileParameters}"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"; Tasks: startmenu
+Name: "{#TestMenuRoot}\Uninstall DLMS Desktop"; Filename: "{uninstallexe}"; Tasks: startmenu
 Name: "{app}\synthetic-desktop\DLMS Desktop"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:DesktopProfileParameters}"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"; Tasks: desktopicon
 #else
-Name: "{group}\DLMS Desktop"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:MenuProfileParameters}"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"; Tasks: not nostartmenu
-Name: "{group}\Uninstall DLMS Desktop"; Filename: "{uninstallexe}"; Tasks: not nostartmenu
+Name: "{group}\DLMS Desktop"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:MenuProfileParameters}"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"; Tasks: startmenu
+Name: "{group}\Uninstall DLMS Desktop"; Filename: "{uninstallexe}"; Tasks: startmenu
 Name: "{userdesktop}\DLMS Desktop WebView2 Candidate"; Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:DesktopProfileParameters}"; WorkingDir: "{app}\versions\{#Release}"; AppUserModelID: "io.github.drakahari.DLMSDesktop.WebView2Candidate"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:MenuProfileParameters}"; Description: "Open DLMS Desktop"; Flags: nowait postinstall skipifsilent unchecked
+Filename: "{app}\versions\{#Release}\DLMS-Desktop-WebView2.exe"; Parameters: "{code:MenuProfileParameters}"; Description: "Open DLMS Desktop"; Flags: nowait postinstall skipifsilent; Check: LaunchConfigurationReady
 #endif
 
 ; No data, profile, cache, downloads, backup or external directory is installed
@@ -117,9 +120,10 @@ var
   SavedMenuParameters, SavedDesktopParameters: String;
   ShortcutProblem: String;
   ShortcutParentUnsafe: Boolean;
-  ProfilePage: TInputQueryWizardPage;
-  ProfileConfirmation: TNewCheckBox;
-  ProfileSuggested: Boolean;
+  ProfilePage: TInputOptionWizardPage;
+  ProfileChoices: TStringList;
+  SelectedProfile, ProfileProblem, PriorRecord, ResolutionEvidence: String;
+  ProfileResolved, RecordExisted, ProfileRecordSaved: Boolean;
 
 function NativeAttributes(Name: String): LongWord;
   external 'GetFileAttributesW@kernel32.dll stdcall';
@@ -164,6 +168,25 @@ function NativeAccessCheck(Descriptor: NativeUInt; Token: THandle; Desired: Long
   external 'AccessCheck@advapi32.dll stdcall';
 function CreatePrivateDirectory(Name: String; Security: NativeUInt): Boolean;
   external 'CreateDirectoryW@kernel32.dll stdcall';
+function NativeValidSid(Sid: NativeUInt): Boolean;
+  external 'IsValidSid@advapi32.dll stdcall';
+function NativeReadFile(Handle: THandle; Buffer: AnsiString; Count: LongWord;
+  var Read: LongWord; Overlapped: NativeUInt): Boolean;
+  external 'ReadFile@kernel32.dll stdcall';
+function NativeWriteFile(Handle: THandle; Buffer: AnsiString; Count: LongWord;
+  var Written: LongWord; Overlapped: NativeUInt): Boolean;
+  external 'WriteFile@kernel32.dll stdcall';
+function NativeSeek(Handle: THandle; Distance: Longint; High: NativeUInt; Method: LongWord): LongWord;
+  external 'SetFilePointer@kernel32.dll stdcall';
+function NativeTruncate(Handle: THandle): Boolean;
+  external 'SetEndOfFile@kernel32.dll stdcall';
+function NativeFlush(Handle: THandle): Boolean;
+  external 'FlushFileBuffers@kernel32.dll stdcall';
+function NativeMoveFile(Source, Destination: String; Flags: LongWord): Boolean;
+  external 'MoveFileExW@kernel32.dll stdcall';
+function TokenElevation(Token: THandle; Kind: Integer; var Elevated: LongWord;
+  Size: LongWord; var Needed: LongWord): Boolean;
+  external 'GetTokenInformation@advapi32.dll stdcall';
 
 function SidString(Sid: NativeUInt): String;
 var Text: NativeUInt;
@@ -217,8 +240,22 @@ begin
   finally CloseNative(Token); end;
 end;
 
-function DirectorySecurityAllowed(Owner, Dacl, Descriptor: NativeUInt;
-  CreationParent: Boolean): Boolean;
+function CapabilityPrincipal(Sid: NativeUInt): Boolean;
+var Text: String;
+begin
+  { IsValidSid checks the SID structure/revision. ConvertSidToStringSid emits
+    canonical decimal authority/RIDs: authority 15, first RID 3, >=2 RIDs.
+    This is a Windows principal class, not a grant to a particular unknown SID.
+    Capabilities constrain a token's user access; ordinary grants are still
+    checked independently. Package SIDs (15-2) are NOT capabilities. }
+  Result := False;
+  if not NativeValidSid(Sid) then Exit;
+  Text := SidString(Sid);
+  Result := (Copy(Text, 1, 9) = 'S-1-15-3-') and (Length(Text) > 9);
+end;
+
+function DirectorySecurityAllowedCore(Owner, Dacl, Descriptor: NativeUInt;
+  CreationParent, ShellObject: Boolean): Boolean;
 var Ace: NativeUInt; Info: TAclSizeInfo; Prefix: TAcePrefix;
     I: Integer; Sid, OwnerSid: String;
 begin
@@ -240,22 +277,32 @@ begin
         if Sid = '' then Exit;
         if (Sid <> CurrentSid) and (Sid <> 'S-1-5-18') and
            (Sid <> 'S-1-5-32-544') and (Sid <> 'S-1-3-4') and
-           ((Prefix.Mask and $500D0156) <> 0) then Exit;
+           ((Prefix.Mask and $500D0156) <> 0) and
+           not (ShellObject and CapabilityPrincipal(Ace + 8)) then Exit;
       end;
     end;
     Result := (not CreationParent) or EffectiveCreateAccess(Descriptor);
 end;
 
-function DirectorySecurity(Handle: THandle; CreationParent: Boolean): Boolean;
+function DirectorySecurityAllowed(Owner, Dacl, Descriptor: NativeUInt;
+  CreationParent: Boolean): Boolean;
+begin
+  Result := DirectorySecurityAllowedCore(Owner, Dacl, Descriptor, CreationParent, False);
+end;
+
+function DirectorySecurityCore(Handle: THandle; CreationParent, ShellObject: Boolean): Boolean;
 var Owner, Group, Dacl, Sacl, Descriptor: NativeUInt;
 begin
   Result := False;
   { AccessCheck requires both owner and group in the returned descriptor. }
   if SecurityInformation(Handle, 1, 7, Owner, Group, Dacl, Sacl, Descriptor) <> 0 then Exit;
   try
-    Result := DirectorySecurityAllowed(Owner, Dacl, Descriptor, CreationParent);
+    Result := DirectorySecurityAllowedCore(Owner, Dacl, Descriptor, CreationParent, ShellObject);
   finally FreeNative(Descriptor); end;
 end;
+
+function DirectorySecurity(Handle: THandle; CreationParent: Boolean): Boolean;
+begin Result := DirectorySecurityCore(Handle, CreationParent, False); end;
 
 function OwnedDirectory(Handle: THandle): Boolean;
 begin Result := DirectorySecurity(Handle, False); end;
@@ -382,6 +429,16 @@ begin
   Result := DirectorySecurity(Pins[N], True);
 end;
 
+function SafeShortcutDirectory(Path: String; CreationParent, ShellObject: Boolean): Boolean;
+var N: Integer;
+begin
+  Result := False;
+  if not SafeDirectoryChain(Path) or not PinDirectory(Path, False) then Exit;
+  N := PinnedPaths.IndexOf(Lowercase(RemoveBackslashUnlessRoot(ExpandFileName(Path))));
+  if N < 0 then Exit;
+  Result := DirectorySecurityCore(Pins[N], CreationParent, ShellObject);
+end;
+
 function EnsurePrivateDirectory(Path: String): Boolean;
 var Parent, NativePath: String;
 begin
@@ -505,7 +562,7 @@ begin
   Result := True;
 end;
 
-function CaptureShortcutProfile(Path: String; var Parameters: String): Boolean;
+function CaptureShortcutProfile(Path: String; var Parameters: String; ShellObject: Boolean): Boolean;
 var Attributes, ErrorCode: LongWord; Handle, TargetHandle: THandle;
     Info: TNativeFileInfo; Shell, Link: Variant;
     Target, Directory, Versions, Version, Parent: String;
@@ -522,9 +579,9 @@ begin
     Parent := ExtractFileDir(Parent);
   end;
   ShortcutProblem := 'The shortcut creation parent has unsafe ownership/permissions or is inaccessible: ' + Parent;
-  if not SafeCreationParent(Parent) then Exit;
+  if not SafeShortcutDirectory(Parent, True, ShellObject) then Exit;
   if DirExists(ExtractFileDir(Path)) and
-     not PinDirectory(ExtractFileDir(Path), True) then Exit;
+     not SafeShortcutDirectory(ExtractFileDir(Path), False, ShellObject) then Exit;
   ShortcutParentUnsafe := False;
   ShortcutProblem := 'The existing shortcut must be a trusted regular file pointing to an existing version in this installation, with a matching working directory and only an optional --profile argument: ' + Path;
   Attributes := NativeAttributes(NativeLocalPath(Path));
@@ -538,7 +595,7 @@ begin
   if Handle = THandle(-1) then Exit;
   try
     if not FileInformation(Handle, Info) or ((Info.Attributes and $410) <> 0) or
-       (Info.Links <> 1) or not OwnedDirectory(Handle) then Exit;
+       (Info.Links <> 1) or not DirectorySecurityCore(Handle, False, ShellObject) then Exit;
     try
       Shell := CreateOleObject('WScript.Shell');
       Link := Shell.CreateShortcut(Path);
@@ -579,69 +636,209 @@ begin Result := ExpandConstant('{app}\Launch DLMS Desktop.lnk'); end;
 function ProfileNameAllowed(Profile: String): Boolean;
 begin Result := (Profile <> '') and ProfileArgumentsAllowed('--profile ' + Profile); end;
 
-procedure InitializeWizard;
+function DataRoot: String;
 begin
-  ProfilePage := CreateInputQueryPage(wpSelectTasks, 'Choose the DLMS profile',
-    'Preserve or deliberately select the profile this installation will open.',
-    'Enter the exact profile name. Use default only if you intend that profile. Setup does not inspect, migrate or delete profile data.');
-  ProfilePage.Add('Profile name:', False);
-  ProfilePage.Values[0] := ExpandConstant('{param:DLMSPROFILE|}');
-  ProfileConfirmation := TNewCheckBox.Create(ProfilePage);
-  ProfileConfirmation.Parent := ProfilePage.Surface;
-  ProfileConfirmation.Left := 0;
-  ProfileConfirmation.Top := ProfilePage.Edits[0].Top + ProfilePage.Edits[0].Height + ScaleY(16);
-  ProfileConfirmation.Width := ProfilePage.SurfaceWidth;
-  ProfileConfirmation.Height := ScaleY(42);
-  ProfileConfirmation.Caption := 'I confirm the profile above for the installation-folder launcher and Start menu (if selected).';
-  ProfileConfirmation.Checked := False;
-  ProfileSuggested := False;
+#ifdef TestScope
+  Result := ExpandConstant('{#TestDataRoot}');
+#else
+  Result := ExpandConstant('{localappdata}\DLMSDesktop\WebView2Candidate');
+#endif
 end;
 
-procedure CurPageChanged(CurPageID: Integer);
-var Parameters, Path: String;
+function ProfileRecordPath: String;
+begin Result := ExpandConstant('{app}\launch-profile.txt'); end;
+
+function ReadRecordHandle(Handle: THandle; var Text: String): Boolean;
+var Info: TNativeFileInfo; Buffer: AnsiString; Read: LongWord;
 begin
-  if (CurPageID <> ProfilePage.ID) or ProfileSuggested then Exit;
-  ProfileSuggested := True;
-  if ProfilePage.Values[0] <> '' then Exit;
-  { Suggest only a safely captured, existing launcher. An unsafe menu gives no
-    profile authority; the user must enter and confirm an intended profile. }
-  if not InitializeGuard then Exit;
+  Result := False; Text := '';
+  if not FileInformation(Handle, Info) or ((Info.Attributes and $410) <> 0) or
+     (Info.Links <> 1) or (Info.SizeHigh <> 0) or (Info.SizeLow > 128) or
+     not OwnedDirectory(Handle) then Exit;
+  SetLength(Buffer, Info.SizeLow);
+  if NativeSeek(Handle, 0, 0, 0) = $FFFFFFFF then Exit;
+  if not NativeReadFile(Handle, Buffer, Info.SizeLow, Read, 0) or (Read <> Info.SizeLow) then Exit;
+  Text := Buffer; Result := True;
+end;
+
+function ReadProfileRecord: Boolean;
+var Handle: THandle; Attributes, ErrorCode: LongWord; Name: String;
+begin
+  Result := False; PriorRecord := ''; RecordExisted := False;
+  Attributes := NativeAttributes(NativeLocalPath(ProfileRecordPath));
+  if Attributes = $FFFFFFFF then begin
+    ErrorCode := NativeLastError;
+    Result := (ErrorCode = 2) or (ErrorCode = 3); Exit;
+  end;
+  RecordExisted := True;
+  if not SafeDirectoryChain(ExtractFileDir(ProfileRecordPath)) or
+     not PinDirectory(ExtractFileDir(ProfileRecordPath), True) then Exit;
+  Handle := OpenDirectory(NativeLocalPath(ProfileRecordPath), $80020000, 1, 0, 3, $200000, 0);
+  if Handle = THandle(-1) then Exit;
   try
-    Path := AppLaunchPath;
-    if not (FileExists(Path) and CaptureShortcutProfile(Path, Parameters)) then begin
-      if WizardIsTaskSelected('nostartmenu') then Exit;
-      Path := StartMenuLaunchPath;
-      if not (FileExists(Path) and CaptureShortcutProfile(Path, Parameters)) then Exit;
+    if not ReadRecordHandle(Handle, PriorRecord) then Exit;
+    if Copy(PriorRecord, 1, 23) <> 'DLMS-LAUNCH-PROFILE-1'#13#10 then Exit;
+    Name := Copy(PriorRecord, 24, Length(PriorRecord));
+    if not ProfileNameAllowed(Name) then Exit;
+    if ProfileChoices.IndexOf(Name) < 0 then ProfileChoices.Add(Name);
+    Result := True;
+  finally CloseNative(Handle); end;
+end;
+
+procedure AddProfile(Name: String);
+begin
+  if ProfileChoices.IndexOf(Name) < 0 then ProfileChoices.Add(Name);
+end;
+
+function DiscoverProfiles(Area: String): Boolean;
+var Found: TFindRec; Path: String; ErrorCode: LongWord;
+begin
+  Result := False;
+  if not SafeDirectoryChain(Area) then Exit;
+  if not DirExists(Area) then begin
+    if NativeAttributes(NativeLocalPath(Area)) <> $FFFFFFFF then Exit;
+    ErrorCode := NativeLastError;
+    Result := (ErrorCode = 2) or (ErrorCode = 3); Exit;
+  end;
+  if not PinDirectory(Area, True) then Exit;
+  if FindFirst(AddBackslash(NativeLocalPath(Area)) + '*', Found) then begin
+    try
+      repeat
+        if (Found.Name <> '.') and (Found.Name <> '..') then begin
+          Path := AddBackslash(Area) + Found.Name;
+          if ((Found.Attributes and $400) <> 0) or ((Found.Attributes and $10) = 0) or
+             not ProfileNameAllowed(Found.Name) or not PinDirectory(Path, True) then Exit;
+          AddProfile(Found.Name);
+        end;
+      until not FindNext(Found);
+      if NativeLastError <> 18 then Exit;
+    finally FindClose(Found); end;
+  end else if (NativeLastError <> 2) and (NativeLastError <> 18) then Exit;
+  Result := True;
+end;
+
+function CaptureProfileChoice(Path: String; ShellObject: Boolean): Boolean;
+var Parameters: String;
+begin
+  Result := CaptureShortcutProfile(Path, Parameters, ShellObject);
+  ResolutionEvidence := ResolutionEvidence + Path + '=';
+  if FileExists(Path) then ResolutionEvidence := ResolutionEvidence + 'present';
+  ResolutionEvidence := ResolutionEvidence + ':' + Parameters + #10;
+  if Result and FileExists(Path) then begin
+    if Parameters = '' then AddProfile('default')
+    else AddProfile(Copy(Parameters, 11, Length(Parameters)));
+  end;
+end;
+
+procedure ResolveProfile;
+var I: Integer; Requested: String; Token: THandle; Elevated, Needed: LongWord;
+    Authority, Existing: TStringList;
+begin
+  ProfileResolved := True; SelectedProfile := ''; ProfileProblem := '';
+  ResolutionEvidence := '';
+  ProfileChoices.Clear;
+  if not InitializeGuard then begin ProfileProblem := 'Cannot identify the current Windows account.'; Exit; end;
+  { A manually elevated setup must not discover or initialize administrator data. }
+  if not OpenToken(CurrentProcess, 8, Token) then begin ProfileProblem := 'Cannot verify setup account.'; Exit; end;
+  try
+    if not TokenElevation(Token, 20, Elevated, SizeOf(Elevated), Needed) or (Elevated <> 0) then begin
+      ProfileProblem := 'Close Setup and run the downloaded installer normally, without Run as administrator. DLMS is installed for the current signed-in user.'; Exit;
     end;
-    if Parameters = '' then ProfilePage.Values[0] := 'default'
-    else ProfilePage.Values[0] := Copy(Parameters, 11, Length(Parameters));
+  finally CloseNative(Token); end;
+  try
+    if not CaptureProfileChoice(AppLaunchPath, False) then begin ProfileProblem := ShortcutProblem; Exit; end;
+    if WizardIsTaskSelected('startmenu') and not CaptureProfileChoice(StartMenuLaunchPath, True) then begin
+      ProfileProblem := ShortcutProblem; Exit;
+    end;
+    if not ReadProfileRecord then begin ProfileProblem := 'The saved DLMS launch selection is invalid or inaccessible. It was not replaced. ' + ProfileRecordPath; Exit; end;
+    ResolutionEvidence := ResolutionEvidence + 'record=' + PriorRecord + #10;
+    if not SafeDirectoryChain(DataRoot) or (DirExists(DataRoot) and not PinDirectory(DataRoot, True)) then begin
+      ProfileProblem := 'Existing DLMS data has unsafe or inaccessible storage. Setup will not select an empty replacement.'; Exit;
+    end;
+    if not SafeDirectoryChain(DataRoot + '\removed') or
+       (DirExists(DataRoot + '\removed') and not PinDirectory(DataRoot + '\removed', True)) then begin
+      ProfileProblem := 'The DLMS removal history is unsafe or inaccessible. Setup will not create replacement data.'; Exit;
+    end;
+    Authority := TStringList.Create;
+    Existing := TStringList.Create;
+    try
+      Authority.Assign(ProfileChoices);
+      ProfileChoices.Clear;
+      if not DiscoverProfiles(DataRoot + '\profiles') or not DiscoverProfiles(DataRoot + '\shell') then begin
+        ProfileProblem := 'Existing DLMS profiles could not be safely listed. Setup will not select an empty replacement.'; Exit;
+      end;
+      Existing.Assign(ProfileChoices);
+      Existing.Sort;
+      ResolutionEvidence := ResolutionEvidence + 'existing=' + Existing.Text;
+      if Authority.Count > 0 then begin
+        for I := 0 to Authority.Count - 1 do
+          if (Existing.Count > 0) and (Existing.IndexOf(Authority[I]) < 0) then begin
+            ProfileProblem := 'The saved launch profile "' + Authority[I] +
+              '" is missing, but other DLMS profiles exist. Setup stopped rather than create an empty replacement. Resolve this specific recovery case before installing.';
+            Exit;
+          end;
+        ProfileChoices.Assign(Authority);
+      end else if ProfileChoices.Count = 0 then AddProfile('default');
+    finally Authority.Free; Existing.Free; end;
+    for I := 0 to ProfileChoices.Count - 1 do begin
+      if NativeAttributes(NativeLocalPath(DataRoot + '\removed\' + ProfileChoices[I] + '.json')) <> $FFFFFFFF then begin
+        ProfileProblem := 'A saved DLMS launch selection has an intentional-removal record. Setup will not recreate it.'; Exit;
+      end;
+      if (NativeLastError <> 2) and (NativeLastError <> 3) then begin
+        ProfileProblem := 'The DLMS removal history is inaccessible. Setup will not create replacement data.'; Exit;
+      end;
+    end;
+    Requested := ExpandConstant('{param:DLMSPROFILE|}');
+    if Requested <> '' then begin
+      if not ProfileNameAllowed(Requested) or (ProfileChoices.IndexOf(Requested) < 0) then begin
+        ProfileProblem := 'The requested profile does not match a discovered launch selection. Existing data was not changed.'; Exit;
+      end;
+      SelectedProfile := Requested;
+    end else if ProfileChoices.Count = 1 then SelectedProfile := ProfileChoices[0];
+    ProfilePage.CheckListBox.Items.Clear;
+    for I := 0 to ProfileChoices.Count - 1 do ProfilePage.Add(ProfileChoices[I]);
   finally ReleasePins; end;
 end;
 
-function ProfileSelectionError: String;
-var Profile: String;
+procedure InitializeWizard;
 begin
-  Result := '';
-  if WizardSilent then Profile := ExpandConstant('{param:DLMSPROFILE|}')
-  else Profile := ProfilePage.Values[0];
-  if not ProfileNameAllowed(Profile) then begin
-    Result := 'Explicit profile selection is required: enter a lowercase profile name (1-32 letters, digits, _ or -, starting with a letter). Silent setup requires /DLMSPROFILE=the-name. No default profile will be selected automatically.';
-    Exit;
+  ProfileChoices := TStringList.Create;
+  ProfilePage := CreateInputOptionPage(wpSelectTasks, 'Choose existing DLMS data',
+    'More than one existing launch selection was found.',
+    'Choose the existing profile to reopen. Setup will preserve all profiles and will not create an empty replacement.', True, False);
+  ProfileResolved := False;
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := False;
+  if PageID <> ProfilePage.ID then Exit;
+  ResolveProfile;
+  Result := (ProfileProblem <> '') or (SelectedProfile <> '') or WizardSilent;
+end;
+
+function ProfileSelectionError: String;
+begin
+  if not ProfileResolved then ResolveProfile;
+  Result := ProfileProblem;
+  if Result <> '' then Exit;
+  if SelectedProfile = '' then begin
+    if not WizardSilent and (ProfilePage.SelectedValueIndex >= 0) then
+      SelectedProfile := ProfileChoices[ProfilePage.SelectedValueIndex]
+    else begin Result := 'Several existing DLMS profiles were found. Select which existing profile to reopen; no data was changed.'; Exit; end;
   end;
-  if not WizardSilent and not ProfileConfirmation.Checked then begin
-    Result := 'Confirm the intended profile before continuing. No default profile will be selected automatically.';
-    Exit;
+  if FileExists(DataRoot + '\removed\' + SelectedProfile + '.json') then begin
+    Result := 'The selected DLMS profile has an intentional-removal record. Setup will not recreate it.'; Exit;
   end;
-  SavedMenuParameters := '--profile ' + Profile;
+  SavedMenuParameters := '--profile ' + SelectedProfile;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
 var Problem: String;
 begin
   Result := True;
-  { Silent setup reports invalid/missing explicit selection from PrepareToInstall;
-    never open a wizard-validation message box that can block unattended setup. }
   if WizardSilent then Exit;
+  if CurPageID = wpSelectTasks then ProfileResolved := False;
   if CurPageID <> ProfilePage.ID then Exit;
   Problem := ProfileSelectionError;
   Result := Problem = '';
@@ -651,46 +848,123 @@ end;
 function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo,
   MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
 begin
-  Result := MemoDirInfo + NewLine + NewLine + MemoTasksInfo + NewLine + NewLine +
-    'Profile: ' + ProfilePage.Values[0] + NewLine +
-    'Launch without Start menu: ' + AppLaunchPath + NewLine +
-    'Open this shortcut from File Explorer. Uninstall remains available in Windows Installed apps.';
-  if WizardIsTaskSelected('nostartmenu') then Result := Result + NewLine +
-    'Start menu integration is omitted. Existing menu entries, if any, are left unchanged and may still launch an earlier version.';
+  Result := MemoDirInfo + NewLine + NewLine + MemoTasksInfo + NewLine + NewLine;
+  if ProfileProblem <> '' then Result := Result + ProfileProblem
+  else Result := Result +
+    'Your existing DLMS data and settings will be kept. On a new installation, DLMS sets up its data automatically when first opened.';
+end;
+
+procedure SaveProfileRecord;
+var Handle, Previous: THandle; Text, Temporary: String; Buffer: AnsiString;
+    Written, Flags: LongWord; RecordPublished: Boolean;
+begin
+  Buffer := 'DLMS-LAUNCH-PROFILE-1'#13#10 + SelectedProfile;
+  Previous := THandle(-1);
+  if RecordExisted then begin
+    { Hold the original read-only identity through publication; DELETE sharing
+      permits atomic replacement of this leaf, never writes into a linked target. }
+    Previous := OpenDirectory(NativeLocalPath(ProfileRecordPath), $80020000, 5, 0, 3, $200000, 0);
+    if Previous = THandle(-1) then RaiseException('The DLMS launch selection could not be revalidated.');
+    if not ReadRecordHandle(Previous, Text) or (Text <> PriorRecord) then begin
+      CloseNative(Previous);
+      RaiseException('The saved DLMS launch selection changed during setup. It was not overwritten.');
+    end;
+    if Text = Buffer then begin CloseNative(Previous); Exit; end;
+  end;
+  Temporary := ProfileRecordPath + '.' + GetDateTimeString('yyyymmddhhnnsszzz', '-', '-') + '.tmp';
+  Handle := OpenDirectory(NativeLocalPath(Temporary), $C0020000, 0, 0, 1, $200000, 0);
+  if Handle = THandle(-1) then begin
+    if Previous <> THandle(-1) then CloseNative(Previous);
+    RaiseException('Could not stage the DLMS launch selection. Existing selection was preserved.');
+  end;
+  RecordPublished := False;
+  try
+    if not ReadRecordHandle(Handle, Text) or (Text <> '') then
+      RaiseException('The staged launch selection is unsafe. Existing selection was preserved.');
+    if (NativeSeek(Handle, 0, 0, 0) = $FFFFFFFF) or
+       not NativeWriteFile(Handle, Buffer, Length(Buffer), Written, 0) or (Written <> Length(Buffer)) or
+       not NativeTruncate(Handle) or not NativeFlush(Handle) then
+      RaiseException('Could not stage the DLMS launch selection. Existing selection was preserved.');
+    CloseNative(Handle); Handle := THandle(-1);
+    Flags := 8; { MOVEFILE_WRITE_THROUGH; no replace when originally absent. }
+    if RecordExisted then Flags := Flags or 1;
+    if not NativeMoveFile(NativeLocalPath(Temporary), NativeLocalPath(ProfileRecordPath), Flags) then
+      RaiseException('Could not publish the DLMS launch selection. Existing selection was preserved.');
+    RecordPublished := True;
+  finally
+    if Handle <> THandle(-1) then CloseNative(Handle);
+    if Previous <> THandle(-1) then CloseNative(Previous);
+    { Retain a failed staging file as evidence; never delete an ambiguous path. }
+    if not RecordPublished then Log('Unpublished launch selection retained: ' + Temporary);
+  end;
+end;
+
+procedure CurStepChanged(Step: TSetupStep);
+begin
+  { Unmanaged configuration intentionally survives uninstall/reinstall. }
+  if Step = ssPostInstall then begin
+    SaveProfileRecord;
+    ProfileRecordSaved := True;
+  end;
+end;
+
+function LaunchConfigurationReady: Boolean;
+begin Result := ProfileRecordSaved; end;
+
+function GetCustomSetupExitCode: Integer;
+begin
+  Result := 0;
+  if not ProfileRecordSaved then Result := 1;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if (CurPageID = wpFinished) and not ProfileRecordSaved then
+    WizardForm.FinishedLabel.Caption := 'DLMS launch configuration could not be saved. Installation is incomplete. Review the error above before launching or retrying. Existing application data was not changed.';
 end;
 
 function CaptureLaunchProfiles: Boolean;
 var MenuPath, DesktopPath, PreviousParameters: String;
 begin
   Result := False;
-  if not CaptureShortcutProfile(AppLaunchPath, PreviousParameters) then Exit;
+  if not CaptureShortcutProfile(AppLaunchPath, PreviousParameters, False) then Exit;
   MenuPath := StartMenuLaunchPath;
 #ifdef TestScope
   DesktopPath := ExpandConstant('{app}\synthetic-desktop\DLMS Desktop.lnk');
 #else
   DesktopPath := ExpandConstant('{userdesktop}\DLMS Desktop WebView2 Candidate.lnk');
 #endif
-  if not WizardIsTaskSelected('nostartmenu') and
-     not CaptureShortcutProfile(MenuPath, PreviousParameters) then begin
+  if WizardIsTaskSelected('startmenu') and
+     not CaptureShortcutProfile(MenuPath, PreviousParameters, True) then begin
     if ShortcutParentUnsafe then
       ShortcutProblem := 'Start menu integration cannot safely use this destination. ' + ShortcutProblem +
-        ' Go Back to Additional Tasks and explicitly select "Install without Start menu entries", then confirm the intended profile. Setup will not change permissions or trust an unknown account.'
+        ' No Windows permissions were changed.'
     else ShortcutProblem := 'Existing DLMS Start menu launch shortcut is invalid or unsafe. ' + ShortcutProblem;
     Exit;
   end;
   SavedDesktopParameters := SavedMenuParameters;
   if WizardIsTaskSelected('desktopicon') then begin
-    if not CaptureShortcutProfile(DesktopPath, PreviousParameters) then Exit;
+    if not CaptureShortcutProfile(DesktopPath, PreviousParameters, True) then Exit;
     if FileExists(DesktopPath) then SavedDesktopParameters := PreviousParameters;
   end;
   Result := True;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
+var Expected, Choice: String;
 begin
   Result := '';
   Result := ProfileSelectionError;
   if Result <> '' then Exit;
+  Expected := ResolutionEvidence; Choice := SelectedProfile;
+  ResolveProfile;
+  if (ProfileProblem <> '') or (ResolutionEvidence <> Expected) or
+     (ProfileChoices.IndexOf(Choice) < 0) then begin
+    Result := 'DLMS launch configuration changed while Setup was open. Go Back and review it again. ' + ProfileProblem;
+    Exit;
+  end;
+  SelectedProfile := Choice;
+  SavedMenuParameters := '--profile ' + Choice;
   if not HasWebView2Runtime then begin
     Result := 'Protected machine-wide Microsoft Edge WebView2 Evergreen Runtime 155.0.4283.45 or newer is required under Program Files (x86). Per-user/AppData Runtime installations are unsupported by this candidate. Ask the owner before installing or updating prerequisites. This installer does not download or install them.';
     Exit;

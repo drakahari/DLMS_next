@@ -62,6 +62,13 @@ analysis = Analysis(
     noarchive=False,
     optimize=0,
 )
+# Windows 11 uses its serviced OS UCRT. Do not convey an extra OS DLL copy.
+if sys.platform == "win32":
+    analysis.binaries = [
+        entry for entry in analysis.binaries
+        if Path(entry[0]).name.casefold() != "ucrtbase.dll"
+    ]
+
 python_archive = PYZ(analysis.pure)
 
 if sys.platform == "darwin":

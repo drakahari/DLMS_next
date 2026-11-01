@@ -253,6 +253,7 @@ end;
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--compiler', type=Path, default=WORK / 'inno-portable/ISCC.exe')
     args = parser.parse_args()
     out = fresh_scope(args.output)
     source_path = ROOT / 'package_windows_webview2/installer.iss'
@@ -271,7 +272,7 @@ def main() -> None:
     real_parent = default_data_root().parent.parent / 'Programs'
     script = out / 'probe.iss'
     script.write_text(probe_script(source, out, real_parent), encoding='utf-8-sig')
-    compiler = WORK / 'inno-portable/ISCC.exe'
+    compiler = args.compiler
     temp = out / 'private temp'
     temp.mkdir()
     environment = dict(os.environ, TEMP=str(temp), TMP=str(temp))

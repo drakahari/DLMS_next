@@ -136,14 +136,19 @@ def main():
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(archive.read(name))
 
-    exact = {'scope': 'Windows x86-64 inputs; technical correspondence, not legal certification',
+    commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+    if subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=all'], cwd=ROOT, text=True).strip():
+        raise ValueError('Maintenance materials require clean committed source')
+    from .build import source_backend_version
+    version = source_backend_version()
+    exact = {'application_base': commit, 'scope': 'Windows x86-64 inputs; technical correspondence, not legal certification',
              'wheels': wheel_rows, 'ocr_native': native_index, 'windows_python': extras_index,
              'shared_sources': sources,
              'excluded_linux_only_materials': ['Ubuntu native mapping', 'AppImage runtime', 'ELF ABI floor'],
              'microsoft_runtime': 'WebView2 Evergreen and .NET Framework are system prerequisites, not bundled; SDK loader/DLLs retain Microsoft SDK license'}
     (kit / 'EXACT_INPUTS.json').write_text(json.dumps(exact, indent=2) + '\n')
     for name in ('REDISTRIBUTION.md', 'BUILD_AND_REPLACEMENT.md'):
-        shutil.copyfile(ROOT / 'docs/windows-preview' / name, kit / name)
+        shutil.copyfile(ROOT / ('docs/releases/3.3.1-native-handoffs.md' if name == 'BUILD_AND_REPLACEMENT.md' else 'docs/windows-preview/REDISTRIBUTION.md'), kit / name)
 
     # Export only the public index plus the explicit working-tree implementation.
     # No private Git objects/history, .gate1, profiles, logs, backups or build output.
@@ -152,20 +157,20 @@ def main():
     selected = sorted(set(p for p in files + extra if p and (ROOT / p).is_file()))
     if any(p.split('/')[0] in ('.gate1', '.git', '.venv', 'dist', 'profiles') for p in selected):
         raise ValueError('Private/build data in source export')
-    application = args.delivery / 'DLMS-Desktop-3.3.0-windows-preview1-source-application.zip'
+    application = args.delivery / f'DLMS-Desktop-{version}-windows-preview1-candidate-source-application.zip'
     with zipfile.ZipFile(application, 'x', zipfile.ZIP_DEFLATED) as archive:
         for name in selected:
             archive.write(ROOT / name, 'DLMS-source/' + name)
-    record(application, 'Public baseline plus reviewed Windows working-tree changes; no private history')
+    record(application, 'Exact clean maintenance source '+commit+'; no private history')
     (kit / 'SOURCE_MATERIALS.json').write_text(json.dumps({'archives': sources, 'unresolved': [],
-        'application_base': '58bcd13870b97c44201226ca3cf064772444a5ae',
+        'application_base': commit,
         'scope': 'Technical source and recipient materials; not legal certification or vendor binary reproducibility'}, indent=2) + '\n')
     manifest = {'format': 1, 'platform': 'windows-x86_64-preview',
                 'sha256': {p.relative_to(kit).as_posix(): digest(p) for p in plain_files(kit)}}
     (kit / 'MANIFEST.json').write_text(json.dumps(manifest, indent=2) + '\n')
     from .preview_materials import verify
     verify(kit)
-    archive = args.delivery / 'DLMS-Desktop-3.3.0-windows-preview1-notices.zip'
+    archive = args.delivery / f'DLMS-Desktop-{version}-windows-preview1-candidate-notices.zip'
     archive_tree(archive, kit)
     print(json.dumps({'kit': str(kit), 'delivery': str(args.delivery), 'source_archives': sources}, indent=2))
 

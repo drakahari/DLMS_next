@@ -50,17 +50,28 @@ def _member(name):
     return path
 
 
-def verified_source(root=ROOT, expected_head=BASE):
+def verified_source(root=ROOT, expected_head=None):
     """Bind the actual pinned Git HEAD and complete explicitly reviewed overlay."""
     def git(*args):
         return subprocess.check_output(['git', *args], cwd=root)
     head=git('rev-parse','HEAD').decode().strip()
-    if head!=expected_head:
+    if expected_head is not None and head!=expected_head:
         raise ValueError('Unexpected release source HEAD')
     if git('ls-files','--others','--exclude-standard','-z'):
         raise ValueError('Untracked source must be reviewed before packaging')
     changed=git('diff','--name-only','-z','HEAD','--').decode().split('\0')
     changed=sorted(name for name in changed if name)
+    from desktop.build_info import application_version
+    if application_version(root) == '3.3.1':
+        if changed:
+            raise ValueError('Maintenance candidates require clean committed source; no overlay is accepted')
+        return {'application_base': head, 'source_state': 'Clean committed maintenance source',
+                'clean_unmodified_build': True, 'reviewed_runtime_changes': [],
+                'packaging_patch': {'file': 'PACKAGING_CHANGES.patch',
+                    'sha256': hashlib.sha256(b'').hexdigest(), 'changed_files': [],
+                    'format': 'git diff --binary HEAD'}}, b''
+    if head != BASE:
+        raise ValueError('Unexpected release source HEAD')
     if not changed or any(name not in PRINT_PATHS and not name.startswith(
             ('package_macos/','docs/macos-preview/','tests/macos/')) for name in changed):
         raise ValueError('Expected only the reviewed Qt printing and Mac packaging overlay')
@@ -155,7 +166,7 @@ def prepare(stage, inputs, cache, *, source=None, patch=None):
     for name in ('LICENSE','desktop_assets/ICON_PROVENANCE.md'):
         shutil.copyfile(ROOT/name,notices/Path(name).name)
     for name in ('REDISTRIBUTION.md','BUILD_AND_REPLACEMENT.md','RELEASE_PROPOSAL.md'):
-        shutil.copyfile(ROOT/'docs/macos-preview'/name,notices/name)
+        shutil.copyfile(ROOT/('docs/releases/3.3.1-native-handoffs.md' if name == 'BUILD_AND_REPLACEMENT.md' and identity['clean_unmodified_build'] else 'docs/releases/3.3.1-candidate.md' if name == 'RELEASE_PROPOSAL.md' and identity['clean_unmodified_build'] else 'docs/macos-preview/'+name),notices/name)
     (notices/'PACKAGING_CHANGES.patch').write_bytes(overlay)
     (notices/'PACKAGING_SOURCE.json').write_text(json.dumps(identity,sort_keys=True,indent=2)+'\n')
     exact={'format':1,'platform':'macos-arm64-preview',**identity,
@@ -189,8 +200,17 @@ def verify(root):
     if source.get('unresolved')!=[]: raise ValueError('Mac corresponding source unresolved')
     identity=json.loads((root/'PACKAGING_SOURCE.json').read_text())
     exact=json.loads((root/'EXACT_INPUTS.json').read_text())
-    if (identity.get('application_base')!=BASE or identity.get('clean_unmodified_build') is not False
-            or identity.get('source_state')!=SOURCE_STATE
+    historical = (identity.get('application_base') == BASE and identity.get('clean_unmodified_build') is False
+                  and identity.get('source_state') == SOURCE_STATE)
+    maintenance_head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+    maintenance = (identity.get('application_base') == maintenance_head
+                   and isinstance(identity.get('application_base'), str)
+                   and re.fullmatch(r'[0-9a-f]{40}', identity['application_base']) is not None
+                   and identity.get('clean_unmodified_build') is True
+                   and identity.get('source_state') == 'Clean committed maintenance source'
+                   and identity.get('packaging_patch', {}).get('changed_files') == []
+                   and (root/'PACKAGING_CHANGES.patch').read_bytes() == b'')
+    if (not (historical or maintenance)
             or identity.get('packaging_patch',{}).get('sha256')!=digest(root/'PACKAGING_CHANGES.patch')
             or any(record.get(key)!=item for record in (source,exact) for key,item in identity.items())):
         raise ValueError('Incorrect application source or packaging overlay identity')
@@ -199,6 +219,7 @@ def verify(root):
 
 def deliver_companions(stage,cache,delivery):
     """Export source and notices only after the artifact is qualified separately."""
+    from desktop.build_info import application_version
     verify(stage/'notices')
     identity,patch=verified_source()
     if (json.loads((stage/'notices/PACKAGING_SOURCE.json').read_text())!=identity
@@ -206,24 +227,24 @@ def deliver_companions(stage,cache,delivery):
         raise ValueError('Source changed since the qualified build')
     delivery=Path(delivery);delivery.mkdir(mode=0o700,parents=True,exist_ok=False)
     for name in SHARED: shutil.copyfile(cache/'sources/shared'/name,delivery/name)
-    with tarfile.open(delivery/'DLMS-Desktop-3.3.0-macos-preview1-source-native.tar.zst','x:zst') as archive:
+    with tarfile.open(delivery/f'DLMS-Desktop-{application_version()}-macos-preview1-candidate-source-native.tar.zst','x:zst') as archive:
         native=cache/'sources/native'
         for path in files(native):
             if path.name.endswith('.part'): raise ValueError('Incomplete native source download')
             archive.add(path,arcname='native-sources/'+path.relative_to(native).as_posix(),recursive=False)
-    with tarfile.open(delivery/'DLMS-Desktop-3.3.0-macos-preview1-source-wheel-native.tar.zst','x:zst') as archive:
+    with tarfile.open(delivery/f'DLMS-Desktop-{application_version()}-macos-preview1-candidate-source-wheel-native.tar.zst','x:zst') as archive:
         wheel_native=cache/'sources/wheel-native'
         for path in files(wheel_native):
             if path.name.endswith('.part'): raise ValueError('Incomplete wheel-native source download')
             archive.add(path,arcname='wheel-native-sources/'+path.relative_to(wheel_native).as_posix(),recursive=False)
-    with tarfile.open(delivery/'DLMS-Desktop-3.3.0-macos-preview1-notices.tar.zst','x:zst') as archive:
+    with tarfile.open(delivery/f'DLMS-Desktop-{application_version()}-macos-preview1-candidate-notices.tar.zst','x:zst') as archive:
         for path in files(stage/'notices'):
             archive.add(path,arcname='notices/'+path.relative_to(stage/'notices').as_posix(),recursive=False)
     tracked=subprocess.check_output(['git','ls-files','-z'],cwd=ROOT).decode().split('\0')
     untracked=subprocess.check_output(['git','ls-files','--others','--exclude-standard','-z'],cwd=ROOT).decode().split('\0')
     selected=sorted(set(p for p in tracked+untracked if p))
     source_manifest={}
-    with tarfile.open(delivery/'DLMS-Desktop-3.3.0-macos-preview1-source-application.tar.zst','x:zst') as archive:
+    with tarfile.open(delivery/f'DLMS-Desktop-{application_version()}-macos-preview1-candidate-source-application.tar.zst','x:zst') as archive:
         for name in selected:
             relative=_member(name)
             if relative.parts[0] in ('.git','.gate1','.venv','dist','build','profiles','backups'):

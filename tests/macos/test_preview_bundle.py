@@ -210,10 +210,11 @@ class PackagingIdentityTests(unittest.TestCase):
         source, overlay = verified_source()
         actual = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT).decode().strip()
         self.assertEqual(source['application_base'], actual)
-        self.assertEqual(actual, BASE)
-        self.assertIs(source['clean_unmodified_build'], False)
+        self.assertEqual(source['source_state'], 'Clean committed maintenance source')
+        self.assertIs(source['clean_unmodified_build'], True)
         self.assertEqual(source['packaging_patch']['sha256'], hashlib.sha256(overlay).hexdigest())
-        self.assertIn('package_macos/preview_materials.py', source['packaging_patch']['changed_files'])
+        self.assertEqual(source['packaging_patch']['changed_files'], [])
+        self.assertEqual(overlay, b'')
 
     def test_wrong_head_is_refused(self):
         from package_macos.preview_materials import verified_source

@@ -159,11 +159,12 @@ def main():
     files.sort(key=lambda record: record["path"])
     snapshot=hashlib.sha256(json.dumps(files,sort_keys=True,separators=(",",":")).encode()).hexdigest()
     commit=subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True).strip()
-    (run/"source-snapshot.json").write_text(json.dumps({"base_commit":commit,"uncommitted":True,
+    dirty=bool(subprocess.check_output(['git','status','--porcelain','--untracked-files=all'],cwd=ROOT,text=True).strip())
+    (run/"source-snapshot.json").write_text(json.dumps({"base_commit":commit,"uncommitted":dirty,
         "snapshot_sha256":snapshot,"files":files},indent=2)+"\n")
-    identity={"application_version":"0.1.0", "release":args.release,
+    identity={"application_version":source_backend_version(), "release":args.release,
               "backend_version":source_backend_version(),
-              "source_commit":commit+" + uncommitted "+snapshot,
+              "source_commit":commit+" + uncommitted "+snapshot if dirty else commit,
               "target":"Windows 11 x86-64 WebView2 candidate",
               "browser_runtime":"Installed Microsoft WebView2 Evergreen; detected at launch, separately serviced",
               "support":("INSTRUMENTED TEST ONLY. Never install or count as normal physical acceptance."

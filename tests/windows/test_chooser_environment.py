@@ -22,6 +22,7 @@ def test_scoped_shell_places_are_private_and_reparse_points_refused(tmp_path):
         assert not list(outside.iterdir())
     finally:(home/'Desktop').rmdir()
 
+@pytest.mark.skipif(os.name != 'nt', reason='Windows legacy chooser; Linux uses the sealed-file adapter contracts')
 def test_frozen_fixture_start_and_upload_boundary(tmp_path,monkeypatch):
     import desktop.shell as shell
     from PySide6.QtWebEngineCore import QWebEnginePage

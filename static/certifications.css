@@ -77,3 +77,6 @@
 .cert-workspace .cert-fields > label > :is(input,select) {min-height:44px;box-sizing:border-box;}
 
 .cert-workspace :is(input[name=field_annual_goal],input[name=track_annual_amount]) {width:min(100%,12rem);box-sizing:border-box;}
+.certificate-viewer{max-width:72rem;margin:0 auto;padding:clamp(16px,4vw,40px)}
+.certificate-viewer nav{display:flex;flex-wrap:wrap;gap:12px;margin:16px 0}
+.certificate-preview{display:block;max-width:100%;height:auto;margin:20px auto;background:white}
