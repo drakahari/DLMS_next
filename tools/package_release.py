@@ -100,6 +100,7 @@ def _package_macos(source: Path, destination: Path, assets_dir: Path) -> None:
 
 
 def _input_artifacts(staging_dir: Path, version: str) -> list[tuple[str, Path, str]]:
+    version = version.replace(" ", "-")
     artifacts: list[tuple[str, Path, str]] = []
     for platform_name in LINUX_PLATFORMS:
         name = f"DLMS-{version}-{platform_name}"
@@ -119,6 +120,7 @@ def _input_artifacts(staging_dir: Path, version: str) -> list[tuple[str, Path, s
 
 def _single_target_contract(target: str, version: str) -> tuple[str, str, str]:
     """Return verifier target, native artifact name, and final package name."""
+    version = version.replace(" ", "-")
     if target in LINUX_PLATFORMS:
         artifact_name = f"DLMS-{version}-{target}"
         return "linux-x86_64", artifact_name, artifact_name + ".tar.gz"

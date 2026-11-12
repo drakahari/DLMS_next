@@ -23,7 +23,8 @@ import verify_release_package as PACKAGE_VERIFIER
 SCRIPT = ROOT / "tools" / "verify_release_package.py"
 PACKAGER = ROOT / "tools" / "package_release.py"
 CHECKSUMMER = ROOT / "tools" / "generate_sha256sums.py"
-VERSION = "3.3.1"
+VERSION = PACKAGE_VERIFIER.release_version(ROOT)
+FILE_VERSION = VERSION.replace(" ", "-")
 
 
 def elf_x86_64() -> bytes:
@@ -100,7 +101,7 @@ class ReleasePackageVerificationTests(unittest.TestCase):
         )
 
     def make_linux(self, platform_name, *, executable_mode=0o755, extra=None):
-        wrapper = f"DLMS-{VERSION}-{platform_name}"
+        wrapper = f"DLMS-{FILE_VERSION}-{platform_name}"
         path = self.root / f"{wrapper}.tar.gz"
         with tarfile.open(path, "w:gz") as archive:
             directory = tarfile.TarInfo(wrapper)
@@ -126,7 +127,7 @@ class ReleasePackageVerificationTests(unittest.TestCase):
         wrapper=None,
         extra_executable=None,
     ):
-        expected_wrapper = f"DLMS-{VERSION}-windows11-x86_64"
+        expected_wrapper = f"DLMS-{FILE_VERSION}-windows11-x86_64"
         wrapper = expected_wrapper if wrapper is None else wrapper
         path = self.root / (archive_name or f"{expected_wrapper}.zip")
         executable_name = executable_name or f"{expected_wrapper}.exe"
@@ -163,16 +164,16 @@ class ReleasePackageVerificationTests(unittest.TestCase):
         include_dist_info_license=False,
         extra_root_file=None,
     ):
-        archive_name = f"DLMS-{VERSION}-macos-arm64.zip"
+        archive_name = f"DLMS-{FILE_VERSION}-macos-arm64.zip"
         path = self.root / archive_name
-        prefix = f"DLMS-{VERSION}-macos-arm64/" if wrapped else ""
+        prefix = f"DLMS-{FILE_VERSION}-macos-arm64/" if wrapped else ""
         plist = plistlib.dumps(
             {
                 "CFBundleExecutable": "DLMS",
                 "CFBundleIdentifier": identifier,
                 "CFBundleGetInfoString": f"DLMS {VERSION}",
-                "CFBundleShortVersionString": VERSION,
-                "CFBundleVersion": VERSION,
+                "CFBundleShortVersionString": PACKAGE_VERIFIER._macos_bundle_versions(VERSION)[0],
+                "CFBundleVersion": PACKAGE_VERIFIER._macos_bundle_versions(VERSION)[1],
             }
         )
         with zipfile.ZipFile(path, "w") as archive:
@@ -237,18 +238,18 @@ class ReleasePackageVerificationTests(unittest.TestCase):
             "ubuntu26.04-x86_64",
             "omarchy-quattro-x86_64",
         ):
-            artifact = staging / f"DLMS-{VERSION}-{platform_name}"
+            artifact = staging / f"DLMS-{FILE_VERSION}-{platform_name}"
             artifact.write_bytes(elf_x86_64())
             artifact.chmod(0o755)
-        (staging / f"DLMS-{VERSION}-windows11-x86_64.exe").write_bytes(pe_x86_64())
-        macos = staging / f"DLMS-{VERSION}-macos-arm64.zip"
+        (staging / f"DLMS-{FILE_VERSION}-windows11-x86_64.exe").write_bytes(pe_x86_64())
+        macos = staging / f"DLMS-{FILE_VERSION}-macos-arm64.zip"
         plist = plistlib.dumps(
             {
                 "CFBundleExecutable": "DLMS",
                 "CFBundleIdentifier": "io.github.drakahari.DLMS",
                 "CFBundleGetInfoString": f"DLMS {VERSION}",
-                "CFBundleShortVersionString": VERSION,
-                "CFBundleVersion": VERSION,
+                "CFBundleShortVersionString": PACKAGE_VERIFIER._macos_bundle_versions(VERSION)[0],
+                "CFBundleVersion": PACKAGE_VERIFIER._macos_bundle_versions(VERSION)[1],
             }
         )
         with zipfile.ZipFile(macos, "w") as archive:
@@ -436,14 +437,14 @@ class ReleasePackageVerificationTests(unittest.TestCase):
 
     def test_windows_incorrect_archive_name_fails(self):
         failed = self.verify(
-            self.make_windows(archive_name=f"DLMS-{VERSION}-windows-x86_64.zip")
+            self.make_windows(archive_name=f"DLMS-{FILE_VERSION}-windows-x86_64.zip")
         )
 
         self.assertEqual(failed.returncode, 1)
         self.assertIn("unexpected final package filename", failed.stdout)
 
     def test_windows_generic_or_stale_executable_name_fails(self):
-        for executable_name in ("DLMS.exe", f"DLMS-{VERSION}-windows-x86_64.exe"):
+        for executable_name in ("DLMS.exe", f"DLMS-{FILE_VERSION}-windows-x86_64.exe"):
             with self.subTest(executable_name=executable_name):
                 failed = self.verify(
                     self.make_windows(executable_name=executable_name)
@@ -474,7 +475,7 @@ class ReleasePackageVerificationTests(unittest.TestCase):
 
     def test_windows_rejects_unsafe_and_case_colliding_members(self):
         package = self.make_windows()
-        wrapper = f"DLMS-{VERSION}-windows11-x86_64"
+        wrapper = f"DLMS-{FILE_VERSION}-windows11-x86_64"
         with zipfile.ZipFile(package, "a") as archive:
             add_zip_file(archive, "../DLMS.exe", pe_x86_64())
             add_zip_file(archive, f"{wrapper}/README.TXT", self.readme)
@@ -639,7 +640,7 @@ class ReleasePackageVerificationTests(unittest.TestCase):
         )
         self.assertIn("Native clean-extraction smoke is still required", result.stdout)
         self.assertEqual(before, fingerprints())
-        macos_package = output / f"DLMS-{VERSION}-macos-arm64.zip"
+        macos_package = output / f"DLMS-{FILE_VERSION}-macos-arm64.zip"
         staged_macos = staging / macos_package.name
         with zipfile.ZipFile(staged_macos) as staged_archive:
             staged_members = {
@@ -718,18 +719,18 @@ class ReleasePackageVerificationTests(unittest.TestCase):
         cases = (
             (
                 "fedora44-x86_64",
-                f"DLMS-{VERSION}-fedora44-x86_64",
-                f"DLMS-{VERSION}-fedora44-x86_64.tar.gz",
+                f"DLMS-{FILE_VERSION}-fedora44-x86_64",
+                f"DLMS-{FILE_VERSION}-fedora44-x86_64.tar.gz",
             ),
             (
                 "windows11-x86_64",
-                f"DLMS-{VERSION}-windows11-x86_64.exe",
-                f"DLMS-{VERSION}-windows11-x86_64.zip",
+                f"DLMS-{FILE_VERSION}-windows11-x86_64.exe",
+                f"DLMS-{FILE_VERSION}-windows11-x86_64.zip",
             ),
             (
                 "macos-arm64",
-                f"DLMS-{VERSION}-macos-arm64.zip",
-                f"DLMS-{VERSION}-macos-arm64.zip",
+                f"DLMS-{FILE_VERSION}-macos-arm64.zip",
+                f"DLMS-{FILE_VERSION}-macos-arm64.zip",
             ),
         )
 
@@ -779,17 +780,17 @@ class ReleasePackageVerificationTests(unittest.TestCase):
                 )
 
         linux = self.root / "single-fedora44-x86_64" / (
-            f"DLMS-{VERSION}-fedora44-x86_64.tar.gz"
+            f"DLMS-{FILE_VERSION}-fedora44-x86_64.tar.gz"
         )
         with tarfile.open(linux, "r:gz") as archive:
             executable = archive.getmember(
-                f"DLMS-{VERSION}-fedora44-x86_64/"
-                f"DLMS-{VERSION}-fedora44-x86_64"
+                f"DLMS-{FILE_VERSION}-fedora44-x86_64/"
+                f"DLMS-{FILE_VERSION}-fedora44-x86_64"
             )
             self.assertEqual(executable.mode, 0o755)
 
         macos = self.root / "single-macos-arm64" / (
-            f"DLMS-{VERSION}-macos-arm64.zip"
+            f"DLMS-{FILE_VERSION}-macos-arm64.zip"
         )
         with zipfile.ZipFile(macos) as archive:
             top_level = {
@@ -851,7 +852,7 @@ class ReleasePackageVerificationTests(unittest.TestCase):
     def test_single_target_packaging_rejects_mismatched_or_invalid_artifacts(self):
         staging = self.make_staged_artifacts()
         output = self.root / "single-invalid"
-        windows_artifact = staging / f"DLMS-{VERSION}-windows11-x86_64.exe"
+        windows_artifact = staging / f"DLMS-{FILE_VERSION}-windows11-x86_64.exe"
 
         mismatch = subprocess.run(
             [
@@ -879,7 +880,7 @@ class ReleasePackageVerificationTests(unittest.TestCase):
     def test_single_target_packaging_rejects_nonexecutable_linux_artifact(self):
         staging = self.make_staged_artifacts()
         output = self.root / "single-nonexecutable"
-        linux_artifact = staging / f"DLMS-{VERSION}-fedora44-x86_64"
+        linux_artifact = staging / f"DLMS-{FILE_VERSION}-fedora44-x86_64"
         linux_artifact.chmod(0o644)
         invalid = subprocess.run(
             [
@@ -905,9 +906,9 @@ class ReleasePackageVerificationTests(unittest.TestCase):
 
     def test_single_target_smokes_temporary_final_package_before_publication(self):
         staging = self.make_staged_artifacts()
-        artifact = staging / f"DLMS-{VERSION}-fedora44-x86_64"
+        artifact = staging / f"DLMS-{FILE_VERSION}-fedora44-x86_64"
         output = self.root / "single-smoke"
-        expected = output / f"DLMS-{VERSION}-fedora44-x86_64.tar.gz"
+        expected = output / f"DLMS-{FILE_VERSION}-fedora44-x86_64.tar.gz"
 
         def assert_temporary_package(package, source_root):
             self.assertTrue(package.is_file())
@@ -933,9 +934,9 @@ class ReleasePackageVerificationTests(unittest.TestCase):
 
     def test_single_target_smoke_failure_does_not_publish_package(self):
         staging = self.make_staged_artifacts()
-        artifact = staging / f"DLMS-{VERSION}-fedora44-x86_64"
+        artifact = staging / f"DLMS-{FILE_VERSION}-fedora44-x86_64"
         output = self.root / "single-smoke-failure"
-        expected = output / f"DLMS-{VERSION}-fedora44-x86_64.tar.gz"
+        expected = output / f"DLMS-{FILE_VERSION}-fedora44-x86_64.tar.gz"
 
         with mock.patch.object(
             RELEASE_PACKAGER,
@@ -951,7 +952,7 @@ class ReleasePackageVerificationTests(unittest.TestCase):
 
     def test_single_target_requires_distinct_output_and_release_assets(self):
         staging = self.make_staged_artifacts()
-        artifact = staging / f"DLMS-{VERSION}-macos-arm64.zip"
+        artifact = staging / f"DLMS-{FILE_VERSION}-macos-arm64.zip"
 
         with self.assertRaisesRegex(ValueError, "must differ"):
             RELEASE_PACKAGER.package_single_target(
@@ -980,7 +981,7 @@ class ReleasePackageVerificationTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(
             executable.relative_to(extraction_root).as_posix(),
-            f"DLMS-{VERSION}-fedora44-x86_64/DLMS-{VERSION}-fedora44-x86_64",
+            f"DLMS-{FILE_VERSION}-fedora44-x86_64/DLMS-{FILE_VERSION}-fedora44-x86_64",
         )
 
     @unittest.skipIf(os.name == 'nt', 'POSIX executable mode propagation; Windows PE package verification remains in this suite')
@@ -1026,7 +1027,7 @@ class ReleasePackageVerificationTests(unittest.TestCase):
 
         self.assertEqual(errors, [])
         self.assertEqual(
-            executable.name, f"DLMS-{VERSION}-windows11-x86_64.exe"
+            executable.name, f"DLMS-{FILE_VERSION}-windows11-x86_64.exe"
         )
 
     def test_windows_final_extraction_uses_expand_archive(self):
@@ -1093,7 +1094,7 @@ class ReleasePackageVerificationTests(unittest.TestCase):
         self.assertEqual(VERSION, smoke.call_args.args[2])
         self.assertEqual(
             extracted_executable.name,
-            f"DLMS-{VERSION}-ubuntu24.04-x86_64",
+            f"DLMS-{FILE_VERSION}-ubuntu24.04-x86_64",
         )
         self.assertIn("dlms-final-package-extraction-", str(extracted_executable))
 

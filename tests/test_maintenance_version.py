@@ -13,8 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class MaintenanceVersionTests(unittest.TestCase):
     def test_source_about_and_backend_use_one_application_version_without_startup(self):
-        self.assertEqual(build_info.application_version(), '3.3.1')
-        self.assertEqual(build_info.information()['application_version'], '3.3.1')
+        self.assertEqual(build_info.application_version(), '3.3.2 RC1')
+        self.assertEqual(build_info.information()['application_version'], '3.3.2 RC1')
         self.assertIn('unpublished', build_info.information()['release'])
 
     def test_version_parser_rejects_ambiguous_metadata(self):

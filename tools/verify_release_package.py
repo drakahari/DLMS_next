@@ -80,6 +80,7 @@ def _release_asset_bytes_match(name: str, packaged: bytes, expected: bytes) -> b
 
 
 def expected_packages(version: str) -> dict[str, PackageSpec]:
+    version = version.replace(" ", "-")
     prefix = f"DLMS-{version}-"
     specs: dict[str, PackageSpec] = {}
     for platform_name in (

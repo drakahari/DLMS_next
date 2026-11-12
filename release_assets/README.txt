@@ -1,4 +1,6 @@
-DLMS 3.3.1
+UNPUBLISHED FEDORA MAINTENANCE CANDIDATE — 3.3.2 RC1
+
+DLMS 3.3.2 RC1
 ==========
 
 DLMS is a local-first learning, quiz, study, analytics, and content-import
@@ -7,29 +9,28 @@ browser.
 
 RELEASE STATUS
 
-Original DLMS 3.3.1 is the stable browser edition. DLMS Desktop 3.3.1 Preview 1
-remains a separate preview with its own application window and profiles.
-Use the matching official release guide, SHA256SUMS and source/notices companions.
-Platform qualification is limited to the checks disclosed for each package;
-"stable" does not mean every manual workflow was tested on every platform.
-The original stable source adds documentation corrections and a Windows-only
-packaging correction to f507b64e. Shared application/server behavior is unchanged.
-Desktop Preview 1 retains its recorded f507b64e source and platform supplements.
+Original DLMS 3.3.2 RC1 and DLMS Desktop 3.3.2 Preview 1 are unpublished
+maintenance candidates. This task builds and qualifies Fedora 44 only; no new
+Ubuntu, Windows or macOS package is promised by the filename examples below.
+Use the matching candidate SHA256SUMS and source/notices companions. Do not
+replace an installed application or point a candidate at live data for testing.
+The source identity and focused acceptance are recorded with each candidate.
+Public stable downloads remain Original 3.3.1 and Desktop 3.3.1 Preview 1.
 
 CHOOSE THE PACKAGE FOR YOUR SYSTEM
 
-- Fedora 44: DLMS-3.3.1-fedora44-x86_64.tar.gz
-- Ubuntu 24.04: DLMS-3.3.1-ubuntu24.04-x86_64.tar.gz
-- Ubuntu 26.04: DLMS-3.3.1-ubuntu26.04-x86_64.tar.gz
-- Windows 11: DLMS-3.3.1-windows11-x86_64.zip
-- macOS Apple Silicon: DLMS-3.3.1-macos-arm64.zip
+- Fedora 44: DLMS-3.3.2-RC1-fedora44-x86_64.tar.gz
+- Ubuntu 24.04: DLMS-3.3.2-RC1-ubuntu24.04-x86_64.tar.gz
+- Ubuntu 26.04: DLMS-3.3.2-RC1-ubuntu26.04-x86_64.tar.gz
+- Windows 11: DLMS-3.3.2-RC1-windows11-x86_64.zip
+- macOS Apple Silicon: DLMS-3.3.2-RC1-macos-arm64.zip
 
 The Linux packages are built and tested separately for the named operating
 system. Do not assume that one Linux build is universal across distributions.
 
 PACKAGE CONTENTS
 
-The five original packages contain the DLMS application for their named platform, this
+Original packages, when built for a target, contain the DLMS application for their named platform, this
 README.txt, and sample_quiz.txt. In the macOS ZIP, DLMS.app, README.txt, and
 sample_quiz.txt are all directly at the archive root, with no wrapper folder.
 
@@ -41,21 +42,21 @@ Linux
 2. Open a terminal in the extracted package folder.
 3. Run the executable, for example:
 
-   ./DLMS-3.3.1-fedora44-x86_64
+   ./DLMS-3.3.2-RC1-fedora44-x86_64
 
 The executable permission is preserved by the archive. If another transfer
 method removed it, restore it with:
 
-   chmod +x DLMS-3.3.1-<platform>-x86_64
+   chmod +x DLMS-3.3.2-RC1-<platform>-x86_64
 
 Windows 11
 
 1. Extract the ZIP package.
 2. Open the extracted package folder.
-3. Double-click DLMS-3.3.1-windows11-x86_64.exe.
+3. Double-click DLMS-3.3.2-RC1-windows11-x86_64.exe.
 
 Windows may display Microsoft Defender SmartScreen for an unsigned download.
-Verify the published SHA-256 checksum and that the file came from the official
+Verify the candidate SHA-256 checksum and that the file came from the official
 DLMS release before choosing More info and Run anyway.
 
 macOS Apple Silicon
@@ -65,9 +66,9 @@ macOS Apple Silicon
    to Applications.
 3. Open DLMS.app from Finder or Applications.
 
-DLMS 3.3.1 is not notarized, so macOS may require approval in System Settings >
+DLMS 3.3.2 RC1 is not notarized, so macOS may require approval in System Settings >
 Privacy & Security. Use Open Anyway only when macOS offers it for this app,
-after verifying the published SHA-256 checksum and the official download source.
+after verifying the candidate SHA-256 checksum and the official download source.
 Follow the displayed confirmation. Stop for malware, damage, unavailable approval,
 or managed-policy blocks. Do not remove quarantine or disable Gatekeeper.
 

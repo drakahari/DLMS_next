@@ -2,6 +2,10 @@
 
 **Build quizzes. Practice with purpose. Keep your learning history yours.**
 
+> Development candidate: **3.3.2 RC1**. Fedora standalone and Desktop Preview 1
+> candidates are being prepared on this branch. Public downloads below remain
+> Original 3.3.1 and Desktop 3.3.1 Preview 1.
+
 DLMS is a free, open-source learning workspace for students, certification candidates,
 professionals tracking continuing education, and anyone studying independently.
 Turn your notes, PDFs, screenshots and question banks into practice; use feedback,

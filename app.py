@@ -282,7 +282,7 @@ def get_app_data_dir(app_name: str = "DLMS") -> str:
     return path
 
 APP_NAME = "DLMS"
-APP_VERSION = "3.3.1"
+APP_VERSION = "3.3.2 RC1"
 APP_DATA_DIR = get_app_data_dir(APP_NAME)
 # Before secret/config/bootstrap/recovery writes; released once startup settles.
 _startup_snapshot_access = _profile_snapshot.access(APP_DATA_DIR, exclusive=True)

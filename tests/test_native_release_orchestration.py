@@ -12,6 +12,19 @@ ROOT = Path(__file__).resolve().parents[1]
 COMMIT = 'a' * 40
 
 
+@pytest.mark.parametrize('target', ('fedora44-x86_64', 'windows11-x86_64', 'macos-arm64'))
+def test_candidate_display_version_has_consistent_artifact_and_package_names(target):
+    import sys
+    sys.path.insert(0, str(ROOT / 'tools'))
+    from package_release import _single_target_contract
+    from verify_release_artifact import expected_artifact_names
+    from verify_release_package import expected_packages
+    platform, artifact, package = _single_target_contract(target, '3.3.2 RC1')
+    assert artifact in expected_artifact_names(platform, '3.3.2 RC1')
+    assert package in expected_packages('3.3.2 RC1')
+    assert ' ' not in artifact and ' ' not in package
+
+
 @pytest.fixture
 def tool(monkeypatch):
     monkeypatch.syspath_prepend(str(ROOT / 'tools'))
