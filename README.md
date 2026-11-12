@@ -141,7 +141,7 @@ directly at its root. The original interface normally opens at
 ## ⬇️ Download DLMS Desktop 3.3.2 Preview 1
 
 **These are prereleases using the shared `3.3.2 RC1` application.** Candidate
-filenames and some bundled prepublication wording are retained. Windows uses
+identifiers and some bundled prepublication wording are retained. Windows uses
 candidate2, which replaces the rejected packaging-environment candidate1.
 The platform release notes describe the exact validation and signing limits.
 
@@ -149,7 +149,7 @@ The platform release notes describe the exact validation and signing limits.
 | --- | --- | --- |
 | Linux x86_64 | [AppImage](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.2-preview1-linux/DLMS-Desktop-3.3.2-preview1-candidate1-linux-x86_64.AppImage) | [Linux Preview 1](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.2-preview1-linux) |
 | Windows 11 x86_64 | [Setup.exe](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.2-preview1-windows/DLMS-Desktop-WebView2-Windows-x86_64-windows-332-preview1-candidate2-Setup.exe) | [Windows Preview 1](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.2-preview1-windows) |
-| Apple Silicon Mac arm64 | [DMG](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.2-preview1-macos/DLMS-Desktop-3.3.2%20RC1-macos-arm64-preview1-candidate.dmg) | [Mac Preview 1](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.2-preview1-macos) |
+| Apple Silicon Mac arm64 | [DMG](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.2-preview1-macos/DLMS-Desktop-3.3.2.RC1-macos-arm64-preview1-candidate.dmg) | [Mac Preview 1](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.2-preview1-macos) |
 
 [Previous Desktop 3.3.1 previews](https://github.com/drakahari/DLMS_next/releases) remain available.
 
