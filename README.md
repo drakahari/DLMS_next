@@ -2,6 +2,10 @@
 
 **Build quizzes. Practice with purpose. Keep your learning history yours.**
 
+> **New prereleases:** Original **3.3.2 RC1** and Desktop **3.3.2 Preview 1**.
+> Both retain the shared application label `3.3.2 RC1`; neither is a stable release.
+> Original 3.3.1 remains the published stable option.
+
 DLMS is a free, open-source learning workspace for students, certification candidates,
 professionals tracking continuing education, and anyone studying independently.
 Turn your notes, PDFs, screenshots and question banks into practice; use feedback,
@@ -25,7 +29,7 @@ an established workflow, not a new 3.3.1 feature. Select it to view full size.*
 ## ✨ Your learning workspace
 
 These are **existing DLMS capabilities**, brought together in both editions.
-The maintenance changes in 3.3.1 are listed separately below.
+The changes in 3.3.2 RC1 and earlier 3.3.1 maintenance fixes are listed separately below.
 
 | Make progress with… | What you can do | Learn more |
 | --- | --- | --- |
@@ -83,12 +87,12 @@ help you go further. These capabilities predate the 3.3.1 maintenance fixes belo
 
 ## 🌐 Browser or 🖥️ Desktop? Choose what suits you
 
-| | 🌐 Original DLMS 3.3.1 — stable | 🖥️ DLMS Desktop 3.3.1 Preview 1 |
+| | 🌐 Original DLMS 3.3.2 RC1 — maintenance candidate | 🖥️ DLMS Desktop 3.3.2 Preview 1 |
 | --- | --- | --- |
 | Your interface | Opens in your preferred web browser. | Opens in its own application window. |
 | Local use | The downloaded application runs on your computer and serves the local browser UI. No separate hosted server is needed. | **Local** starts and manages a backend for the selected Desktop profile. No separate server setup is needed. |
 | Server use | Can deliberately host a dataset on a configured machine; a browser accesses that server's data. | **Server** connects to an existing compatible server; it uses that server's data, not a synchronized Local copy. |
-| Choose it when… | You want the stable edition, your familiar browser, or a deliberately managed server. | You prefer a dedicated window and profile/mode controls, and accept the platform preview limits. |
+| Choose it when… | You want your familiar browser or a deliberately managed server, and accept maintenance-candidate limits; 3.3.1 remains the stable option. | You prefer a dedicated window and profile/mode controls, and accept the platform preview limits. |
 | Downloads | Fedora 44, Ubuntu 24.04/26.04, Windows 11 x86_64; Apple Silicon Mac. | Linux x86_64 AppImage, Windows 11 x86_64 installer, Apple Silicon Mac DMG. |
 
 **A browser is an interface, not a cloud requirement.** Core Local workflows and
@@ -96,9 +100,10 @@ packaged OCR run locally. Remote servers, videos and external services need thei
 respective connections. Desktop does **not** automatically import, merge or
 synchronize another edition's data. Keep live data directories separate.
 
-For complete 3.3.1 Server behavior, use an **original 3.3.1 server**, or the documented
-matching shared source baseline. Updating Desktop Local does not update an older
-server. Older 3.3.0 deployments differ by source and may lack fixes. DLMS is a
+For the new readable-encrypted certificate handling in Server mode, use an
+**Original 3.3.2 RC1 server** or its matching corrected shared source. Existing
+3.3.1 servers retain their own behavior; updating Desktop Local does not update
+an older server. Earlier deployments differ by source and may lack fixes. DLMS is a
 single-user application with no built-in server account authentication or TLS;
 never expose its port directly to the public Internet. See
 [edition, data-location and server guidance](docs/choose-your-dlms.md).
@@ -107,41 +112,46 @@ never expose its port directly to the public Internet. See
 <a id="installation-and-releases"></a>
 <a id="download-the-original-stable-release"></a>
 
-## ⬇️ Download original DLMS 3.3.1 — stable
+## ⬇️ Download Original DLMS 3.3.2 RC1 — maintenance candidate
 
 **Choose one package matching your operating system and architecture.** Ordinary
 users do not need Python, build tools or the large source archives to run it.
 
 | Your system | App package |
 | --- | --- |
-| Fedora 44 x86_64 | [Download Fedora](https://github.com/drakahari/DLMS_next/releases/download/v3.3.1/DLMS-3.3.1-fedora44-x86_64.tar.gz) |
-| Ubuntu 24.04 x86_64 | [Download Ubuntu 24.04](https://github.com/drakahari/DLMS_next/releases/download/v3.3.1/DLMS-3.3.1-ubuntu24.04-x86_64.tar.gz) |
-| Ubuntu 26.04 x86_64 | [Download Ubuntu 26.04](https://github.com/drakahari/DLMS_next/releases/download/v3.3.1/DLMS-3.3.1-ubuntu26.04-x86_64.tar.gz) |
-| Windows 11 x86_64 | [Download Windows ZIP](https://github.com/drakahari/DLMS_next/releases/download/v3.3.1/DLMS-3.3.1-windows11-x86_64.zip) |
-| Apple Silicon Mac arm64 | [Download Mac ZIP](https://github.com/drakahari/DLMS_next/releases/download/v3.3.1/DLMS-3.3.1-macos-arm64.zip) |
+| Fedora 44 x86_64 | [Download Fedora](https://github.com/drakahari/DLMS_next/releases/download/v3.3.2-rc1/DLMS-3.3.2-RC1-fedora44-x86_64.tar.gz) |
+| Ubuntu 24.04 x86_64 | [Download Ubuntu 24.04](https://github.com/drakahari/DLMS_next/releases/download/v3.3.2-rc1/DLMS-3.3.2-RC1-ubuntu24.04-x86_64.tar.gz) |
+| Ubuntu 26.04 x86_64 | [Download Ubuntu 26.04](https://github.com/drakahari/DLMS_next/releases/download/v3.3.2-rc1/DLMS-3.3.2-RC1-ubuntu26.04-x86_64.tar.gz) |
+| Windows 11 x86_64 | [Download Windows ZIP](https://github.com/drakahari/DLMS_next/releases/download/v3.3.2-rc1/DLMS-3.3.2-RC1-windows11-x86_64.zip) |
+| Apple Silicon Mac arm64 | [Download Mac ZIP](https://github.com/drakahari/DLMS_next/releases/download/v3.3.2-rc1/DLMS-3.3.2-RC1-macos-arm64.zip) |
 
 Extract the archive first, then run its DLMS executable. On Mac, open the extracted
 `DLMS.app` in Finder. The Mac ZIP has `DLMS.app`, `README.txt` and `sample_quiz.txt`
 directly at its root. The original interface normally opens at
 [http://127.0.0.1:9001/](http://127.0.0.1:9001/).
 
-[Release notes and all assets](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.1) ·
-[SHA256SUMS.txt](https://github.com/drakahari/DLMS_next/releases/download/v3.3.1/SHA256SUMS.txt) ·
+[Release notes and all assets](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.2-rc1) ·
+[SHA256SUMS.txt](https://github.com/drakahari/DLMS_next/releases/download/v3.3.2-rc1/SHA256SUMS.txt) ·
 [Installation and first launch](docs/user-manual/02-installation-and-first-launch.md)
+
+**Prefer the published stable edition?** [Original 3.3.1](https://github.com/drakahari/DLMS_next/releases/tag/v3.3.1) remains available with its historical packages and records.
 
 <a id="download-dlms-desktop--previews"></a>
 
-## ⬇️ Download DLMS Desktop 3.3.1 Preview 1
+## ⬇️ Download DLMS Desktop 3.3.2 Preview 1
 
-**These are prereleases.** Accepted binaries retain their `candidate` filenames
-and some bundled prepublication wording; the current release pages describe their
-published Preview 1 status. They have not been rebuilt or relabeled as stable.
+**These are prereleases using the shared `3.3.2 RC1` application.** Candidate
+filenames and some bundled prepublication wording are retained. Windows uses
+candidate2, which replaces the rejected packaging-environment candidate1.
+The platform release notes describe the exact validation and signing limits.
 
 | Your system | App download | Notes and checksums |
 | --- | --- | --- |
-| Linux x86_64 | [AppImage](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.1-preview1-linux/DLMS-Desktop-3.3.1-preview1-candidate-linux-x86_64.AppImage) | [Linux Preview 1](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.1-preview1-linux) |
-| Windows 11 x86_64 | [Setup.exe](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.1-preview1-windows/DLMS-Desktop-WebView2-Windows-x86_64-windows-331-preview1-candidate-Setup.exe) | [Windows Preview 1](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.1-preview1-windows) |
-| Apple Silicon Mac arm64 | [DMG](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.1-preview1-macos/DLMS-Desktop-3.3.1-macos-arm64-preview1-candidate.dmg) | [Mac Preview 1](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.1-preview1-macos) |
+| Linux x86_64 | [AppImage](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.2-preview1-linux/DLMS-Desktop-3.3.2-preview1-candidate1-linux-x86_64.AppImage) | [Linux Preview 1](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.2-preview1-linux) |
+| Windows 11 x86_64 | [Setup.exe](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.2-preview1-windows/DLMS-Desktop-WebView2-Windows-x86_64-windows-332-preview1-candidate2-Setup.exe) | [Windows Preview 1](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.2-preview1-windows) |
+| Apple Silicon Mac arm64 | [DMG](https://github.com/drakahari/DLMS_next/releases/download/desktop-v3.3.2-preview1-macos/DLMS-Desktop-3.3.2%20RC1-macos-arm64-preview1-candidate.dmg) | [Mac Preview 1](https://github.com/drakahari/DLMS_next/releases/tag/desktop-v3.3.2-preview1-macos) |
+
+[Previous Desktop 3.3.1 previews](https://github.com/drakahari/DLMS_next/releases) remain available.
 
 <a id="open-desktop-on-linux"></a>
 
@@ -149,6 +159,9 @@ published Preview 1 status. They have not been rebuilt or relabeled as stable.
 follow the [Linux opening/extraction guide](docs/choose-your-dlms.md#open-desktop-on-linux)
 if FUSE is unavailable. Keep Chromium sandboxing enabled. The separate managed
 payload is for its existing launcher/profile contract, not a drop-in AppImage upgrade.
+Ubuntu 26.04 can report GVFS/portal/graphics fallback warnings despite successful
+opening and local file selection. These are disclosed integration limits, not
+a failed app test by themselves. [Current platform notes](docs/releases/3.3.2-rc1.md#ubuntu-26-04-warnings).
 
 <a id="install-and-open-desktop-on-windows"></a>
 
@@ -168,7 +181,25 @@ download. Stop on malware, damage or policy blocks; do not remove quarantine or
 disable Gatekeeper. Linux/Windows downloads are unsigned; keep OS protections enabled.
 [Mac opening steps](docs/choose-your-dlms.md#install-and-open-desktop-on-mac).
 
-## 🛠️ What changed in 3.3.1?
+## 🛠️ What changed in 3.3.2 RC1?
+
+This maintenance candidate builds on 3.3.1; the learning capabilities above remain
+available in both editions.
+
+- Readable certificate PDFs with restrictions or an empty opening password can be
+  attached without treating them as genuinely password-locked. Locked, malformed
+  and active-content PDFs remain rejected, with the existing safety limits.
+- PDF/image dependencies are updated, including pypdf 6.21.4 and Pillow 13.0.0.
+- Windows preview packaging keeps the displayed RC label while using valid
+  numeric Windows metadata. Its final candidate2 also corrects ambient DLL
+  contamination in the build environment; it is the offered installer.
+- Firefox release-gate synchronization and CI partitioning were corrected while
+  retaining the full 390-case coverage. These are validation improvements, not
+  new learning features.
+
+[Changes, downloads and platform limits](docs/releases/3.3.2-rc1.md).
+
+## 🛠️ Previous maintenance: what changed in 3.3.1?
 
 3.3.1 is a **maintenance release**, not the introduction of the learning features
 above. Relative to the published 3.3.0 baseline, it brings together shared fixes for:
@@ -211,17 +242,20 @@ payload, and close the old app. Use explicit backup/import workflows to transfer
 supported data between editions. Preserve an existing managed Desktop launcher and
 profile; do not replace it with the AppImage's different default namespace.
 
-No new schema or portable-format migration is introduced from 3.3.0 to 3.3.1.
+No new schema or portable-format migration is introduced from 3.3.1 to 3.3.2 RC1.
 Older-version upgrades can have different rollback limits; replacing an executable
 does not undo a data migration. [Backup, restore and rollback guidance](docs/user-manual/17-maintenance-backup-and-data-management.md).
 
-**Qualification is scoped.** All five original native builders passed; that is not
-full manual acceptance on every platform. Ubuntu 24.04 PDF Download remains untested,
-its extra Firefox-exit timeout is a cleanup limitation, and Ubuntu 26.04 manual
-acceptance is untested. Desktop Windows installer execution and Mac manual acceptance
-are untested. Omarchy Server PDF navigation/Download/image viewing were confirmed;
-Cancel remains unverified. Physical printing and other unperformed cases are not
-newly passed. [Precise release limits](docs/releases/3.3.1.md#qualification-limits).
+**Qualification is scoped.** Original builders passed for all five platforms;
+Ubuntu 26.04 was built and automatically checked in Ubuntu userspace on a Fedora
+kernel, then the owner confirmed native opening/shutdown. The owner confirmed the
+same Desktop AppImage opened/reopened on Ubuntu 24.04 and opened with a working
+file chooser on Ubuntu 26.04 and Omarchy. Windows and Mac have focused native
+build/package checks. Installer execution, broader physical GUI acceptance,
+Save/Cancel and physical printing are not newly passed. A real encrypted
+certificate upload succeeded on the updated dev server, per owner report; this
+is not evidence for every certificate action or older servers.
+[Precise current limits](docs/releases/3.3.2-rc1.md#qualification-limits).
 
 ## 🔎 Go further
 
@@ -240,10 +274,13 @@ See [Desktop licensing](docs/desktop-license.md) and [artwork provenance](deskto
 <details>
 <summary>Source identity and technical release records</summary>
 
-Original binaries: `79e42531d37b78fc806628e0ba989da13d9ed5ea`.
-Unchanged Desktop binaries: `f507b64e9366cfd36a536d1112a5279ff28cb27d`, with their
-recorded platform supplements. Public documentation commits are separate from
-these binary pins. [3.3.1 technical guidance](docs/releases/3.3.1.md) links the
-compatibility and acceptance scope; exact checksums/materials accompany each release.
+Shared maintenance baseline: `0eaa6bd1d0577c1ce362d8a5ef5fbbbd1e7761df`.
+The retained Fedora Original and managed Desktop binaries identify `9fa515ff`;
+only CI/test files differ from the shared baseline. Windows Desktop also carries
+the recorded RC numeric-version packaging patch; Mac records its clean runtime
+snapshot. Source/notices and per-asset identities must accompany publication.
+Outer Original README corrections changed archive hashes, with executable/app
+contents verified unchanged. Public documentation commits remain separate from
+binary source pins. [Current release guidance](docs/releases/3.3.2-rc1.md).
 
 </details>

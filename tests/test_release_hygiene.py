@@ -19,11 +19,15 @@ class ReleaseDocumentationTests(unittest.TestCase):
         version = re.search(r'^APP_VERSION = "([^"]+)"$', app_source, re.MULTILINE)
         self.assertIsNotNone(version)
         self.assertEqual(version.group(1), "3.3.1")
-        self.assertIn("Original DLMS 3.3.1", readme)
-        self.assertIn("DLMS Desktop 3.3.1 Preview 1", readme)
+        # Published prerelease guidance is independent of main's app source pin.
+        self.assertIn("Original DLMS 3.3.2 RC1", readme)
+        self.assertIn("DLMS Desktop 3.3.2 Preview 1", readme)
+        self.assertIn("neither is a stable release", readme)
+        self.assertIn("releases/tag/v3.3.2-rc1", readme)
         self.assertIn("releases/tag/v3.3.1", readme)
-        self.assertIn("79e42531d37b78fc806628e0ba989da13d9ed5ea", readme)
-        self.assertIn("f507b64e9366cfd36a536d1112a5279ff28cb27d", readme)
+        self.assertIn("0eaa6bd1d0577c1ce362d8a5ef5fbbbd1e7761df", readme)
+        self.assertIn("9fa515ff", readme)
+        self.assertIn("recorded RC numeric-version packaging patch", readme)
         self.assertIn("docs/user-manual/README.md", readme)
         self.assertIn("docs/development-and-packaging.md", readme)
         self.assertIn("https://github.com/drakahari/DLMS_next/releases/tag/v3.3.0", readme)
@@ -198,7 +202,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
         ):
             with self.subTest(artifact_name=artifact_name):
                 self.assertIn(artifact_name, procedure)
-        appimage_name = "DLMS-Desktop-3.3.1-preview1-candidate-linux-x86_64.AppImage"
+        appimage_name = "DLMS-Desktop-3.3.2-preview1-candidate1-linux-x86_64.AppImage"
         self.assertIn(appimage_name, readme)
         self.assertNotIn("DLMS-3.2.2-linux-x86_64.AppImage", readme)
         self.assertNotIn("DLMS-3.3.1-linux-x86_64.AppImage", readme)
@@ -233,7 +237,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
         for name in final_packages:
             with self.subTest(name=name):
                 if "omarchy" not in name:
-                    self.assertIn(name.replace("3.3.0", "3.3.1"), readme)
+                    self.assertIn(name.replace("3.3.0", "3.3.2-RC1"), readme)
                 self.assertIn(name, procedure)
                 if "omarchy" not in name:
                     self.assertIn(name.replace("3.3.0", "3.3.1"), package_readme)
@@ -327,7 +331,7 @@ class ReleaseDocumentationTests(unittest.TestCase):
         self.assertIn("console=False", spec)
         self.assertIn('codesign_identity=None', spec)
 
-        self.assertIn("DLMS-3.3.1-macos-arm64.zip", readme)
+        self.assertIn("DLMS-3.3.2-RC1-macos-arm64.zip", readme)
         self.assertIn("DLMS-3.3.1-macos-arm64.zip", getting_started)
         self.assertNotIn("DLMS-3.2.2-macos-arm64.zip", getting_started)
         for document in (readme, getting_started):
