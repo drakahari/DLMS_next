@@ -230,8 +230,10 @@ def main():
         version_text=(ROOT/'package_windows_webview2/version.txt').read_text().replace(
             'DLMS Desktop private project','DLMS project').replace('WebView2 Windows Candidate','Windows Preview').replace(
             '0.1.0 Windows candidate',source_backend_version()+' Windows preview')
-        version_tuple=','.join(source_backend_version().split('.')[:3])+',0'
-        version_text=version_text.replace('(0,1,0,0)','('+version_tuple+')').replace("'0.1.0.0'",repr(source_backend_version()+'.0'))
+        from .versioning import windows_numeric_version
+        numeric_version=windows_numeric_version(source_backend_version())
+        version_tuple=numeric_version.replace('.', ',')
+        version_text=version_text.replace('(0,1,0,0)','('+version_tuple+')').replace("'0.1.0.0'",repr(numeric_version))
         (run/'version-preview.txt').write_text(version_text)
         env.update(DLMS_WINDOWS_PUBLIC_PREVIEW='1',DLMS_WINDOWS_VERSION_RESOURCE=str(run/'version-preview.txt'))
         env.update(DLMS_WINDOWS_PINNED_NATIVE=str(run/'pinned-native'),

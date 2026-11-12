@@ -24,6 +24,7 @@ AppName=DLMS Desktop Windows Preview
 AppVerName=DLMS Desktop Windows Preview {#Release} (unsigned)
 AppPublisher=DLMS project
 AppVersion={#BackendVersion}
+VersionInfoVersion={#BackendNumericVersion}
 #else
 AppName=DLMS Desktop WebView2 Candidate
 AppVerName=DLMS Desktop WebView2 Candidate {#Release}
