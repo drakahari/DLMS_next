@@ -144,13 +144,21 @@ def normalize_relationships(values):
     return result
 
 
+class CertificatePDFError(ValueError):
+    """A safe, actionable certificate-PDF validation message."""
+
+
 def validate_attachment(content, *, badge=False):
     if not content or len(content)>MAX_ATTACHMENT_BYTES: raise ValueError('Uploads must contain 1 byte to 10 MiB.')
     if content.startswith(b'%PDF-'):
         if badge: raise ValueError('Badges must be PNG, JPEG or WebP images.')
         try:
             reader=PdfReader(BytesIO(content),strict=True)
-            if reader.is_encrypted: raise ValueError('Encrypted PDFs are unsupported; upload an unencrypted copy.')
+            # Encryption can describe editing/printing restrictions even when
+            # ordinary viewers open the document without asking for a password.
+            # Try only the empty opening password; never guess or use an owner key.
+            if reader.is_encrypted and not reader.decrypt(''):
+                raise CertificatePDFError('This PDF requires an opening password. Upload a copy that opens without a password.')
             if not 1<=len(reader.pages)<=1000: raise ValueError('PDFs must contain 1–1,000 pages.')
             # Never embed raw PDFs. Reject executable or embedded-file features.
             seen=set(); nodes=[reader.trailer]; count=0
@@ -168,8 +176,10 @@ def validate_attachment(content, *, badge=False):
                     nodes.extend(node.values())
                 elif isinstance(node,(list,tuple)):nodes.extend(node)
             return 'application/pdf'
+        except CertificatePDFError:
+            raise
         except Exception as exc:
-            raise ValueError('Upload a valid, unencrypted PDF without active content.') from exc
+            raise ValueError('Upload a valid PDF that opens without a password and has no active content. Its format or encryption may be unsupported.') from exc
     try:
         with warnings.catch_warnings():
             warnings.simplefilter('error',Image.DecompressionBombWarning)

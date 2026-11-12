@@ -31,7 +31,8 @@ original filenames, collisions and record/file split commits. Each original and
 stored upload is limited to 10 MiB; total managed evidence to 256 MiB. Raster inputs
 are single-frame PNG/JPEG/WebP, at most 16 million pixels. They are stored as
 lossless PNG with orientation applied and metadata removed. Keep original files
-separately if original metadata matters. PDFs must be valid, unencrypted and have
+separately if original metadata matters. PDFs must be valid, open without an
+opening password (including supported restricted PDFs with an empty user password), and have
 1–1,000 pages. Scripts, automatic/executable actions, XFA and embedded files are
 rejected. PDFs are download-only. Serving uses validated media types, generated
 names, `nosniff`, no caching and a restrictive sandbox CSP.

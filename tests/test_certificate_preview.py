@@ -12,6 +12,8 @@ from PIL import Image
 from pypdf import PdfWriter
 from tests import test_study_sessions as foundation
 from dlms.services import certificate_preview
+from tests.certificate_pdf_fixtures import restricted_pdf
+from dlms.services import certifications
 
 dlms = foundation.dlms
 
@@ -68,6 +70,45 @@ class CertificatePreviewTests(unittest.TestCase):
                 with Image.open(BytesIO(b64decode(rendered['image']))) as image:
                     self.assertEqual(image.format, 'PNG')
                     self.assertLessEqual(max(image.size), certificate_preview.MAX_SIDE)
+
+    def test_passwordless_restricted_pdf_view_and_download_keep_original_bytes(self):
+        for algorithm in ('RC4-128', 'AES-128', 'AES-256'):
+            with self.subTest(algorithm=algorithm):
+                content = restricted_pdf(algorithm=algorithm)
+                self.assertEqual(certifications.validate_attachment(content), 'application/pdf')
+                identifier = uuid.uuid4().hex
+                digest = sha256(content).hexdigest()
+                with closing(dlms.get_db()) as conn, conn:
+                    conn.execute('INSERT INTO certification_attachments VALUES(?,?,?,?)',
+                                 (identifier, 'application/pdf', digest, content))
+                for page in (1, 2):
+                    response = self.client.get(f'/certifications/attachments/{identifier}/view?page={page}')
+                    self.assertEqual(response.status_code, 200, response.data)
+                    self.assertIn(f'Page {page} of 2'.encode(), response.data)
+                    self.assertIn(b'data:image/png;base64,', response.data)
+                    self.assertNotIn(b'<iframe', response.data)
+                downloaded = self.client.get(f'/certifications/attachments/{identifier}')
+                self.assertEqual(downloaded.data, content)
+                self.assertIn('attachment;', downloaded.headers['Content-Disposition'])
+                self.assertEqual(downloaded.headers['Cache-Control'], 'no-store')
+                with closing(dlms.get_db()) as conn:
+                    row = conn.execute('SELECT sha256,content FROM certification_attachments WHERE id=?', (identifier,)).fetchone()
+                self.assertEqual(tuple(row), (digest, content))
+
+    def test_password_locked_or_active_restricted_pdf_cannot_be_previewed(self):
+        for content in (restricted_pdf(password='synthetic-opening-password'), restricted_pdf(active=True)):
+            with self.subTest(digest=sha256(content).hexdigest()):
+                with self.assertRaises(ValueError):
+                    certifications.validate_attachment(content)
+                # A damaged/legacy stored record must not bypass upload validation.
+                identifier = uuid.uuid4().hex
+                with closing(dlms.get_db()) as conn, conn:
+                    conn.execute('INSERT INTO certification_attachments VALUES(?,?,?,?)',
+                                 (identifier, 'application/pdf', sha256(content).hexdigest(), content))
+                response = self.client.get(f'/certifications/attachments/{identifier}/view')
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(b'role="alert"', response.data)
+                self.assertNotIn(b'data:image/png;base64,', response.data)
 
     def test_missing_unsupported_corrupt_and_invalid_pages_report_useful_errors(self):
         missing = self.client.get('/certifications/attachments/' + uuid.uuid4().hex + '/view')

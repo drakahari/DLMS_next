@@ -14,6 +14,7 @@ from tests import test_study_sessions as foundation
 from dlms.services import certifications as cert, restore
 from dlms.persistence import certification_schema
 from tests.csrf_test_utils import csrf_headers
+from tests.certificate_pdf_fixtures import restricted_pdf
 
 dlms=foundation.dlms
 
@@ -106,6 +107,52 @@ class CertificationTests(foundation.unittest.TestCase):
         self.assertEqual(self.client.get('/certifications/attachments/'+ref).status_code,404)
         self.assertEqual(self.client.get('/certifications/'+other).status_code,200)
         with closing(dlms.get_db()) as c, c:self.assertEqual(c.execute('SELECT COUNT(*) FROM quizzes').fetchone()[0],1)
+
+    def test_restricted_passwordless_certificate_attachment_preserves_bytes_and_failure_is_atomic(self):
+        for algorithm in ('RC4-128', 'AES-128', 'AES-256'):
+            with self.subTest(algorithm=algorithm):
+                content = restricted_pdf(algorithm=algorithm)
+                payload = self.request('certification', dict(name='Synthetic '+algorithm, issuer='Synthetic issuer'))
+                cid = self.apply(payload, {'certificate': content})['id']
+                reference = self.cycle(cid)['data']['certificate']
+                response = self.client.get('/certifications/attachments/'+reference)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.data, content)
+                with closing(dlms.get_db()) as conn:
+                    before = list(conn.iterdump())
+                for invalid in (restricted_pdf(password='opening-secret'), restricted_pdf(active=True), b'%PDF-broken'):
+                    with self.subTest(invalid_size=len(invalid)):
+                        request = self.request('certification', dict(name='Must not appear', issuer='Synthetic'))
+                        with self.assertRaises(ValueError):
+                            self.apply(request, {'certificate': invalid})
+                        with closing(dlms.get_db()) as conn:
+                            self.assertEqual(list(conn.iterdump()), before)
+
+    def test_http_certificate_upload_accepts_empty_password_and_preserves_locked_error_form(self):
+        for password, accepted in (('', True), ('synthetic-opening-secret', False)):
+            with self.subTest(accepted=accepted):
+                guards = self.request('certification')
+                content = restricted_pdf(password=password)
+                data = {key: str(guards[key]) for key in ('request_id', 'generation', 'revision')}
+                data.update(kind='certification', record_id='', edit_scope='identity', edit_current='yes',
+                            field_name='Synthetic HTTP certificate', field_issuer='Synthetic issuer',
+                            certificate=(BytesIO(content), 'synthetic.pdf'))
+                with closing(dlms.get_db()) as conn:
+                    before = list(conn.iterdump())
+                response = self.client.post('/certifications/save', data=data, headers=self.headers)
+                if accepted:
+                    self.assertEqual(response.status_code, 303)
+                    detail = self.client.get(response.headers['Location'])
+                    self.assertIn(b'/view', detail.data)
+                    with closing(dlms.get_db()) as conn:
+                        row = conn.execute('SELECT content FROM certification_attachments').fetchone()
+                    self.assertEqual(row['content'], content)
+                else:
+                    self.assertEqual(response.status_code, 400)
+                    self.assertIn(b'requires an opening password', response.data)
+                    self.assertIn(b'Synthetic HTTP certificate', response.data)
+                    with closing(dlms.get_db()) as conn:
+                        self.assertEqual(list(conn.iterdump()), before)
 
     def test_prompt_excludes_notes_attachment_ids_and_unselected_information(self):
         cid=self.create();cycle=self.cycle(cid)
