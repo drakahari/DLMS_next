@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   python-dependencies:
-    name: Audit locked runtime and build dependencies
+    name: Audit runtime, build, test and Linux Desktop dependencies
     runs-on: ubuntu-24.04
     timeout-minutes: 20
 
@@ -31,14 +31,31 @@ jobs:
       - name: Install the dependency auditor
         run: python -m pip install -r requirements-audit.txt
 
+      - name: Audit the canonical runtime dependency set
+        if: ${{ !cancelled() }}
+        run: >-
+          python -m pip_audit
+          --requirement requirements-lock.txt
+          --progress-spinner off
+
       - name: Audit the canonical frozen-build dependency set
+        if: ${{ !cancelled() }}
         run: >-
           python -m pip_audit
           --requirement requirements-build.txt
           --progress-spinner off
 
       - name: Audit the canonical test dependency set
+        # Keep this independent of a finding in an earlier dependency set.
+        if: ${{ !cancelled() }}
         run: >-
           python -m pip_audit
           --requirement requirements-test.txt
+          --progress-spinner off
+
+      - name: Audit the Linux Desktop producer dependency set
+        if: ${{ !cancelled() }}
+        run: >-
+          python -m pip_audit
+          --requirement package_fedora/requirements-build-lock.txt
           --progress-spinner off

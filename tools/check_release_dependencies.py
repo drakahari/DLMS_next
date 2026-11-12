@@ -15,6 +15,7 @@ IMPORT_NAMES = {
     "pyinstaller": "PyInstaller",
     "pyinstaller-hooks-contrib": "_pyinstaller_hooks_contrib",
     "pillow": "PIL.Image",
+    "cryptography": "cryptography.hazmat.primitives.ciphers",
     "pyyaml": "yaml",
 }
 
