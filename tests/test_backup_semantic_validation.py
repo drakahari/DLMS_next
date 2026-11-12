@@ -292,7 +292,7 @@ class BackupSemanticValidationTests(unittest.TestCase):
 
     def test_current_application_backup_passes_structural_and_semantic_validation(self):
         backup_path, manifest = dlms._create_dlms_backup("semantic-test")
-        self.assertEqual(manifest["dlms_version"], "3.3.1")
+        self.assertEqual(manifest["dlms_version"], dlms.APP_VERSION)
         report = dlms._validate_dlms_backup(backup_path)
         extracted = self.root / "current-backup"
         dlms._extract_validated_backup(backup_path, extracted, report)

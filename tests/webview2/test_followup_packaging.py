@@ -7,7 +7,14 @@ from package_windows_webview2.build import ROOT, source_backend_version
 
 
 def test_captured_backend_identity_is_literal_without_import():
-    assert source_backend_version() == '3.3.1'
+    assert source_backend_version() == '3.3.2 RC1'
+
+
+@pytest.mark.parametrize('version', ['3.3.1', '3.3.2 RC1', '3.4.0 RC12'])
+def test_captured_backend_supports_bounded_release_candidate_labels(tmp_path, version):
+    path = tmp_path / 'app.py'
+    path.write_text(f'APP_VERSION = {version!r}\n')
+    assert source_backend_version(path) == version
 
 
 @pytest.mark.parametrize('body', [
@@ -15,6 +22,9 @@ def test_captured_backend_identity_is_literal_without_import():
     "APP_VERSION = '3.3.0'\nAPP_VERSION = discover_version()",
     "APP_VERSION = '3.3.0'\nAPP_VERSION = '9.9.9'",
     "APP_VERSION = '3.3.0\\nsecret'",
+    "APP_VERSION = '3.3.2 RC0'",
+    "APP_VERSION = '3.3.2 RC1000'",
+    "APP_VERSION = '3.3.2 arbitrary label'",
     'APP_VERSION = 3',
 ])
 def test_ambiguous_or_nonliteral_backend_identity_refused(tmp_path, body):

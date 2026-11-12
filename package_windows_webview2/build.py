@@ -25,7 +25,7 @@ def source_backend_version(path=ROOT / "app.py"):
                    and any(isinstance(target, ast.Name) and target.id == "APP_VERSION" for target in node.targets)]
     if (len(assignments) != 1 or not isinstance(assignments[0].value, ast.Constant)
             or not isinstance(assignments[0].value.value, str)
-            or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+[A-Za-z0-9.+-]{0,32}", assignments[0].value.value) is None):
+            or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?: RC[1-9][0-9]{0,2}|[A-Za-z0-9.+-]{0,32})", assignments[0].value.value) is None):
         raise ValueError("Captured backend version must be one bounded literal APP_VERSION")
     return assignments[0].value.value
 

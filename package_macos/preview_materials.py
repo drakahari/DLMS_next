@@ -62,7 +62,7 @@ def verified_source(root=ROOT, expected_head=None):
     changed=git('diff','--name-only','-z','HEAD','--').decode().split('\0')
     changed=sorted(name for name in changed if name)
     from desktop.build_info import application_version
-    if application_version(root) == '3.3.1':
+    if application_version(root) in ('3.3.1', '3.3.2 RC1'):
         if changed:
             raise ValueError('Maintenance candidates require clean committed source; no overlay is accepted')
         return {'application_base': head, 'source_state': 'Clean committed maintenance source',
