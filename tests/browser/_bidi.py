@@ -201,12 +201,12 @@ class FirefoxBidi:
             timeout=timeout,
         )
 
-    def wait_for_pointer_target(self, selector: str) -> None:
+    def wait_for_pointer_target(self, selector: str, *, stable: bool = False) -> None:
         # Responsive overlays can still be animating after document/viewport
         # readiness. Observe hit testing before sending real pointer input;
         # never click through an overlay or retry a potentially destructive click.
         encoded = json.dumps(selector)
-        self.wait_for(
+        expression = (
             "(() => {"
             f"const element = document.querySelector({encoded});"
             "if (!element) return false;"
@@ -217,8 +217,26 @@ class FirefoxBidi:
             "element.contains(document.elementFromPoint((left + right) / 2, (top + bottom) / 2));"
             "})()"
         )
+        if stable:
+            # A focus handler can queue scrolling after the current hit test.
+            # Observe geometry across rendered frames instead of adding a
+            # sleep or clicking again after a potentially missed submission.
+            expression = (
+                "(() => {"
+                f"const element=document.querySelector({encoded});"
+                "if(!element)return false;"
+                "const geometry=()=>{const r=element.getBoundingClientRect();"
+                "return JSON.stringify([r.x,r.y,r.width,r.height,scrollX,scrollY]);};"
+                "return new Promise(resolve=>requestAnimationFrame(()=>{"
+                "const before=geometry();"
+                "requestAnimationFrame(()=>resolve(element.isConnected && "
+                f"element===document.querySelector({encoded}) && "
+                "before===geometry() && Boolean(" + expression + ")));"
+                "}));})()"
+            )
+        self.wait_for(expression)
 
-    def click(self, selector: str) -> None:
+    def click(self, selector: str, *, stable: bool = False) -> None:
         # A workflow condition can become visible while the new document is
         # still loading its styles.  Wait for the load boundary before asking
         # Firefox to resolve the element's live pointer origin so late layout
@@ -242,7 +260,10 @@ class FirefoxBidi:
         shared_id = result.get("sharedId")
         if result.get("type") != "node" or not shared_id:
             raise BidiError(f"Element not found or unavailable for click: {selector}")
-        self.wait_for_pointer_target(selector)
+        if stable:
+            self.wait_for_pointer_target(selector, stable=True)
+        else:
+            self.wait_for_pointer_target(selector)
         self.command(
             "input.performActions",
             {

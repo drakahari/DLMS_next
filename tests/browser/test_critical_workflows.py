@@ -16665,7 +16665,7 @@ def test_ai_settings_coherent_save_cancel_and_focus(browser_stack, theme):
     b.click('#resetPortfolioPrompt')
     # Programmatic default reset also announces the form's dirty state when changed.
     b.evaluate("document.querySelector('#portfolioPromptTemplate').value='PORTFOLIO {{portfolio_context}}';document.querySelector('#certificationPromptTemplate').value='SINGLE {{certification_context}}';document.querySelector('#aiProvider').value='claude';document.querySelector('#aiProvider').dispatchEvent(new Event('change',{bubbles:true}));true")
-    b.click('#aiSettingsForm [type=submit]');b.wait_for("location.search==='?saved=1'")
+    b.click('#aiSettingsForm [type=submit]', stable=True);b.wait_for("location.search==='?saved=1'")
     assert 'saved' in b.evaluate("document.querySelector('.settings-success-banner').textContent")
     b.navigate(base+'/settings/ai')
     assert b.evaluate("document.querySelector('#portfolioPromptTemplate').value")=='PORTFOLIO {{portfolio_context}}'
@@ -16673,7 +16673,7 @@ def test_ai_settings_coherent_save_cancel_and_focus(browser_stack, theme):
     assert b.evaluate("document.querySelector('#aiProvider').value")=='claude'
     # Validation returns every editor, not a dead-end text error or a partial write.
     b.evaluate("document.querySelector('#aiCustomUrl').value='javascript:invalid';document.querySelector('#portfolioPromptTemplate').value='RETAINED {{portfolio_context}}';true")
-    b.click('#aiSettingsForm [type=submit]');b.wait_for("document.querySelector('[role=alert]')")
+    b.click('#aiSettingsForm [type=submit]', stable=True);b.wait_for("document.querySelector('[role=alert]')")
     assert b.evaluate("document.querySelector('#portfolioPromptTemplate').value")=='RETAINED {{portfolio_context}}'
     b.evaluate("window.confirm=()=>true;true");b.click('#cancelAISettings')
     b.wait_for("document.querySelector('#portfolioPromptTemplate')?.value==='PORTFOLIO {{portfolio_context}}'")
@@ -18638,3 +18638,31 @@ def test_exam_plan_alert_waits_for_action_enhancement(browser_stack):
         if state['interception']:
             b.command('network.removeIntercept', {'intercept': state['interception']})
         b.click, b.wait_for, b._receive_text = click, wait, receive
+
+
+def test_ai_save_waits_for_action_row_to_stop_moving(browser_stack):
+    """Native Save must follow layout settlement, including queued focus scroll."""
+    b = browser_stack.browser
+    click, command = b.click, b.command
+    state = {'armed': False, 'observed': False}
+
+    def moving_save(selector, **kwargs):
+        if selector == '#aiSettingsForm [type=submit]' and not state['armed']:
+            b.evaluate("""window.aiTestMotion=document.querySelector('.ai-settings-actions').animate(
+                [{transform:'translateY(0)'},{transform:'translateY(-80px)'}],
+                {duration:350,fill:'forwards'});true""")
+            state['armed'] = True
+        return click(selector, **kwargs)
+
+    def native_input_after_settlement(method, params, **kwargs):
+        if method == 'input.performActions' and state['armed'] and not state['observed']:
+            assert b.evaluate("window.aiTestMotion.playState === 'finished'"), 'Native input arrived while the action row was moving'
+            state['observed'] = True
+        return command(method, params, **kwargs)
+
+    b.click, b.command = moving_save, native_input_after_settlement
+    try:
+        test_ai_settings_coherent_save_cancel_and_focus(browser_stack, 'light')
+        assert state['observed']
+    finally:
+        b.click, b.command = click, command
