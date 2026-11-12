@@ -16876,9 +16876,11 @@ def _check_certification_control_spacing(browser_stack, theme, native_zoom=False
         if width:b.set_viewport(width,1000)
         variant=str(width or 'native200')+'-'+theme
         b.navigate(base+'/certifications');b.wait_for_page_ready()
-        b.evaluate("document.querySelector('[name=sort]').value='name';true")
+        b.evaluate("window.__beforeCertificationSort=true;document.querySelector('[name=sort]').value='name';true")
         b.click('form[action="/certifications/display"] button')
-        b.wait_for_page_ready("location.pathname==='/certifications' && document.querySelector('[name=sort]')?.value==='name'")
+        # The selected value is already present in this document. Wait for the
+        # actual POST/redirect replacement before a new navigation can cancel it.
+        b.wait_for_page_ready("window.__beforeCertificationSort!==true && location.pathname==='/certifications' && document.querySelector('[name=sort]')?.value==='name'")
         b.navigate(base+'/certifications')
         b.wait_for_page_ready("document.querySelector('[name=sort]')?.value==='name'")
         assert b.evaluate("[...document.querySelectorAll('.cert-card')].map(n=>n.getAttribute('href'))")==['/certifications/'+alpha,'/certifications/'+cid]
@@ -16921,6 +16923,60 @@ def _check_certification_control_spacing(browser_stack, theme, native_zoom=False
 @pytest.mark.parametrize('theme',('light','dark'))
 def test_certification_control_spacing(browser_stack,theme):
     _check_certification_control_spacing(browser_stack,theme)
+
+
+def test_certification_sort_waits_for_submitted_document(browser_stack):
+    """A held real POST must not be mistaken for its already-edited old form."""
+    b = browser_stack.browser
+    click, ready, receive = b.click, b.wait_for_page_ready, b._receive_text
+    state = {'interception': None, 'pending': False, 'observed': False}
+    blocked = []
+
+    def record():
+        raw = receive()
+        event = json.loads(raw)
+        if event.get('method') == 'network.beforeRequestSent' and event['params'].get('isBlocked'):
+            blocked.append(event['params']['request']['request'])
+        return raw
+
+    def submit(selector):
+        intercept = selector == 'form[action="/certifications/display"] button' and not state['observed']
+        if intercept:
+            b.command('session.subscribe', {'events': ['network.beforeRequestSent'], 'contexts': [b.context]})
+            state['interception'] = b.command('network.addIntercept', {
+                'phases': ['beforeRequestSent'], 'contexts': [b.context],
+                'urlPatterns': [{'type': 'string', 'pattern': 'http://dlms-http.test:' + browser_stack.base_url.rsplit(':', 1)[1] + '/certifications/display'}],
+            })['intercept']
+            b._receive_text = record
+        result = click(selector)
+        if intercept:
+            state['pending'] = True
+        return result
+
+    def after_submit(expression='true', timeout=6.0):
+        if state['pending']:
+            # The original predicate was already true before any POST could
+            # reach DLMS. Continuing to navigate here could cancel the save.
+            assert b.evaluate("document.readyState === 'complete' && document.querySelector('[name=sort]').value === 'name'")
+            assert blocked
+            assert not b.evaluate(expression)
+            state['observed'] = True
+            while blocked:
+                b.command('network.continueRequest', {'request': blocked.pop()})
+            b.command('network.removeIntercept', {'intercept': state['interception']})
+            state.update(interception=None, pending=False)
+        return ready(expression, timeout)
+
+    b.click, b.wait_for_page_ready = submit, after_submit
+    try:
+        _check_certification_control_spacing(browser_stack, 'dark')
+        assert state['observed']
+    finally:
+        while blocked:
+            b.command('network.continueRequest', {'request': blocked.pop()})
+        if state['interception']:
+            b.command('network.removeIntercept', {'intercept': state['interception']})
+        b.click, b.wait_for_page_ready, b._receive_text = click, ready, receive
 
 
 @pytest.mark.parametrize('theme',('light','dark'))
@@ -18417,7 +18473,9 @@ def test_current_study_rebuild_and_marked_sidebar(browser_stack):
         b.set_viewport(1280,850);b.activate();b.wait_for('document.hasFocus()')
         b.evaluate("document.querySelector('#dashboardSidebar a[href=\"/marked-questions\"]').focus();true")
         b.press_key('\ue007');b.wait_for("location.pathname==='/marked-questions'")
-        b.wait_for("document.querySelectorAll('[data-mark-id]').length===1")
+        # Mark rows are server-rendered; the canonical sidebar is installed by
+        # the later shared script. Its completed state is the relevant boundary.
+        b.wait_for_page_ready("document.querySelectorAll('[data-mark-id]').length===1 && document.querySelector('#dashboardSidebar a[href=\"/marked-questions\"]')?.getAttribute('aria-current')==='page'")
         assert b.evaluate("document.querySelector('#dashboardSidebar a[href=\"/marked-questions\"]').getAttribute('aria-current')")=='page'
         assert b.evaluate("document.querySelectorAll('#dashboardSidebar a[aria-current=page]').length")==1
     b.set_viewport(390,850)
@@ -18440,6 +18498,66 @@ def test_current_study_rebuild_and_marked_sidebar(browser_stack):
         (target/'shared-rebuild-navigation.json').write_text(json.dumps(dict(quiz_id=qid,session_id=session,
             identical_raw_bytes=True,unchanged_saved_records=True,marked_sidebar_keyboard=True,
             evidence='source Firefox GUI; not packaged/native acceptance'),indent=2)+'\n')
+
+
+@pytest.mark.parametrize('browser_stack', [{'alwaysMatch': {'unhandledPromptBehavior': 'ignore'}}], indirect=True)
+def test_marked_navigation_waits_for_sidebar_script(browser_stack):
+    """Server-rendered marks can precede the shared sidebar's script execution."""
+    b = browser_stack.browser
+    press, wait, receive = b.press_key, b.wait_for, b._receive_text
+    state = {'interception': None, 'pending': False, 'observed': False}
+    blocked = []
+
+    def record():
+        raw = receive()
+        event = json.loads(raw)
+        if event.get('method') == 'network.beforeRequestSent' and event['params'].get('isBlocked'):
+            blocked.append(event['params']['request']['request'])
+        return raw
+
+    def navigate_from_link(key):
+        intercept = (key == '\ue007' and not state['observed'] and
+                     b.evaluate("document.activeElement?.getAttribute('href') === '/marked-questions'"))
+        if intercept:
+            b.command('session.subscribe', {'events': ['network.beforeRequestSent'], 'contexts': [b.context]})
+            state['interception'] = b.command('network.addIntercept', {
+                'phases': ['beforeRequestSent'], 'contexts': [b.context],
+                'urlPatterns': [{'type': 'string', 'pattern': browser_stack.base_url + '/static/nav-normalize.js'}],
+            })['intercept']
+            b.command('network.setCacheBehavior', {'cacheBehavior': 'bypass', 'contexts': [b.context]})
+            b._receive_text = record
+        result = press(key)
+        if intercept:
+            state['pending'] = True
+        return result
+
+    def after_navigation(expression, timeout=6.0):
+        if state['pending'] and '[data-mark-id]' in expression:
+            wait("document.querySelectorAll('[data-mark-id]').length === 1")
+            assert blocked
+            assert b.evaluate('document.readyState') != 'complete'
+            assert b.evaluate("document.querySelector('#dashboardSidebar a[href=\"/marked-questions\"]')") is None
+            state['observed'] = True
+            # The old row-count predicate is already true here. The actual
+            # workflow wait must remain unsatisfied until the shared sidebar
+            # exists; verify behavior without prescribing the predicate text.
+            assert not b.evaluate(expression)
+            while blocked:
+                b.command('network.continueRequest', {'request': blocked.pop()})
+            b.command('network.removeIntercept', {'intercept': state['interception']})
+            state.update(interception=None, pending=False)
+        return wait(expression, timeout)
+
+    b.press_key, b.wait_for = navigate_from_link, after_navigation
+    try:
+        test_current_study_rebuild_and_marked_sidebar(browser_stack)
+        assert state['observed']
+    finally:
+        while blocked:
+            b.command('network.continueRequest', {'request': blocked.pop()})
+        if state['interception']:
+            b.command('network.removeIntercept', {'intercept': state['interception']})
+        b.press_key, b.wait_for, b._receive_text = press, wait, receive
 
 
 def test_selected_ai_exact_copy_event_and_denial_feedback(browser_stack):
