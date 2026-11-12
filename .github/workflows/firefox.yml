@@ -10,6 +10,7 @@ on:
         options:
           - full
           - consolidation-followup
+          - timeout-investigation
   schedule:
     - cron: "23 8 * * 1"
 
@@ -82,9 +83,17 @@ jobs:
                     "tests/browser/test_critical_workflows.py::test_study_mistakes_saved_mix_retry_study_exam_and_random[browser_stack0]"
                   )
                   ;;
+                timeout-investigation)
+                  selected=(
+                    "tests/browser/test_critical_workflows.py::test_fifty_question_study_csrf_expiry[answer]"
+                    "tests/browser/test_critical_workflows.py::test_fifty_question_study_csrf_expiry[resume]"
+                    "tests/browser/test_critical_workflows.py::test_exam_plan_and_profile_action_controls[dark]"
+                  )
+                  ;;
                 *) printf "Unsupported Firefox scope\n" >&2; exit 2 ;;
               esac
               printf "Firefox scope=%s\n" "$DLMS_FIREFOX_SCOPE"
               printf "Browser scope: %s. Focused follow-up is not a new full-gate pass.\n" "$DLMS_FIREFOX_SCOPE" >> "$GITHUB_STEP_SUMMARY"
-              python -m pytest -q -p no:cacheprovider -m browser "${selected[@]}"
+              python -m pytest -vv -p no:cacheprovider -p tests.browser._timing \
+                --durations=30 --tb=short -m browser "${selected[@]}"
             '
