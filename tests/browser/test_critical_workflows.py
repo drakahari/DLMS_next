@@ -15834,7 +15834,7 @@ def test_exam_plan_and_profile_action_controls(browser_stack, theme):
     browser.navigate(base + '/exam-plans')
     browser.wait_for("document.querySelector('.plan-list-card > .dlms-action-control')")
     assert 'Unavailable saved plan' in browser.evaluate('document.querySelector("main").textContent')
-    browser.click('.plan-list-card > a'); browser.wait_for('document.querySelector("[role=alert]")')
+    browser.click('.plan-list-card > a'); browser.wait_for_page_ready('document.querySelector("[role=alert]")')
     assert browser.evaluate("document.querySelector('button[value=delete]').matches('.dlms-action-destructive')")
     assert facts() == initial_facts
 
@@ -18582,3 +18582,59 @@ def test_selected_ai_exact_copy_event_and_denial_feedback(browser_stack):
         assert b.evaluate('copiedPayloads')==[{'text':expected,'prevented':True}]
         assert 'Could not copy' in b.evaluate("document.getElementById('aiCopyStatus').textContent")
         assert b.evaluate('document.querySelectorAll("textarea").length')==0
+
+
+def test_exam_plan_alert_waits_for_action_enhancement(browser_stack):
+    """An unavailable-plan alert can render before action-controls.js executes."""
+    b = browser_stack.browser
+    click, wait, receive = b.click, b.wait_for, b._receive_text
+    state = {'interception': None, 'pending': False, 'observed': False}
+    blocked = []
+
+    def record():
+        raw = receive()
+        event = json.loads(raw)
+        if event.get('method') == 'network.beforeRequestSent' and event['params'].get('isBlocked'):
+            blocked.append(event['params']['request']['request'])
+        return raw
+
+    def open_unavailable_plan(selector):
+        intercept = selector == '.plan-list-card > a' and not state['observed']
+        if intercept:
+            b.command('session.subscribe', {'events': ['network.beforeRequestSent'], 'contexts': [b.context]})
+            state['interception'] = b.command('network.addIntercept', {
+                'phases': ['beforeRequestSent'], 'contexts': [b.context],
+                'urlPatterns': [{'type': 'string', 'pattern': browser_stack.base_url + '/static/action-controls.js'}],
+            })['intercept']
+            b.command('network.setCacheBehavior', {'cacheBehavior': 'bypass', 'contexts': [b.context]})
+            b._receive_text = record
+        result = click(selector)
+        if intercept:
+            state['pending'] = True
+        return result
+
+    def after_navigation(expression, timeout=6.0):
+        if state['pending'] and 'role=alert' in expression:
+            wait('document.querySelector("[role=alert]")')
+            assert blocked and b.evaluate('document.readyState') != 'complete'
+            assert not b.evaluate("document.querySelector('button[value=delete]').matches('.dlms-action-destructive')")
+            state['observed'] = True
+            # Keep the actual workflow's predicate unsatisfied until its
+            # presentation script is released, while the old alert is visible.
+            assert not b.evaluate(expression)
+            while blocked:
+                b.command('network.continueRequest', {'request': blocked.pop()})
+            b.command('network.removeIntercept', {'intercept': state['interception']})
+            state.update(interception=None, pending=False)
+        return wait(expression, timeout)
+
+    b.click, b.wait_for = open_unavailable_plan, after_navigation
+    try:
+        test_exam_plan_and_profile_action_controls(browser_stack, 'light')
+        assert state['observed']
+    finally:
+        while blocked:
+            b.command('network.continueRequest', {'request': blocked.pop()})
+        if state['interception']:
+            b.command('network.removeIntercept', {'intercept': state['interception']})
+        b.click, b.wait_for, b._receive_text = click, wait, receive

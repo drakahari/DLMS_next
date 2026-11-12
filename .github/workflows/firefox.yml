@@ -11,6 +11,7 @@ on:
           - full
           - consolidation-followup
           - timeout-investigation
+          - ai-investigation
   schedule:
     - cron: "23 8 * * 1"
 
@@ -95,6 +96,9 @@ jobs:
                     "tests/browser/test_critical_workflows.py::test_fifty_question_study_csrf_expiry[resume]"
                     "tests/browser/test_critical_workflows.py::test_exam_plan_and_profile_action_controls[dark]"
                   )
+                  ;;
+                ai-investigation)
+                  selected=(tests/browser/_ai_diagnostics.py)
                   ;;
                 *) printf "Unsupported Firefox scope\n" >&2; exit 2 ;;
               esac
