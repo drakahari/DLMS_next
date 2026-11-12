@@ -23,9 +23,13 @@ concurrency:
 
 jobs:
   firefox-workflows:
-    name: Isolated Firefox workflows${{ inputs.scope == 'consolidation-followup' && ' - focused follow-up' || '' }}
+    name: Isolated Firefox workflows - shard ${{ matrix.shard }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON((inputs.scope == 'full' || !inputs.scope) && '[0,1]' || '[0]') }}
 
     steps:
       - name: Check out repository
@@ -66,6 +70,8 @@ jobs:
           MOZ_ENABLE_WAYLAND: "0"
           PYTHONDONTWRITEBYTECODE: "1"
           DLMS_FIREFOX_SCOPE: ${{ inputs.scope || 'full' }}
+          DLMS_FIREFOX_SHARD_COUNT: ${{ (inputs.scope == 'full' || !inputs.scope) && '2' || '1' }}
+          DLMS_FIREFOX_SHARD_INDEX: ${{ matrix.shard }}
         # xvfb-run owns the X server/auth file and cleans up on command exit.
         # Firefox must not use native --headless with this virtual framebuffer.
         run: |
@@ -94,6 +100,7 @@ jobs:
               esac
               printf "Firefox scope=%s\n" "$DLMS_FIREFOX_SCOPE"
               printf "Browser scope: %s. Focused follow-up is not a new full-gate pass.\n" "$DLMS_FIREFOX_SCOPE" >> "$GITHUB_STEP_SUMMARY"
-              python -m pytest -vv -p no:cacheprovider -p tests.browser._timing \
+              python -m pytest -vv -p no:cacheprovider -p tests.browser._timing -p tests.browser._shard \
+                --firefox-shard-count "$DLMS_FIREFOX_SHARD_COUNT" --firefox-shard-index "$DLMS_FIREFOX_SHARD_INDEX" \
                 --durations=30 --tb=short -m browser "${selected[@]}"
             '

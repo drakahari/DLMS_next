@@ -64,6 +64,9 @@ class RepositoryAutomationTests(unittest.TestCase):
         workflow, text = _workflow("firefox.yml")
         job = workflow["jobs"]["firefox-workflows"]
         self.assertEqual(job["runs-on"], "ubuntu-24.04")
+        self.assertEqual(job["timeout-minutes"], "45")
+        self.assertEqual(job["strategy"]["fail-fast"], "false")
+        self.assertIn("'[0,1]'", job["strategy"]["matrix"]["shard"])
         gate = job["steps"][-1]
         self.assertEqual(gate["env"]["DLMS_FIREFOX_MODE"], "xvfb")
         self.assertEqual(gate["env"]["GDK_BACKEND"], "x11")
@@ -72,6 +75,9 @@ class RepositoryAutomationTests(unittest.TestCase):
         self.assertIn('xvfb-run --auto-servernum', gate["run"])
         self.assertIn('-screen 0 1920x1080x24 -nolisten tcp', gate["run"])
         self.assertIn("bash -euc", gate["run"])
+        self.assertIn("-p tests.browser._shard", gate["run"])
+        self.assertIn('--firefox-shard-count "$DLMS_FIREFOX_SHARD_COUNT"', gate["run"])
+        self.assertIn('--firefox-shard-index "$DLMS_FIREFOX_SHARD_INDEX"', gate["run"])
         self.assertNotIn("|| true", gate["run"])
         self.assertNotIn("continue-on-error", text)
         self.assertNotIn("MOZ_WEBRENDER=0", text)
